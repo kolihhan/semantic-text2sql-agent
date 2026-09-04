@@ -1,0 +1,9 @@
+{
+  "valid": false,
+  "use_for_architecture_selection": false,
+  "use_for_resume_or_readme_metrics": false,
+  "reason": [
+    "Ollama thinking was implicitly enabled; final content was often not emitted before length stop",
+    "BIRD evidence plumbing was not yet validated"
+  ]
+}

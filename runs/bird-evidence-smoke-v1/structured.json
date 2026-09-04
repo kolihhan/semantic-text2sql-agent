@@ -1,0 +1,138 @@
+{
+  "project": "P1 Benchmark-First Text-to-SQL",
+  "protocol_version": 1,
+  "split": "dev",
+  "arm": "structured",
+  "model": "qwen3.5:4b",
+  "source_sha256": "0310b7ca2dfb6247234e2073f93e7a75106ee41ba55231f75d06d2ef68efe2ec",
+  "split_manifest_sha256": "c020168f09af2b60384eb433c68b0222ce3850b6308e8c5b7a8be3560acb22d4",
+  "sample_size": 2,
+  "metrics": {
+    "cases": 2,
+    "result_correct_proxy": 0.0,
+    "execution_success_rate": 0.0,
+    "mean_latency_s": 3.768147949995182,
+    "median_latency_s": 3.768147949995182,
+    "mean_model_calls": 1.0,
+    "verifier_confusion": null,
+    "repair_transitions": {
+      "wrong_to_correct": 0,
+      "correct_to_wrong": 0
+    }
+  },
+  "limitations": [
+    "result_correct_proxy compares local SQLite result sets and is not the official BIRD EX grader.",
+    "Gold SQL is used only after inference for local result-set scoring and is never passed to the model provider.",
+    "Demo fixtures are smoke tests only and are not included in benchmark results."
+  ],
+  "cases": [
+    {
+      "case_id": "943",
+      "database_id": "formula_1",
+      "question": "What is the rate of drivers completing all the laps in the 2008 Australian Grand Prix?",
+      "evidence_chars": 118,
+      "arm": "structured",
+      "status": "abstain",
+      "execution_success": false,
+      "result_correct_proxy": false,
+      "predicted_sql": null,
+      "initial_sql": null,
+      "initial_execution_success": false,
+      "initial_result_correct_proxy": false,
+      "initial_verification_ok": null,
+      "repair_attempts": 0,
+      "model_calls": 1,
+      "json_model_calls": 1,
+      "text_model_calls": 0,
+      "latency_s": 3.596157399995718,
+      "plan": {
+        "select": [
+          {
+            "field": "round",
+            "aggregation": "count"
+          },
+          {
+            "field": "id number identifying which drivers",
+            "aggregation": "count"
+          }
+        ],
+        "filters": [
+          {
+            "field": "the finishing position or track of circuits",
+            "operator": "=",
+            "value": "2008 Australian Grand Prix"
+          },
+          {
+            "field": "the unique identification number identifying race result",
+            "operator": ">",
+            "value": null
+          }
+        ],
+        "group_by": [
+          "round"
+        ],
+        "order_by": [
+          {
+            "field": "round",
+            "direction": "asc"
+          }
+        ],
+        "limit": null
+      },
+      "grounded_plan": null,
+      "error": "cannot ground value '2008 Australian Grand Prix' for results.position"
+    },
+    {
+      "case_id": "38",
+      "database_id": "california_schools",
+      "question": "What are the webpages for the Los Angeles County school that has between 2,000 and 3,000 test takers?",
+      "evidence_chars": 0,
+      "arm": "structured",
+      "status": "abstain",
+      "execution_success": false,
+      "result_correct_proxy": false,
+      "predicted_sql": null,
+      "initial_sql": null,
+      "initial_execution_success": false,
+      "initial_result_correct_proxy": false,
+      "initial_verification_ok": null,
+      "repair_attempts": 0,
+      "model_calls": 1,
+      "json_model_calls": 1,
+      "text_model_calls": 0,
+      "latency_s": 3.940138499994646,
+      "plan": {
+        "select": [
+          {
+            "field": "the website address of the school, district, or administrative authority.",
+            "aggregation": "none"
+          }
+        ],
+        "filters": [
+          {
+            "field": "county",
+            "operator": "=",
+            "value": "Los Angeles County"
+          },
+          {
+            "field": "number of test takers in this school",
+            "operator": ">=",
+            "value": 2000
+          },
+          {
+            "field": "number of test takers in this school",
+            "operator": "<=",
+            "value": 3000
+          }
+        ],
+        "group_by": [
+          "the website address of the school, district, or administrative authority."
+        ],
+        "order_by": [],
+        "limit": null
+      },
+      "grounded_plan": null,
+      "error": "cannot ground value 'Los Angeles County' for schools.County"
+    }
+  ]
+}

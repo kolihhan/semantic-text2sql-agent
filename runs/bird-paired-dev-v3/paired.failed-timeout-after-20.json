@@ -1,0 +1,982 @@
+{
+  "project": "P1 Benchmark-First Text-to-SQL",
+  "protocol_version": 2,
+  "status": "incomplete",
+  "split": "dev",
+  "model": "qwen3.5:4b",
+  "think": false,
+  "source_sha256": "0310b7ca2dfb6247234e2073f93e7a75106ee41ba55231f75d06d2ef68efe2ec",
+  "split_manifest_sha256": "b3b4ec070e63a7106d023917e0f0cc61ea75e2be2f2888b8c7bdaf2064fb3ae1",
+  "sample_size": 100,
+  "runtime": {
+    "model": "qwen3.5:4b",
+    "base_url": "http://localhost:11434",
+    "timeout_s": 180.0,
+    "think": false,
+    "max_repairs": 2,
+    "max_rows": 50000
+  },
+  "official_bird_evaluator": {
+    "url": "https://github.com/AlibabaResearch/DAMO-ConvAI/blob/main/bird/llm/src/evaluation.py",
+    "revision": "483554eae102996f5ec1f4feab4e78ef29c2a394"
+  },
+  "metrics": null,
+  "cases": [
+    {
+      "case_id": "38",
+      "database_id": "california_schools",
+      "question": "What are the webpages for the Los Angeles County school that has between 2,000 and 3,000 test takers?",
+      "evidence_chars": 0,
+      "shared_initial_sql": "SELECT DISTINCT s.Website\nFROM satscores sat\nJOIN schools s ON sat.cds = s.CDSCode\nWHERE sat.NumTstTakr BETWEEN 2000 AND 3000\nAND UPPER(s.County) LIKE '%LOS ANGELES%'\n  OR UPPER(s.County) LIKE '%LOS%ANGELES%'",
+      "shared_generation_latency_s": 92.78587839999818,
+      "initial_sql_identical": true,
+      "direct": {
+        "initial_sql": "SELECT DISTINCT s.Website\nFROM satscores sat\nJOIN schools s ON sat.cds = s.CDSCode\nWHERE sat.NumTstTakr BETWEEN 2000 AND 3000\nAND UPPER(s.County) LIKE '%LOS ANGELES%'\n  OR UPPER(s.County) LIKE '%LOS%ANGELES%'",
+        "final_sql": "SELECT DISTINCT s.Website\nFROM satscores sat\nJOIN schools s ON sat.cds = s.CDSCode\nWHERE sat.NumTstTakr BETWEEN 2000 AND 3000\nAND UPPER(s.County) LIKE '%LOS ANGELES%'\n  OR UPPER(s.County) LIKE '%LOS%ANGELES%'",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 92.84607889999461,
+        "repair_attempts": 0,
+        "error": null
+      },
+      "guarded": {
+        "initial_sql": "SELECT DISTINCT s.Website\nFROM satscores sat\nJOIN schools s ON sat.cds = s.CDSCode\nWHERE sat.NumTstTakr BETWEEN 2000 AND 3000\nAND UPPER(s.County) LIKE '%LOS ANGELES%'\n  OR UPPER(s.County) LIKE '%LOS%ANGELES%'",
+        "final_sql": "SELECT DISTINCT s.Website\nFROM satscores sat\nJOIN schools s ON sat.cds = s.CDSCode\nWHERE sat.NumTstTakr BETWEEN 2000 AND 3000\nAND UPPER(s.County) LIKE '%LOS ANGELES%'\n  OR UPPER(s.County) LIKE '%LOS%ANGELES%'",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 94.02972160000354,
+        "repair_attempts": 0,
+        "error": null,
+        "stages": [
+          {
+            "name": "sql",
+            "summary": "SELECT DISTINCT s.Website\nFROM satscores sat\nJOIN schools s ON sat.cds = s.CDSCode\nWHERE sat.NumTstTakr BETWEEN 2000 AND 3000\nAND UPPER(s.County) LIKE '%LOS ANGELES%'\n  OR UPPER(s.County) LIKE '%LOS%ANGELES%'"
+          },
+          {
+            "name": "verify",
+            "summary": "PASS"
+          },
+          {
+            "name": "execute",
+            "summary": "rows=200"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "952",
+      "database_id": "formula_1",
+      "question": "Which constructors have been ranked 1?",
+      "evidence_chars": 0,
+      "shared_initial_sql": "SELECT DISTINCT constructor.name\nFROM constructors c\nJOIN constructorStandings cs ON c.constructorId = cs.constructorId\nWHERE cs.position = 1;",
+      "shared_generation_latency_s": 54.21296010000515,
+      "initial_sql_identical": true,
+      "direct": {
+        "initial_sql": "SELECT DISTINCT constructor.name\nFROM constructors c\nJOIN constructorStandings cs ON c.constructorId = cs.constructorId\nWHERE cs.position = 1;",
+        "final_sql": "SELECT DISTINCT constructor.name\nFROM constructors c\nJOIN constructorStandings cs ON c.constructorId = cs.constructorId\nWHERE cs.position = 1;",
+        "status": "execution_failed",
+        "execution_success": false,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 54.21401959999639,
+        "repair_attempts": 0,
+        "error": "no such column: constructor.name"
+      },
+      "guarded": {
+        "initial_sql": "SELECT DISTINCT constructor.name\nFROM constructors c\nJOIN constructorStandings cs ON c.constructorId = cs.constructorId\nWHERE cs.position = 1;",
+        "final_sql": "SELECT DISTINCT constructorRef FROM constructors c\nJOIN constructorStandings cs ON c.constructorId = cs.constructorId\nWHERE cs.position = 1;",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 2,
+        "latency_s": 111.38714450001135,
+        "repair_attempts": 1,
+        "error": null,
+        "stages": [
+          {
+            "name": "sql",
+            "summary": "SELECT DISTINCT constructor.name\nFROM constructors c\nJOIN constructorStandings cs ON c.constructorId = cs.constructorId\nWHERE cs.position = 1;"
+          },
+          {
+            "name": "verify",
+            "summary": "sqlite_compile_error"
+          },
+          {
+            "name": "repair",
+            "summary": "attempt=1: SELECT DISTINCT constructorRef FROM constructors c\nJOIN constructorStandings cs ON c.constructorId = cs.constructorId\nWHERE cs.position = 1;"
+          },
+          {
+            "name": "verify",
+            "summary": "PASS"
+          },
+          {
+            "name": "execute",
+            "summary": "rows=24"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "943",
+      "database_id": "formula_1",
+      "question": "What is the rate of drivers completing all the laps in the 2008 Australian Grand Prix?",
+      "evidence_chars": 118,
+      "shared_initial_sql": "SELECT \n    100.0 * COUNT(DISTINCT CASE WHEN r.time IS NOT NULL THEN r.raceId END) / COUNT(DISTINCT r.raceId) AS rate_pct\nFROM races r\nJOIN results res ON r.raceId = res.raceId\nWHERE r.year = 2008 \n    AND r.name = 'Australian Grand Prix'\nGROUP BY r.raceId;",
+      "shared_generation_latency_s": 77.08318240000517,
+      "initial_sql_identical": true,
+      "direct": {
+        "initial_sql": "SELECT \n    100.0 * COUNT(DISTINCT CASE WHEN r.time IS NOT NULL THEN r.raceId END) / COUNT(DISTINCT r.raceId) AS rate_pct\nFROM races r\nJOIN results res ON r.raceId = res.raceId\nWHERE r.year = 2008 \n    AND r.name = 'Australian Grand Prix'\nGROUP BY r.raceId;",
+        "final_sql": "SELECT \n    100.0 * COUNT(DISTINCT CASE WHEN r.time IS NOT NULL THEN r.raceId END) / COUNT(DISTINCT r.raceId) AS rate_pct\nFROM races r\nJOIN results res ON r.raceId = res.raceId\nWHERE r.year = 2008 \n    AND r.name = 'Australian Grand Prix'\nGROUP BY r.raceId;",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 77.09292750000895,
+        "repair_attempts": 0,
+        "error": null
+      },
+      "guarded": {
+        "initial_sql": "SELECT \n    100.0 * COUNT(DISTINCT CASE WHEN r.time IS NOT NULL THEN r.raceId END) / COUNT(DISTINCT r.raceId) AS rate_pct\nFROM races r\nJOIN results res ON r.raceId = res.raceId\nWHERE r.year = 2008 \n    AND r.name = 'Australian Grand Prix'\nGROUP BY r.raceId;",
+        "final_sql": "SELECT \n    100.0 * COUNT(DISTINCT CASE WHEN r.time IS NOT NULL THEN r.raceId END) / COUNT(DISTINCT r.raceId) AS rate_pct\nFROM races r\nJOIN results res ON r.raceId = res.raceId\nWHERE r.year = 2008 \n    AND r.name = 'Australian Grand Prix'\nGROUP BY r.raceId;",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 77.09693820000393,
+        "repair_attempts": 0,
+        "error": null,
+        "stages": [
+          {
+            "name": "sql",
+            "summary": "SELECT \n    100.0 * COUNT(DISTINCT CASE WHEN r.time IS NOT NULL THEN r.raceId END) / COUNT(DISTINCT r.raceId) AS rate_pct\nFROM races r\nJOIN results res ON r.raceId = res.raceId\nWHERE r.year = 2008 \n    AND r.name = 'Australian Grand Prix'\nGROUP BY r.raceId;"
+          },
+          {
+            "name": "verify",
+            "summary": "PASS"
+          },
+          {
+            "name": "execute",
+            "summary": "rows=1"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "622",
+      "database_id": "codebase_community",
+      "question": "State the name of badge that the user whose display name is \"Sharpie\" obtained.",
+      "evidence_chars": 59,
+      "shared_initial_sql": "SELECT Name FROM badges WHERE UserId = (SELECT Id FROM users WHERE DisplayName = 'Sharpie');",
+      "shared_generation_latency_s": 45.7893069999991,
+      "initial_sql_identical": true,
+      "direct": {
+        "initial_sql": "SELECT Name FROM badges WHERE UserId = (SELECT Id FROM users WHERE DisplayName = 'Sharpie');",
+        "final_sql": "SELECT Name FROM badges WHERE UserId = (SELECT Id FROM users WHERE DisplayName = 'Sharpie');",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": true,
+        "model_calls": 1,
+        "latency_s": 45.85313479999604,
+        "repair_attempts": 0,
+        "error": null
+      },
+      "guarded": {
+        "initial_sql": "SELECT Name FROM badges WHERE UserId = (SELECT Id FROM users WHERE DisplayName = 'Sharpie');",
+        "final_sql": "SELECT Name FROM badges WHERE UserId = (SELECT Id FROM users WHERE DisplayName = 'Sharpie');",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": true,
+        "model_calls": 1,
+        "latency_s": 45.80864430000656,
+        "repair_attempts": 0,
+        "error": null,
+        "stages": [
+          {
+            "name": "sql",
+            "summary": "SELECT Name FROM badges WHERE UserId = (SELECT Id FROM users WHERE DisplayName = 'Sharpie');"
+          },
+          {
+            "name": "verify",
+            "summary": "PASS"
+          },
+          {
+            "name": "execute",
+            "summary": "rows=32"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "1366",
+      "database_id": "student_club",
+      "question": "List all the members who attended the event \"October Meeting\".",
+      "evidence_chars": 35,
+      "shared_initial_sql": "SELECT m.first_name, m.last_name, m.email, m.position, m.t_shirt_size, m.phone, m.zip, z.city, z.state, m.link_to_major.major_name\nFROM member m\nJOIN attendance a ON m.member_id = a.link_to_member\nJOIN event e ON a.link_to_event = e.event_id\nWHERE e.event_name = 'October Meeting'",
+      "shared_generation_latency_s": 55.62896909999836,
+      "initial_sql_identical": true,
+      "direct": {
+        "initial_sql": "SELECT m.first_name, m.last_name, m.email, m.position, m.t_shirt_size, m.phone, m.zip, z.city, z.state, m.link_to_major.major_name\nFROM member m\nJOIN attendance a ON m.member_id = a.link_to_member\nJOIN event e ON a.link_to_event = e.event_id\nWHERE e.event_name = 'October Meeting'",
+        "final_sql": "SELECT m.first_name, m.last_name, m.email, m.position, m.t_shirt_size, m.phone, m.zip, z.city, z.state, m.link_to_major.major_name\nFROM member m\nJOIN attendance a ON m.member_id = a.link_to_member\nJOIN event e ON a.link_to_event = e.event_id\nWHERE e.event_name = 'October Meeting'",
+        "status": "execution_failed",
+        "execution_success": false,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 55.63075609999942,
+        "repair_attempts": 0,
+        "error": "no such column: z.city"
+      },
+      "guarded": {
+        "initial_sql": "SELECT m.first_name, m.last_name, m.email, m.position, m.t_shirt_size, m.phone, m.zip, z.city, z.state, m.link_to_major.major_name\nFROM member m\nJOIN attendance a ON m.member_id = a.link_to_member\nJOIN event e ON a.link_to_event = e.event_id\nWHERE e.event_name = 'October Meeting'",
+        "final_sql": "SELECT m.first_name, m.last_name, m.email, m.position, m.t_shirt_size, m.phone, z.city, z.state, m.link_to_major.major_name\nFROM member m\nJOIN attendance a ON m.member_id = a.link_to_member\nJOIN event e ON a.link_to_event = e.event_id\nJOIN zip_code z ON m.zip = z.zip_code\nWHERE e.event_name = 'October Meeting'",
+        "status": "verification_failed",
+        "execution_success": false,
+        "official_ex": false,
+        "model_calls": 3,
+        "latency_s": 167.58004649999202,
+        "repair_attempts": 2,
+        "error": "deterministic SQL verification failed after repair budget; SQL was not executed",
+        "stages": [
+          {
+            "name": "sql",
+            "summary": "SELECT m.first_name, m.last_name, m.email, m.position, m.t_shirt_size, m.phone, m.zip, z.city, z.state, m.link_to_major.major_name\nFROM member m\nJOIN attendance a ON m.member_id = a.link_to_member\nJOIN event e ON a.link_to_event = e.event_id\nWHERE e.event_name = 'October Meeting'"
+          },
+          {
+            "name": "verify",
+            "summary": "sqlite_compile_error"
+          },
+          {
+            "name": "repair",
+            "summary": "attempt=1: SELECT m.first_name, m.last_name, m.email, m.position, m.t_shirt_size, m.phone, zip_code.city, zip_code.state, m.link_to_major.major_name\nFROM member m\nJOIN attendance a ON m.member_id = a.link_to_member\nJOIN event e ON a.link_to_event = e.event_id\nJOIN zip_code z ON m.zip = z.zip_code\nWHERE e.event_name = 'October Meeting'"
+          },
+          {
+            "name": "verify",
+            "summary": "sqlite_compile_error"
+          },
+          {
+            "name": "repair",
+            "summary": "attempt=2: SELECT m.first_name, m.last_name, m.email, m.position, m.t_shirt_size, m.phone, z.city, z.state, m.link_to_major.major_name\nFROM member m\nJOIN attendance a ON m.member_id = a.link_to_member\nJOIN event e ON a.link_to_event = e.event_id\nJOIN zip_code z ON m.zip = z.zip_code\nWHERE e.event_name = 'October Meeting'"
+          },
+          {
+            "name": "verify",
+            "summary": "sqlite_compile_error"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "1139",
+      "database_id": "european_football_2",
+      "question": "What was the final score for the match on September 24, 2008, in the Belgian Jupiler League between the home team and the away team?",
+      "evidence_chars": 236,
+      "shared_initial_sql": "SELECT Match.home_team_goal, Match.away_team_goal \nFROM Match \nJOIN League ON Match.league_id = League.id \nWHERE Match.date LIKE '2008-09-24%' \nAND League.name = 'Belgium Jupiler League';",
+      "shared_generation_latency_s": 116.743255399997,
+      "initial_sql_identical": true,
+      "direct": {
+        "initial_sql": "SELECT Match.home_team_goal, Match.away_team_goal \nFROM Match \nJOIN League ON Match.league_id = League.id \nWHERE Match.date LIKE '2008-09-24%' \nAND League.name = 'Belgium Jupiler League';",
+        "final_sql": "SELECT Match.home_team_goal, Match.away_team_goal \nFROM Match \nJOIN League ON Match.league_id = League.id \nWHERE Match.date LIKE '2008-09-24%' \nAND League.name = 'Belgium Jupiler League';",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": true,
+        "model_calls": 1,
+        "latency_s": 117.71646349999355,
+        "repair_attempts": 0,
+        "error": null
+      },
+      "guarded": {
+        "initial_sql": "SELECT Match.home_team_goal, Match.away_team_goal \nFROM Match \nJOIN League ON Match.league_id = League.id \nWHERE Match.date LIKE '2008-09-24%' \nAND League.name = 'Belgium Jupiler League';",
+        "final_sql": "SELECT Match.home_team_goal, Match.away_team_goal \nFROM Match \nJOIN League ON Match.league_id = League.id \nWHERE Match.date LIKE '2008-09-24%' \nAND League.name = 'Belgium Jupiler League';",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": true,
+        "model_calls": 1,
+        "latency_s": 116.79800670000259,
+        "repair_attempts": 0,
+        "error": null,
+        "stages": [
+          {
+            "name": "sql",
+            "summary": "SELECT Match.home_team_goal, Match.away_team_goal \nFROM Match \nJOIN League ON Match.league_id = League.id \nWHERE Match.date LIKE '2008-09-24%' \nAND League.name = 'Belgium Jupiler League';"
+          },
+          {
+            "name": "verify",
+            "summary": "PASS"
+          },
+          {
+            "name": "execute",
+            "summary": "rows=1"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "546",
+      "database_id": "codebase_community",
+      "question": "Please list the display names of all the users who owns a post that is well-finished.",
+      "evidence_chars": 63,
+      "shared_initial_sql": "SELECT DISTINCT p.OwnerDisplayName\nFROM posts p\nWHERE p.ClosedDate IS NOT NULL;",
+      "shared_generation_latency_s": 45.699288000003435,
+      "initial_sql_identical": true,
+      "direct": {
+        "initial_sql": "SELECT DISTINCT p.OwnerDisplayName\nFROM posts p\nWHERE p.ClosedDate IS NOT NULL;",
+        "final_sql": "SELECT DISTINCT p.OwnerDisplayName\nFROM posts p\nWHERE p.ClosedDate IS NOT NULL;",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 46.05153510000673,
+        "repair_attempts": 0,
+        "error": null
+      },
+      "guarded": {
+        "initial_sql": "SELECT DISTINCT p.OwnerDisplayName\nFROM posts p\nWHERE p.ClosedDate IS NOT NULL;",
+        "final_sql": "SELECT DISTINCT p.OwnerDisplayName\nFROM posts p\nWHERE p.ClosedDate IS NOT NULL;",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 45.88392970000859,
+        "repair_attempts": 0,
+        "error": null,
+        "stages": [
+          {
+            "name": "sql",
+            "summary": "SELECT DISTINCT p.OwnerDisplayName\nFROM posts p\nWHERE p.ClosedDate IS NOT NULL;"
+          },
+          {
+            "name": "verify",
+            "summary": "PASS"
+          },
+          {
+            "name": "execute",
+            "summary": "rows=99"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "325",
+      "database_id": "toxicology",
+      "question": "How many carcinogenic molecules that consisted of Nitrogen?",
+      "evidence_chars": 78,
+      "shared_initial_sql": "SELECT COUNT(*) FROM atom a JOIN molecule m ON a.molecule_id = m.molecule_id WHERE a.element = 'N' AND m.label = '+';",
+      "shared_generation_latency_s": 22.730365200011875,
+      "initial_sql_identical": true,
+      "direct": {
+        "initial_sql": "SELECT COUNT(*) FROM atom a JOIN molecule m ON a.molecule_id = m.molecule_id WHERE a.element = 'N' AND m.label = '+';",
+        "final_sql": "SELECT COUNT(*) FROM atom a JOIN molecule m ON a.molecule_id = m.molecule_id WHERE a.element = 'N' AND m.label = '+';",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 22.737572000012733,
+        "repair_attempts": 0,
+        "error": null
+      },
+      "guarded": {
+        "initial_sql": "SELECT COUNT(*) FROM atom a JOIN molecule m ON a.molecule_id = m.molecule_id WHERE a.element = 'N' AND m.label = '+';",
+        "final_sql": "SELECT COUNT(*) FROM atom a JOIN molecule m ON a.molecule_id = m.molecule_id WHERE a.element = 'N' AND m.label = '+';",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 22.742630900014774,
+        "repair_attempts": 0,
+        "error": null,
+        "stages": [
+          {
+            "name": "sql",
+            "summary": "SELECT COUNT(*) FROM atom a JOIN molecule m ON a.molecule_id = m.molecule_id WHERE a.element = 'N' AND m.label = '+';"
+          },
+          {
+            "name": "verify",
+            "summary": "PASS"
+          },
+          {
+            "name": "execute",
+            "summary": "rows=1"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "430",
+      "database_id": "card_games",
+      "question": "Please list top two sets of cards with their IDs that have Italian-language cards and are located in the Shadowmoor block in alphabetical order.",
+      "evidence_chars": 0,
+      "shared_initial_sql": "SELECT c.id\nFROM cards c\nINNER JOIN foreign_data f ON c.uuid = f.uuid\nINNER JOIN set_translations st ON f.language = st.language\nINNER JOIN sets s ON st.setCode = s.code\nWHERE s.block = 'Shadowmoor'\n  AND f.language = 'Italian'\nORDER BY f.name ASC\nLIMIT 2;",
+      "shared_generation_latency_s": 100.6992145000113,
+      "initial_sql_identical": true,
+      "direct": {
+        "initial_sql": "SELECT c.id\nFROM cards c\nINNER JOIN foreign_data f ON c.uuid = f.uuid\nINNER JOIN set_translations st ON f.language = st.language\nINNER JOIN sets s ON st.setCode = s.code\nWHERE s.block = 'Shadowmoor'\n  AND f.language = 'Italian'\nORDER BY f.name ASC\nLIMIT 2;",
+        "final_sql": "SELECT c.id\nFROM cards c\nINNER JOIN foreign_data f ON c.uuid = f.uuid\nINNER JOIN set_translations st ON f.language = st.language\nINNER JOIN sets s ON st.setCode = s.code\nWHERE s.block = 'Shadowmoor'\n  AND f.language = 'Italian'\nORDER BY f.name ASC\nLIMIT 2;",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 102.79798930001562,
+        "repair_attempts": 0,
+        "error": null
+      },
+      "guarded": {
+        "initial_sql": "SELECT c.id\nFROM cards c\nINNER JOIN foreign_data f ON c.uuid = f.uuid\nINNER JOIN set_translations st ON f.language = st.language\nINNER JOIN sets s ON st.setCode = s.code\nWHERE s.block = 'Shadowmoor'\n  AND f.language = 'Italian'\nORDER BY f.name ASC\nLIMIT 2;",
+        "final_sql": "SELECT c.id\nFROM cards c\nINNER JOIN foreign_data f ON c.uuid = f.uuid\nINNER JOIN set_translations st ON f.language = st.language\nINNER JOIN sets s ON st.setCode = s.code\nWHERE s.block = 'Shadowmoor'\n  AND f.language = 'Italian'\nORDER BY f.name ASC\nLIMIT 2;",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 100.9477981000091,
+        "repair_attempts": 0,
+        "error": null,
+        "stages": [
+          {
+            "name": "sql",
+            "summary": "SELECT c.id\nFROM cards c\nINNER JOIN foreign_data f ON c.uuid = f.uuid\nINNER JOIN set_translations st ON f.language = st.language\nINNER JOIN sets s ON st.setCode = s.code\nWHERE s.block = 'Shadowmoor'\n  AND f.language = 'Italian'\nORDER BY f.name ASC\nLIMIT 2;"
+          },
+          {
+            "name": "verify",
+            "summary": "PASS"
+          },
+          {
+            "name": "execute",
+            "summary": "rows=2"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "934",
+      "database_id": "formula_1",
+      "question": "Which driver was in the no. 4 grid formation when starting the race in 1989's Australian Grand Prix? Please give his forename and surname.",
+      "evidence_chars": 43,
+      "shared_initial_sql": "SELECT drivers.forename, drivers.surname\nFROM results\nJOIN races ON results.raceId = races.raceId\nJOIN drivers ON results.driverId = drivers.driverId\nWHERE races.year = 1989\n  AND races.name = 'Australian Grand Prix'\n  AND results.grid = 4;",
+      "shared_generation_latency_s": 68.75470469999709,
+      "initial_sql_identical": true,
+      "direct": {
+        "initial_sql": "SELECT drivers.forename, drivers.surname\nFROM results\nJOIN races ON results.raceId = races.raceId\nJOIN drivers ON results.driverId = drivers.driverId\nWHERE races.year = 1989\n  AND races.name = 'Australian Grand Prix'\n  AND results.grid = 4;",
+        "final_sql": "SELECT drivers.forename, drivers.surname\nFROM results\nJOIN races ON results.raceId = races.raceId\nJOIN drivers ON results.driverId = drivers.driverId\nWHERE races.year = 1989\n  AND races.name = 'Australian Grand Prix'\n  AND results.grid = 4;",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": true,
+        "model_calls": 1,
+        "latency_s": 68.78268509999907,
+        "repair_attempts": 0,
+        "error": null
+      },
+      "guarded": {
+        "initial_sql": "SELECT drivers.forename, drivers.surname\nFROM results\nJOIN races ON results.raceId = races.raceId\nJOIN drivers ON results.driverId = drivers.driverId\nWHERE races.year = 1989\n  AND races.name = 'Australian Grand Prix'\n  AND results.grid = 4;",
+        "final_sql": "SELECT drivers.forename, drivers.surname\nFROM results\nJOIN races ON results.raceId = races.raceId\nJOIN drivers ON results.driverId = drivers.driverId\nWHERE races.year = 1989\n  AND races.name = 'Australian Grand Prix'\n  AND results.grid = 4;",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": true,
+        "model_calls": 1,
+        "latency_s": 68.76933049999934,
+        "repair_attempts": 0,
+        "error": null,
+        "stages": [
+          {
+            "name": "sql",
+            "summary": "SELECT drivers.forename, drivers.surname\nFROM results\nJOIN races ON results.raceId = races.raceId\nJOIN drivers ON results.driverId = drivers.driverId\nWHERE races.year = 1989\n  AND races.name = 'Australian Grand Prix'\n  AND results.grid = 4;"
+          },
+          {
+            "name": "verify",
+            "summary": "PASS"
+          },
+          {
+            "name": "execute",
+            "summary": "rows=1"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "455",
+      "database_id": "card_games",
+      "question": "Which of the cards that are a promotional painting have multiple faces on the same card? Please list their names.",
+      "evidence_chars": 113,
+      "shared_initial_sql": "SELECT DISTINCT c.asciiName\nFROM cards c\nWHERE c.isPromo = 1\n  AND c.side IS NOT NULL\n  AND (c.otherFaceIds != '' OR c.side != '')\n  AND c.name != c.faceName;",
+      "shared_generation_latency_s": 95.32098289999703,
+      "initial_sql_identical": true,
+      "direct": {
+        "initial_sql": "SELECT DISTINCT c.asciiName\nFROM cards c\nWHERE c.isPromo = 1\n  AND c.side IS NOT NULL\n  AND (c.otherFaceIds != '' OR c.side != '')\n  AND c.name != c.faceName;",
+        "final_sql": "SELECT DISTINCT c.asciiName\nFROM cards c\nWHERE c.isPromo = 1\n  AND c.side IS NOT NULL\n  AND (c.otherFaceIds != '' OR c.side != '')\n  AND c.name != c.faceName;",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 96.6584215000039,
+        "repair_attempts": 0,
+        "error": null
+      },
+      "guarded": {
+        "initial_sql": "SELECT DISTINCT c.asciiName\nFROM cards c\nWHERE c.isPromo = 1\n  AND c.side IS NOT NULL\n  AND (c.otherFaceIds != '' OR c.side != '')\n  AND c.name != c.faceName;",
+        "final_sql": "SELECT DISTINCT c.asciiName\nFROM cards c\nWHERE c.isPromo = 1\n  AND c.side IS NOT NULL\n  AND (c.otherFaceIds != '' OR c.side != '')\n  AND c.name != c.faceName;",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 95.38327429999481,
+        "repair_attempts": 0,
+        "error": null,
+        "stages": [
+          {
+            "name": "sql",
+            "summary": "SELECT DISTINCT c.asciiName\nFROM cards c\nWHERE c.isPromo = 1\n  AND c.side IS NOT NULL\n  AND (c.otherFaceIds != '' OR c.side != '')\n  AND c.name != c.faceName;"
+          },
+          {
+            "name": "verify",
+            "summary": "PASS"
+          },
+          {
+            "name": "execute",
+            "summary": "rows=1"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "312",
+      "database_id": "toxicology",
+      "question": "What is the carcinogenic label for bond TR001_2_4?",
+      "evidence_chars": 43,
+      "shared_initial_sql": "SELECT molecule.label AS carcinogenic_label\nFROM bond\nJOIN connected ON bond.bond_id = connected.bond_id\nJOIN atom ON connected.atom_id = atom.atom_id\nWHERE bond.bond_id IN (SELECT MIN(b2.bond_id) FROM bond b2 WHERE b2.molecule_id = bond.molecule_id AND b2.bond_type = 'TR001_2_4')\nAND molecule.label = '+';",
+      "shared_generation_latency_s": 42.189494299993385,
+      "initial_sql_identical": true,
+      "direct": {
+        "initial_sql": "SELECT molecule.label AS carcinogenic_label\nFROM bond\nJOIN connected ON bond.bond_id = connected.bond_id\nJOIN atom ON connected.atom_id = atom.atom_id\nWHERE bond.bond_id IN (SELECT MIN(b2.bond_id) FROM bond b2 WHERE b2.molecule_id = bond.molecule_id AND b2.bond_type = 'TR001_2_4')\nAND molecule.label = '+';",
+        "final_sql": "SELECT molecule.label AS carcinogenic_label\nFROM bond\nJOIN connected ON bond.bond_id = connected.bond_id\nJOIN atom ON connected.atom_id = atom.atom_id\nWHERE bond.bond_id IN (SELECT MIN(b2.bond_id) FROM bond b2 WHERE b2.molecule_id = bond.molecule_id AND b2.bond_type = 'TR001_2_4')\nAND molecule.label = '+';",
+        "status": "execution_failed",
+        "execution_success": false,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 42.19119199999841,
+        "repair_attempts": 0,
+        "error": "no such column: molecule.label"
+      },
+      "guarded": {
+        "initial_sql": "SELECT molecule.label AS carcinogenic_label\nFROM bond\nJOIN connected ON bond.bond_id = connected.bond_id\nJOIN atom ON connected.atom_id = atom.atom_id\nWHERE bond.bond_id IN (SELECT MIN(b2.bond_id) FROM bond b2 WHERE b2.molecule_id = bond.molecule_id AND b2.bond_type = 'TR001_2_4')\nAND molecule.label = '+';",
+        "final_sql": "SELECT DISTINCT m.label AS carcinogenic_label\nFROM bond b\nJOIN connected c ON b.bond_id = c.bond_id\nJOIN atom a ON c.atom_id = a.atom_id\nJOIN molecule m ON b.molecule_id = m.molecule_id\nWHERE b.bond_type = 'TR001_2_4'\nAND m.label = '+';",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 3,
+        "latency_s": 119.758708999987,
+        "repair_attempts": 2,
+        "error": null,
+        "stages": [
+          {
+            "name": "sql",
+            "summary": "SELECT molecule.label AS carcinogenic_label\nFROM bond\nJOIN connected ON bond.bond_id = connected.bond_id\nJOIN atom ON connected.atom_id = atom.atom_id\nWHERE bond.bond_id IN (SELECT MIN(b2.bond_id) FROM bond b2 WHERE b2.molecule_id = bond.molecule_id AND b2.bond_type = 'TR001_2_4')\nAND molecule.label = '+';"
+          },
+          {
+            "name": "verify",
+            "summary": "sqlite_compile_error"
+          },
+          {
+            "name": "repair",
+            "summary": "attempt=1: SELECT molecule.label AS carcinogenic_label\nFROM bond b\nJOIN connected c ON b.bond_id = c.bond_id\nJOIN atom a ON c.atom_id = a.atom_id\nJOIN molecule m ON b.molecule_id = m.molecule_id\nWHERE b.bond_type = 'TR001_2_4'\nAND m.label = '+';"
+          },
+          {
+            "name": "verify",
+            "summary": "sqlite_compile_error"
+          },
+          {
+            "name": "repair",
+            "summary": "attempt=2: SELECT DISTINCT m.label AS carcinogenic_label\nFROM bond b\nJOIN connected c ON b.bond_id = c.bond_id\nJOIN atom a ON c.atom_id = a.atom_id\nJOIN molecule m ON b.molecule_id = m.molecule_id\nWHERE b.bond_type = 'TR001_2_4'\nAND m.label = '+';"
+          },
+          {
+            "name": "verify",
+            "summary": "PASS"
+          },
+          {
+            "name": "execute",
+            "summary": "rows=0"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "1096",
+      "database_id": "european_football_2",
+      "question": "Calculate the average overall rating of Pietro Marino.",
+      "evidence_chars": 100,
+      "shared_initial_sql": "SELECT AVG(player_attributes.overall_rating)\nFROM player_attributes\nJOIN player ON player_attributes.player_api_id = player.player_api_id\nWHERE player.player_name = 'Pietro Marino';",
+      "shared_generation_latency_s": 107.80805469999905,
+      "initial_sql_identical": true,
+      "direct": {
+        "initial_sql": "SELECT AVG(player_attributes.overall_rating)\nFROM player_attributes\nJOIN player ON player_attributes.player_api_id = player.player_api_id\nWHERE player.player_name = 'Pietro Marino';",
+        "final_sql": "SELECT AVG(player_attributes.overall_rating)\nFROM player_attributes\nJOIN player ON player_attributes.player_api_id = player.player_api_id\nWHERE player.player_name = 'Pietro Marino';",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": true,
+        "model_calls": 1,
+        "latency_s": 107.98133530000632,
+        "repair_attempts": 0,
+        "error": null
+      },
+      "guarded": {
+        "initial_sql": "SELECT AVG(player_attributes.overall_rating)\nFROM player_attributes\nJOIN player ON player_attributes.player_api_id = player.player_api_id\nWHERE player.player_name = 'Pietro Marino';",
+        "final_sql": "SELECT AVG(player_attributes.overall_rating)\nFROM player_attributes\nJOIN player ON player_attributes.player_api_id = player.player_api_id\nWHERE player.player_name = 'Pietro Marino';",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": true,
+        "model_calls": 1,
+        "latency_s": 107.91174969999702,
+        "repair_attempts": 0,
+        "error": null,
+        "stages": [
+          {
+            "name": "sql",
+            "summary": "SELECT AVG(player_attributes.overall_rating)\nFROM player_attributes\nJOIN player ON player_attributes.player_api_id = player.player_api_id\nWHERE player.player_name = 'Pietro Marino';"
+          },
+          {
+            "name": "verify",
+            "summary": "PASS"
+          },
+          {
+            "name": "execute",
+            "summary": "rows=1"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "973",
+      "database_id": "formula_1",
+      "question": "List out top 10 Spanish drivers who were born before 1982 and have the latest lap time.",
+      "evidence_chars": 81,
+      "shared_initial_sql": "SELECT d.forename, d.surname, r.fastestLapTime\nFROM drivers d\nJOIN results r ON d.driverId = r.driverId\nWHERE d.nationality = 'Spain'\n  AND d.dob < 1982\nGROUP BY d.forename, d.surname, d.driverId\nORDER BY r.fastestLapTime ASC\nLIMIT 10;",
+      "shared_generation_latency_s": 74.98771020000277,
+      "initial_sql_identical": true,
+      "direct": {
+        "initial_sql": "SELECT d.forename, d.surname, r.fastestLapTime\nFROM drivers d\nJOIN results r ON d.driverId = r.driverId\nWHERE d.nationality = 'Spain'\n  AND d.dob < 1982\nGROUP BY d.forename, d.surname, d.driverId\nORDER BY r.fastestLapTime ASC\nLIMIT 10;",
+        "final_sql": "SELECT d.forename, d.surname, r.fastestLapTime\nFROM drivers d\nJOIN results r ON d.driverId = r.driverId\nWHERE d.nationality = 'Spain'\n  AND d.dob < 1982\nGROUP BY d.forename, d.surname, d.driverId\nORDER BY r.fastestLapTime ASC\nLIMIT 10;",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 75.0167194000096,
+        "repair_attempts": 0,
+        "error": null
+      },
+      "guarded": {
+        "initial_sql": "SELECT d.forename, d.surname, r.fastestLapTime\nFROM drivers d\nJOIN results r ON d.driverId = r.driverId\nWHERE d.nationality = 'Spain'\n  AND d.dob < 1982\nGROUP BY d.forename, d.surname, d.driverId\nORDER BY r.fastestLapTime ASC\nLIMIT 10;",
+        "final_sql": "SELECT d.forename, d.surname, r.fastestLapTime\nFROM drivers d\nJOIN results r ON d.driverId = r.driverId\nWHERE d.nationality = 'Spain'\n  AND d.dob < 1982\nGROUP BY d.forename, d.surname, d.driverId\nORDER BY r.fastestLapTime ASC\nLIMIT 10;",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 75.00204450001183,
+        "repair_attempts": 0,
+        "error": null,
+        "stages": [
+          {
+            "name": "sql",
+            "summary": "SELECT d.forename, d.surname, r.fastestLapTime\nFROM drivers d\nJOIN results r ON d.driverId = r.driverId\nWHERE d.nationality = 'Spain'\n  AND d.dob < 1982\nGROUP BY d.forename, d.surname, d.driverId\nORDER BY r.fastestLapTime ASC\nLIMIT 10;"
+          },
+          {
+            "name": "verify",
+            "summary": "PASS"
+          },
+          {
+            "name": "execute",
+            "summary": "rows=0"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "1017",
+      "database_id": "formula_1",
+      "question": "Please list the location coordinates of the circuits whose lap record is 1:29.488.",
+      "evidence_chars": 144,
+      "shared_initial_sql": "SELECT circuits.lat, circuits.lng\nFROM races\nJOIN circuits ON races.circuitId = circuits.circuitId\nJOIN results ON races.raceId = results.raceId\nWHERE results.fastestLapTime = 1:29.488;",
+      "shared_generation_latency_s": 64.77266289999534,
+      "initial_sql_identical": true,
+      "direct": {
+        "initial_sql": "SELECT circuits.lat, circuits.lng\nFROM races\nJOIN circuits ON races.circuitId = circuits.circuitId\nJOIN results ON races.raceId = results.raceId\nWHERE results.fastestLapTime = 1:29.488;",
+        "final_sql": "SELECT circuits.lat, circuits.lng\nFROM races\nJOIN circuits ON races.circuitId = circuits.circuitId\nJOIN results ON races.raceId = results.raceId\nWHERE results.fastestLapTime = 1:29.488;",
+        "status": "execution_failed",
+        "execution_success": false,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 64.77468640000734,
+        "repair_attempts": 0,
+        "error": "near \":29\": syntax error"
+      },
+      "guarded": {
+        "initial_sql": "SELECT circuits.lat, circuits.lng\nFROM races\nJOIN circuits ON races.circuitId = circuits.circuitId\nJOIN results ON races.raceId = results.raceId\nWHERE results.fastestLapTime = 1:29.488;",
+        "final_sql": "SELECT circuits.lat, circuits.lng\nFROM races\nJOIN circuits ON races.circuitId = circuits.circuitId\nJOIN results ON races.raceId = results.raceId\nWHERE results.fastestLapTime = '1:29.488';",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 2,
+        "latency_s": 133.01230859999487,
+        "repair_attempts": 1,
+        "error": null,
+        "stages": [
+          {
+            "name": "sql",
+            "summary": "SELECT circuits.lat, circuits.lng\nFROM races\nJOIN circuits ON races.circuitId = circuits.circuitId\nJOIN results ON races.raceId = results.raceId\nWHERE results.fastestLapTime = 1:29.488;"
+          },
+          {
+            "name": "verify",
+            "summary": "sqlite_compile_error"
+          },
+          {
+            "name": "repair",
+            "summary": "attempt=1: SELECT circuits.lat, circuits.lng\nFROM races\nJOIN circuits ON races.circuitId = circuits.circuitId\nJOIN results ON races.raceId = results.raceId\nWHERE results.fastestLapTime = '1:29.488';"
+          },
+          {
+            "name": "verify",
+            "summary": "PASS"
+          },
+          {
+            "name": "execute",
+            "summary": "rows=0"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "912",
+      "database_id": "formula_1",
+      "question": "What's the reference name of Marina Bay Street Circuit?",
+      "evidence_chars": 116,
+      "shared_initial_sql": "SELECT circuitRef FROM circuits WHERE name = 'Marina Bay Street Circuit';",
+      "shared_generation_latency_s": 51.9500543000031,
+      "initial_sql_identical": true,
+      "direct": {
+        "initial_sql": "SELECT circuitRef FROM circuits WHERE name = 'Marina Bay Street Circuit';",
+        "final_sql": "SELECT circuitRef FROM circuits WHERE name = 'Marina Bay Street Circuit';",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": true,
+        "model_calls": 1,
+        "latency_s": 51.961729599992395,
+        "repair_attempts": 0,
+        "error": null
+      },
+      "guarded": {
+        "initial_sql": "SELECT circuitRef FROM circuits WHERE name = 'Marina Bay Street Circuit';",
+        "final_sql": "SELECT circuitRef FROM circuits WHERE name = 'Marina Bay Street Circuit';",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": true,
+        "model_calls": 1,
+        "latency_s": 51.9621094000031,
+        "repair_attempts": 0,
+        "error": null,
+        "stages": [
+          {
+            "name": "sql",
+            "summary": "SELECT circuitRef FROM circuits WHERE name = 'Marina Bay Street Circuit';"
+          },
+          {
+            "name": "verify",
+            "summary": "PASS"
+          },
+          {
+            "name": "execute",
+            "summary": "rows=1"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "1082",
+      "database_id": "european_football_2",
+      "question": "Please list the leagues from Germany.",
+      "evidence_chars": 0,
+      "shared_initial_sql": "SELECT League.name \nFROM League \nWHERE League.country_id = (\n    SELECT Country.id \n    FROM Country \n    WHERE Country.name = 'Germany'\n);",
+      "shared_generation_latency_s": 107.24237670000002,
+      "initial_sql_identical": true,
+      "direct": {
+        "initial_sql": "SELECT League.name \nFROM League \nWHERE League.country_id = (\n    SELECT Country.id \n    FROM Country \n    WHERE Country.name = 'Germany'\n);",
+        "final_sql": "SELECT League.name \nFROM League \nWHERE League.country_id = (\n    SELECT Country.id \n    FROM Country \n    WHERE Country.name = 'Germany'\n);",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": true,
+        "model_calls": 1,
+        "latency_s": 107.25231100000383,
+        "repair_attempts": 0,
+        "error": null
+      },
+      "guarded": {
+        "initial_sql": "SELECT League.name \nFROM League \nWHERE League.country_id = (\n    SELECT Country.id \n    FROM Country \n    WHERE Country.name = 'Germany'\n);",
+        "final_sql": "SELECT League.name \nFROM League \nWHERE League.country_id = (\n    SELECT Country.id \n    FROM Country \n    WHERE Country.name = 'Germany'\n);",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": true,
+        "model_calls": 1,
+        "latency_s": 107.2590099999943,
+        "repair_attempts": 0,
+        "error": null,
+        "stages": [
+          {
+            "name": "sql",
+            "summary": "SELECT League.name \nFROM League \nWHERE League.country_id = (\n    SELECT Country.id \n    FROM Country \n    WHERE Country.name = 'Germany'\n);"
+          },
+          {
+            "name": "verify",
+            "summary": "PASS"
+          },
+          {
+            "name": "execute",
+            "summary": "rows=1"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "790",
+      "database_id": "superhero",
+      "question": "Calculate the difference between Emil Blonsky's weight and Charles Chandler's weight.",
+      "evidence_chars": 67,
+      "shared_initial_sql": "SELECT s1.weight_kg - s2.weight_kg AS weight_difference\nFROM superhero s1\nJOIN superhero s2 ON s1.id = s2.id\nWHERE s1.full_name = 'Emil Blonsky' AND s2.full_name = 'Charles Chandler';",
+      "shared_generation_latency_s": 43.65464959999372,
+      "initial_sql_identical": true,
+      "direct": {
+        "initial_sql": "SELECT s1.weight_kg - s2.weight_kg AS weight_difference\nFROM superhero s1\nJOIN superhero s2 ON s1.id = s2.id\nWHERE s1.full_name = 'Emil Blonsky' AND s2.full_name = 'Charles Chandler';",
+        "final_sql": "SELECT s1.weight_kg - s2.weight_kg AS weight_difference\nFROM superhero s1\nJOIN superhero s2 ON s1.id = s2.id\nWHERE s1.full_name = 'Emil Blonsky' AND s2.full_name = 'Charles Chandler';",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 43.655764800001634,
+        "repair_attempts": 0,
+        "error": null
+      },
+      "guarded": {
+        "initial_sql": "SELECT s1.weight_kg - s2.weight_kg AS weight_difference\nFROM superhero s1\nJOIN superhero s2 ON s1.id = s2.id\nWHERE s1.full_name = 'Emil Blonsky' AND s2.full_name = 'Charles Chandler';",
+        "final_sql": "SELECT s1.weight_kg - s2.weight_kg AS weight_difference\nFROM superhero s1\nJOIN superhero s2 ON s1.id = s2.id\nWHERE s1.full_name = 'Emil Blonsky' AND s2.full_name = 'Charles Chandler';",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 43.665890799995395,
+        "repair_attempts": 0,
+        "error": null,
+        "stages": [
+          {
+            "name": "sql",
+            "summary": "SELECT s1.weight_kg - s2.weight_kg AS weight_difference\nFROM superhero s1\nJOIN superhero s2 ON s1.id = s2.id\nWHERE s1.full_name = 'Emil Blonsky' AND s2.full_name = 'Charles Chandler';"
+          },
+          {
+            "name": "verify",
+            "summary": "PASS"
+          },
+          {
+            "name": "execute",
+            "summary": "rows=0"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "1317",
+      "database_id": "student_club",
+      "question": "Among the students from the Student_Club who attended the event \"Women's Soccer\", how many of them want a T-shirt that's in medium size?",
+      "evidence_chars": 124,
+      "shared_initial_sql": "SELECT COUNT(*) \nFROM attendance AS att\nJOIN member AS mem ON att.link_to_member = mem.member_id\nWHERE \n    (SELECT major_name FROM member m WHERE m.member_id = att.link_to_member).college = 'Student_Club'\n    AND event.event_name = 'Women's Soccer'\n    AND mem.t_shirt_size = 'Medium';",
+      "shared_generation_latency_s": 56.97709190000023,
+      "initial_sql_identical": true,
+      "direct": {
+        "initial_sql": "SELECT COUNT(*) \nFROM attendance AS att\nJOIN member AS mem ON att.link_to_member = mem.member_id\nWHERE \n    (SELECT major_name FROM member m WHERE m.member_id = att.link_to_member).college = 'Student_Club'\n    AND event.event_name = 'Women's Soccer'\n    AND mem.t_shirt_size = 'Medium';",
+        "final_sql": "SELECT COUNT(*) \nFROM attendance AS att\nJOIN member AS mem ON att.link_to_member = mem.member_id\nWHERE \n    (SELECT major_name FROM member m WHERE m.member_id = att.link_to_member).college = 'Student_Club'\n    AND event.event_name = 'Women's Soccer'\n    AND mem.t_shirt_size = 'Medium';",
+        "status": "execution_failed",
+        "execution_success": false,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 56.98743760000798,
+        "repair_attempts": 0,
+        "error": "near \".\": syntax error"
+      },
+      "guarded": {
+        "initial_sql": "SELECT COUNT(*) \nFROM attendance AS att\nJOIN member AS mem ON att.link_to_member = mem.member_id\nWHERE \n    (SELECT major_name FROM member m WHERE m.member_id = att.link_to_member).college = 'Student_Club'\n    AND event.event_name = 'Women's Soccer'\n    AND mem.t_shirt_size = 'Medium';",
+        "final_sql": "SELECT COUNT(*) \nFROM attendance AS att\nJOIN event AS evt ON att.link_to_event = evt.event_id\nJOIN member AS mem ON att.link_to_member = mem.member_id\nJOIN major AS maj ON mem.link_to_major = maj.major_id\nWHERE maj.college = 'Student_Club'\n  AND evt.event_name = 'Women's Soccer'\n  AND mem.t_shirt_size = 'Medium';",
+        "status": "verification_failed",
+        "execution_success": false,
+        "official_ex": false,
+        "model_calls": 3,
+        "latency_s": 166.81340489999275,
+        "repair_attempts": 2,
+        "error": "deterministic SQL verification failed after repair budget; SQL was not executed",
+        "stages": [
+          {
+            "name": "sql",
+            "summary": "SELECT COUNT(*) \nFROM attendance AS att\nJOIN member AS mem ON att.link_to_member = mem.member_id\nWHERE \n    (SELECT major_name FROM member m WHERE m.member_id = att.link_to_member).college = 'Student_Club'\n    AND event.event_name = 'Women's Soccer'\n    AND mem.t_shirt_size = 'Medium';"
+          },
+          {
+            "name": "verify",
+            "summary": "sqlite_compile_error"
+          },
+          {
+            "name": "repair",
+            "summary": "attempt=1: SELECT COUNT(*) \nFROM attendance AS att\nJOIN event AS evt ON att.link_to_event = evt.event_id\nJOIN member AS mem ON att.link_to_member = mem.member_id\nJOIN major AS maj ON mem.link_to_major = maj.major_id\nWHERE maj.college = 'Student_Club'\n  AND evt.event_name = 'Women's Soccer'\n  AND mem.t_shirt_size = 'Medium';"
+          },
+          {
+            "name": "verify",
+            "summary": "sqlite_compile_error"
+          },
+          {
+            "name": "repair",
+            "summary": "attempt=2: SELECT COUNT(*) \nFROM attendance AS att\nJOIN event AS evt ON att.link_to_event = evt.event_id\nJOIN member AS mem ON att.link_to_member = mem.member_id\nJOIN major AS maj ON mem.link_to_major = maj.major_id\nWHERE maj.college = 'Student_Club'\n  AND evt.event_name = 'Women's Soccer'\n  AND mem.t_shirt_size = 'Medium';"
+          },
+          {
+            "name": "verify",
+            "summary": "sqlite_compile_error"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "1390",
+      "database_id": "student_club",
+      "question": "Based on the total cost for all event, what is the percentage of cost for Yearly Kickoff event?",
+      "evidence_chars": 118,
+      "shared_initial_sql": "SELECT (CAST(SUM(CASE WHEN e.event_name = 'Yearly Kickoff' THEN b.spent ELSE 0 END) AS REAL) / SUM(b.spent)) * 100 FROM budget b JOIN event e ON e.event_id = b.link_to_event;",
+      "shared_generation_latency_s": 50.36764490000496,
+      "initial_sql_identical": true,
+      "direct": {
+        "initial_sql": "SELECT (CAST(SUM(CASE WHEN e.event_name = 'Yearly Kickoff' THEN b.spent ELSE 0 END) AS REAL) / SUM(b.spent)) * 100 FROM budget b JOIN event e ON e.event_id = b.link_to_event;",
+        "final_sql": "SELECT (CAST(SUM(CASE WHEN e.event_name = 'Yearly Kickoff' THEN b.spent ELSE 0 END) AS REAL) / SUM(b.spent)) * 100 FROM budget b JOIN event e ON e.event_id = b.link_to_event;",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": true,
+        "model_calls": 1,
+        "latency_s": 50.3688417999947,
+        "repair_attempts": 0,
+        "error": null
+      },
+      "guarded": {
+        "initial_sql": "SELECT (CAST(SUM(CASE WHEN e.event_name = 'Yearly Kickoff' THEN b.spent ELSE 0 END) AS REAL) / SUM(b.spent)) * 100 FROM budget b JOIN event e ON e.event_id = b.link_to_event;",
+        "final_sql": "SELECT (CAST(SUM(CASE WHEN e.event_name = 'Yearly Kickoff' THEN b.spent ELSE 0 END) AS REAL) / SUM(b.spent)) * 100 FROM budget b JOIN event e ON e.event_id = b.link_to_event;",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": true,
+        "model_calls": 1,
+        "latency_s": 50.37775870000769,
+        "repair_attempts": 0,
+        "error": null,
+        "stages": [
+          {
+            "name": "sql",
+            "summary": "SELECT (CAST(SUM(CASE WHEN e.event_name = 'Yearly Kickoff' THEN b.spent ELSE 0 END) AS REAL) / SUM(b.spent)) * 100 FROM budget b JOIN event e ON e.event_id = b.link_to_event;"
+          },
+          {
+            "name": "verify",
+            "summary": "PASS"
+          },
+          {
+            "name": "execute",
+            "summary": "rows=1"
+          }
+        ]
+      }
+    }
+  ]
+}

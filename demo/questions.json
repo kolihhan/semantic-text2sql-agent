@@ -1,0 +1,7 @@
+[
+  {"id":"q1","question":"What were total sales in 2024?"},
+  {"id":"q2","question":"Show total sales from Czech Republic in 2024."},
+  {"id":"q3","question":"Which customer spent the most?"},
+  {"id":"q4","question":"How many orders were placed in 2024?"},
+  {"id":"q5","question":"What is each customer's salary?"}
+]

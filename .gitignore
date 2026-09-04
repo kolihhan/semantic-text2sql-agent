@@ -1,0 +1,21 @@
+.venv/
+.run/
+.pytest_cache/
+__pycache__/
+*.pyc
+.streamlit/
+
+# Local environments, secrets, and generated caches
+.venv/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.pytest*/
+.integration-backup/
+Personal_Projects*/
+*.egg-info/
+
+
+.tmp/

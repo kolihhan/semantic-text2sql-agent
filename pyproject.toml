@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=75", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "semantic-text2sql-agent"
+version = "0.1.0"
+description = "A small LangGraph Text-to-SQL reliability harness with deterministic preflight and bounded repair."
+requires-python = ">=3.11"
+dependencies = ["streamlit>=1.40,<2", "langgraph==1.2.11"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
+[project.scripts]
+semantic-sql = "semantic_sql.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = [".", "src"]
+testpaths = ["tests"]

@@ -1,0 +1,562 @@
+{
+  "project": "P1 Benchmark-First Text-to-SQL",
+  "protocol_version": 2,
+  "status": "incomplete",
+  "split": "dev",
+  "model": "qwen3.5:4b",
+  "model_digest": "2a654d98e6fba55d452b7043684e9b57a947e393bbffa62485a7aac05ee4eefd",
+  "think": false,
+  "source_sha256": "0310b7ca2dfb6247234e2073f93e7a75106ee41ba55231f75d06d2ef68efe2ec",
+  "split_manifest_sha256": "b3b4ec070e63a7106d023917e0f0cc61ea75e2be2f2888b8c7bdaf2064fb3ae1",
+  "sample_size": 100,
+  "runtime": {
+    "model": "qwen3.5:4b",
+    "model_digest": "2a654d98e6fba55d452b7043684e9b57a947e393bbffa62485a7aac05ee4eefd",
+    "base_url": "http://localhost:11434",
+    "timeout_s": 600.0,
+    "think": false,
+    "max_repairs": 2,
+    "max_rows": 50000,
+    "guarded_treatment": "langgraph_preflight_plus_internal_cot_repair_v1",
+    "schema_grounding": "deterministic_lexical_v1"
+  },
+  "official_bird_evaluator": {
+    "url": "https://github.com/AlibabaResearch/DAMO-ConvAI/blob/main/bird/llm/src/evaluation.py",
+    "revision": "483554eae102996f5ec1f4feab4e78ef29c2a394"
+  },
+  "metrics": null,
+  "cases": [
+    {
+      "case_id": "38",
+      "database_id": "california_schools",
+      "question": "What are the webpages for the Los Angeles County school that has between 2,000 and 3,000 test takers?",
+      "evidence_chars": 0,
+      "shared_initial_sql": "SELECT DISTINCT schools.Website\nFROM satscores\nJOIN schools ON satscores.cds = schools.CDSCode\nWHERE schools.County = 'Los Angeles County'\n  AND satscores.NumTstTakr BETWEEN 2000 AND 3000;",
+      "shared_generation_latency_s": 62.433510700000625,
+      "schema_context": {
+        "selector": "deterministic_lexical_v1",
+        "fallback_full_schema": false,
+        "query_tokens": [
+          "000",
+          "angele",
+          "between",
+          "county",
+          "lo",
+          "school",
+          "taker",
+          "test",
+          "that",
+          "webpage"
+        ],
+        "selected_tables": [
+          "frpm",
+          "satscores",
+          "schools"
+        ],
+        "table_scores": {
+          "frpm": 6,
+          "satscores": 4,
+          "schools": 10
+        },
+        "matched_tokens": {
+          "frpm": [
+            "county",
+            "school"
+          ],
+          "satscores": [
+            "county",
+            "school",
+            "taker",
+            "test"
+          ],
+          "schools": [
+            "between",
+            "county",
+            "school"
+          ]
+        },
+        "schema_context_sha256": "ccd9bdd0de521aa72d2b71ee5696ebc6844ae6f5f8bf34f0adfa720d0db6c093"
+      },
+      "initial_sql_identical": true,
+      "direct": {
+        "initial_sql": "SELECT DISTINCT schools.Website\nFROM satscores\nJOIN schools ON satscores.cds = schools.CDSCode\nWHERE schools.County = 'Los Angeles County'\n  AND satscores.NumTstTakr BETWEEN 2000 AND 3000;",
+        "final_sql": "SELECT DISTINCT schools.Website\nFROM satscores\nJOIN schools ON satscores.cds = schools.CDSCode\nWHERE schools.County = 'Los Angeles County'\n  AND satscores.NumTstTakr BETWEEN 2000 AND 3000;",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 62.4773497999995,
+        "repair_attempts": 0,
+        "error": null
+      },
+      "guarded": {
+        "initial_sql": "SELECT DISTINCT schools.Website\nFROM satscores\nJOIN schools ON satscores.cds = schools.CDSCode\nWHERE schools.County = 'Los Angeles County'\n  AND satscores.NumTstTakr BETWEEN 2000 AND 3000;",
+        "final_sql": "SELECT DISTINCT schools.Website\nFROM satscores\nJOIN schools ON satscores.cds = schools.CDSCode\nWHERE schools.County = 'Los Angeles County'\n  AND satscores.NumTstTakr BETWEEN 2000 AND 3000;",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 63.89900860000489,
+        "repair_attempts": 0,
+        "error": null,
+        "stages": [
+          {
+            "name": "sql",
+            "summary": "SELECT DISTINCT schools.Website\nFROM satscores\nJOIN schools ON satscores.cds = schools.CDSCode\nWHERE schools.County = 'Los Angeles County'\n  AND satscores.NumTstTakr BETWEEN 2000 AND 3000;"
+          },
+          {
+            "name": "verify",
+            "summary": "PASS"
+          },
+          {
+            "name": "execute",
+            "summary": "rows=0"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "952",
+      "database_id": "formula_1",
+      "question": "Which constructors have been ranked 1?",
+      "evidence_chars": 0,
+      "shared_initial_sql": "SELECT constructors.name, constructorStandings.positionText, constructorStandings.wins\nFROM constructorStandings\nJOIN constructors ON constructorStandings.constructorId = constructors.constructorId\nWHERE constructorStandings.position = 1;",
+      "shared_generation_latency_s": 35.99991260000388,
+      "schema_context": {
+        "selector": "deterministic_lexical_v1",
+        "fallback_full_schema": false,
+        "query_tokens": [
+          "been",
+          "constructor",
+          "ranked"
+        ],
+        "selected_tables": [
+          "circuits",
+          "constructorResults",
+          "constructorStandings",
+          "constructors",
+          "driverStandings",
+          "drivers",
+          "lapTimes",
+          "pitStops",
+          "qualifying",
+          "races",
+          "results",
+          "seasons",
+          "status"
+        ],
+        "table_scores": {
+          "circuits": 0,
+          "constructorResults": 1,
+          "constructorStandings": 1,
+          "constructors": 4,
+          "driverStandings": 0,
+          "drivers": 0,
+          "lapTimes": 0,
+          "pitStops": 0,
+          "qualifying": 0,
+          "races": 0,
+          "results": 1,
+          "seasons": 0,
+          "status": 0
+        },
+        "matched_tokens": {
+          "circuits": [],
+          "constructorResults": [
+            "constructor"
+          ],
+          "constructorStandings": [
+            "constructor"
+          ],
+          "constructors": [
+            "constructor"
+          ],
+          "driverStandings": [],
+          "drivers": [],
+          "lapTimes": [],
+          "pitStops": [],
+          "qualifying": [],
+          "races": [],
+          "results": [
+            "constructor"
+          ],
+          "seasons": [],
+          "status": []
+        },
+        "schema_context_sha256": "f10fcf51e181b96f14d05c3838159649b93b49b2f730ffacf314c78297f49b22"
+      },
+      "initial_sql_identical": true,
+      "direct": {
+        "initial_sql": "SELECT constructors.name, constructorStandings.positionText, constructorStandings.wins\nFROM constructorStandings\nJOIN constructors ON constructorStandings.constructorId = constructors.constructorId\nWHERE constructorStandings.position = 1;",
+        "final_sql": "SELECT constructors.name, constructorStandings.positionText, constructorStandings.wins\nFROM constructorStandings\nJOIN constructors ON constructorStandings.constructorId = constructors.constructorId\nWHERE constructorStandings.position = 1;",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 36.006084000000556,
+        "repair_attempts": 0,
+        "error": null
+      },
+      "guarded": {
+        "initial_sql": "SELECT constructors.name, constructorStandings.positionText, constructorStandings.wins\nFROM constructorStandings\nJOIN constructors ON constructorStandings.constructorId = constructors.constructorId\nWHERE constructorStandings.position = 1;",
+        "final_sql": "SELECT constructors.name, constructorStandings.positionText, constructorStandings.wins\nFROM constructorStandings\nJOIN constructors ON constructorStandings.constructorId = constructors.constructorId\nWHERE constructorStandings.position = 1;",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 36.00995180000609,
+        "repair_attempts": 0,
+        "error": null,
+        "stages": [
+          {
+            "name": "sql",
+            "summary": "SELECT constructors.name, constructorStandings.positionText, constructorStandings.wins\nFROM constructorStandings\nJOIN constructors ON constructorStandings.constructorId = constructors.constructorId\nWHERE constructorStandings.position = 1;"
+          },
+          {
+            "name": "verify",
+            "summary": "PASS"
+          },
+          {
+            "name": "execute",
+            "summary": "rows=906"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "943",
+      "database_id": "formula_1",
+      "question": "What is the rate of drivers completing all the laps in the 2008 Australian Grand Prix?",
+      "evidence_chars": 118,
+      "shared_initial_sql": "SELECT \n    ROUND(SUM(CASE WHEN r.time IS NOT NULL THEN 1 ELSE 0 END) * 1.0 / COUNT(*), 2) AS rate\nFROM \n    races r\nJOIN \n    results res ON r.raceId = res.raceId\nWHERE \n    r.year = 2008 \n    AND r.name = 'Australian Grand Prix'\n    AND r.circuitId = (SELECT circuitId FROM circuits WHERE name = 'Adelaide Street Circuit')",
+      "shared_generation_latency_s": 43.8389071000056,
+      "schema_context": {
+        "selector": "deterministic_lexical_v1",
+        "fallback_full_schema": false,
+        "query_tokens": [
+          "2008",
+          "all",
+          "australian",
+          "completing",
+          "driver",
+          "grand",
+          "lap",
+          "prix",
+          "rate"
+        ],
+        "selected_tables": [
+          "circuits",
+          "constructors",
+          "driverStandings",
+          "drivers",
+          "lapTimes",
+          "pitStops",
+          "qualifying",
+          "races",
+          "results",
+          "seasons",
+          "status"
+        ],
+        "table_scores": {
+          "circuits": 0,
+          "constructors": 0,
+          "driverStandings": 1,
+          "drivers": 4,
+          "lapTimes": 4,
+          "pitStops": 4,
+          "qualifying": 0,
+          "races": 0,
+          "results": 4,
+          "seasons": 0,
+          "status": 0
+        },
+        "matched_tokens": {
+          "circuits": [],
+          "constructors": [],
+          "driverStandings": [
+            "driver"
+          ],
+          "drivers": [
+            "driver"
+          ],
+          "lapTimes": [
+            "driver",
+            "lap"
+          ],
+          "pitStops": [
+            "driver",
+            "lap"
+          ],
+          "qualifying": [],
+          "races": [],
+          "results": [
+            "driver",
+            "lap"
+          ],
+          "seasons": [],
+          "status": []
+        },
+        "schema_context_sha256": "21398151fe12c90cab860cb3f76b20e851c69d3b9424d5e836b247b6f9abfb8e"
+      },
+      "initial_sql_identical": true,
+      "direct": {
+        "initial_sql": "SELECT \n    ROUND(SUM(CASE WHEN r.time IS NOT NULL THEN 1 ELSE 0 END) * 1.0 / COUNT(*), 2) AS rate\nFROM \n    races r\nJOIN \n    results res ON r.raceId = res.raceId\nWHERE \n    r.year = 2008 \n    AND r.name = 'Australian Grand Prix'\n    AND r.circuitId = (SELECT circuitId FROM circuits WHERE name = 'Adelaide Street Circuit')",
+        "final_sql": "SELECT \n    ROUND(SUM(CASE WHEN r.time IS NOT NULL THEN 1 ELSE 0 END) * 1.0 / COUNT(*), 2) AS rate\nFROM \n    races r\nJOIN \n    results res ON r.raceId = res.raceId\nWHERE \n    r.year = 2008 \n    AND r.name = 'Australian Grand Prix'\n    AND r.circuitId = (SELECT circuitId FROM circuits WHERE name = 'Adelaide Street Circuit')",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 43.84760130000359,
+        "repair_attempts": 0,
+        "error": null
+      },
+      "guarded": {
+        "initial_sql": "SELECT \n    ROUND(SUM(CASE WHEN r.time IS NOT NULL THEN 1 ELSE 0 END) * 1.0 / COUNT(*), 2) AS rate\nFROM \n    races r\nJOIN \n    results res ON r.raceId = res.raceId\nWHERE \n    r.year = 2008 \n    AND r.name = 'Australian Grand Prix'\n    AND r.circuitId = (SELECT circuitId FROM circuits WHERE name = 'Adelaide Street Circuit')",
+        "final_sql": "SELECT \n    ROUND(SUM(CASE WHEN r.time IS NOT NULL THEN 1 ELSE 0 END) * 1.0 / COUNT(*), 2) AS rate\nFROM \n    races r\nJOIN \n    results res ON r.raceId = res.raceId\nWHERE \n    r.year = 2008 \n    AND r.name = 'Australian Grand Prix'\n    AND r.circuitId = (SELECT circuitId FROM circuits WHERE name = 'Adelaide Street Circuit')",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 43.84785170000396,
+        "repair_attempts": 0,
+        "error": null,
+        "stages": [
+          {
+            "name": "sql",
+            "summary": "SELECT \n    ROUND(SUM(CASE WHEN r.time IS NOT NULL THEN 1 ELSE 0 END) * 1.0 / COUNT(*), 2) AS rate\nFROM \n    races r\nJOIN \n    results res ON r.raceId = res.raceId\nWHERE \n    r.year = 2008 \n    AND r.name = 'Australian Grand Prix'\n    AND r.circuitId = (SELECT circuitId FROM circuits WHERE name = 'Adelaide Street Circuit')"
+          },
+          {
+            "name": "verify",
+            "summary": "PASS"
+          },
+          {
+            "name": "execute",
+            "summary": "rows=1"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "622",
+      "database_id": "codebase_community",
+      "question": "State the name of badge that the user whose display name is \"Sharpie\" obtained.",
+      "evidence_chars": 59,
+      "shared_initial_sql": "SELECT Name\nFROM badges\nJOIN users ON badges.UserId = users.Id\nWHERE users.DisplayName = 'Sharpie';",
+      "shared_generation_latency_s": 27.855606400000397,
+      "schema_context": {
+        "selector": "deterministic_lexical_v1",
+        "fallback_full_schema": false,
+        "query_tokens": [
+          "badge",
+          "display",
+          "name",
+          "obtained",
+          "sharpie",
+          "state",
+          "that",
+          "user",
+          "whose"
+        ],
+        "selected_tables": [
+          "badges",
+          "comments",
+          "postHistory",
+          "postLinks",
+          "posts",
+          "tags",
+          "users",
+          "votes"
+        ],
+        "table_scores": {
+          "badges": 10,
+          "comments": 3,
+          "postHistory": 3,
+          "postLinks": 0,
+          "posts": 3,
+          "tags": 2,
+          "users": 6,
+          "votes": 1
+        },
+        "matched_tokens": {
+          "badges": [
+            "badge",
+            "name",
+            "obtained",
+            "that",
+            "user"
+          ],
+          "comments": [
+            "display",
+            "name",
+            "user"
+          ],
+          "postHistory": [
+            "display",
+            "name",
+            "user"
+          ],
+          "postLinks": [],
+          "posts": [
+            "display",
+            "name",
+            "user"
+          ],
+          "tags": [
+            "name",
+            "that"
+          ],
+          "users": [
+            "display",
+            "name",
+            "user"
+          ],
+          "votes": [
+            "that"
+          ]
+        },
+        "schema_context_sha256": "83b6b43bba43a03d558173c18ee59c462551b9e079268af4b1fce84d2d252bec"
+      },
+      "initial_sql_identical": true,
+      "direct": {
+        "initial_sql": "SELECT Name\nFROM badges\nJOIN users ON badges.UserId = users.Id\nWHERE users.DisplayName = 'Sharpie';",
+        "final_sql": "SELECT Name\nFROM badges\nJOIN users ON badges.UserId = users.Id\nWHERE users.DisplayName = 'Sharpie';",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": true,
+        "model_calls": 1,
+        "latency_s": 28.042362799998955,
+        "repair_attempts": 0,
+        "error": null
+      },
+      "guarded": {
+        "initial_sql": "SELECT Name\nFROM badges\nJOIN users ON badges.UserId = users.Id\nWHERE users.DisplayName = 'Sharpie';",
+        "final_sql": "SELECT Name\nFROM badges\nJOIN users ON badges.UserId = users.Id\nWHERE users.DisplayName = 'Sharpie';",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": true,
+        "model_calls": 1,
+        "latency_s": 27.919777100003557,
+        "repair_attempts": 0,
+        "error": null,
+        "stages": [
+          {
+            "name": "sql",
+            "summary": "SELECT Name\nFROM badges\nJOIN users ON badges.UserId = users.Id\nWHERE users.DisplayName = 'Sharpie';"
+          },
+          {
+            "name": "verify",
+            "summary": "PASS"
+          },
+          {
+            "name": "execute",
+            "summary": "rows=32"
+          }
+        ]
+      }
+    },
+    {
+      "case_id": "1366",
+      "database_id": "student_club",
+      "question": "List all the members who attended the event \"October Meeting\".",
+      "evidence_chars": 35,
+      "shared_initial_sql": "SELECT m.first_name, m.last_name\nFROM attendance a\nJOIN member m ON a.link_to_member = m.member_id\nWHERE a.link_to_event IN (SELECT event_id FROM event WHERE event_name = 'October Meeting');",
+      "shared_generation_latency_s": 26.71327609999571,
+      "schema_context": {
+        "selector": "deterministic_lexical_v1",
+        "fallback_full_schema": false,
+        "query_tokens": [
+          "all",
+          "attended",
+          "event",
+          "list",
+          "meeting",
+          "member",
+          "october"
+        ],
+        "selected_tables": [
+          "attendance",
+          "budget",
+          "event",
+          "expense",
+          "income",
+          "major",
+          "member",
+          "zip_code"
+        ],
+        "table_scores": {
+          "attendance": 7,
+          "budget": 2,
+          "event": 6,
+          "expense": 4,
+          "income": 3,
+          "major": 0,
+          "member": 6,
+          "zip_code": 0
+        },
+        "matched_tokens": {
+          "attendance": [
+            "attended",
+            "event",
+            "member"
+          ],
+          "budget": [
+            "event"
+          ],
+          "event": [
+            "event"
+          ],
+          "expense": [
+            "event",
+            "member"
+          ],
+          "income": [
+            "member"
+          ],
+          "major": [],
+          "member": [
+            "member"
+          ],
+          "zip_code": []
+        },
+        "schema_context_sha256": "d9a5ad6c6ba7683ae548624c694da814a591deccaca0f00fc84138a76161cceb"
+      },
+      "initial_sql_identical": true,
+      "direct": {
+        "initial_sql": "SELECT m.first_name, m.last_name\nFROM attendance a\nJOIN member m ON a.link_to_member = m.member_id\nWHERE a.link_to_event IN (SELECT event_id FROM event WHERE event_name = 'October Meeting');",
+        "final_sql": "SELECT m.first_name, m.last_name\nFROM attendance a\nJOIN member m ON a.link_to_member = m.member_id\nWHERE a.link_to_event IN (SELECT event_id FROM event WHERE event_name = 'October Meeting');",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 26.719790499999363,
+        "repair_attempts": 0,
+        "error": null
+      },
+      "guarded": {
+        "initial_sql": "SELECT m.first_name, m.last_name\nFROM attendance a\nJOIN member m ON a.link_to_member = m.member_id\nWHERE a.link_to_event IN (SELECT event_id FROM event WHERE event_name = 'October Meeting');",
+        "final_sql": "SELECT m.first_name, m.last_name\nFROM attendance a\nJOIN member m ON a.link_to_member = m.member_id\nWHERE a.link_to_event IN (SELECT event_id FROM event WHERE event_name = 'October Meeting');",
+        "status": "ok",
+        "execution_success": true,
+        "official_ex": false,
+        "model_calls": 1,
+        "latency_s": 26.72032819999731,
+        "repair_attempts": 0,
+        "error": null,
+        "stages": [
+          {
+            "name": "sql",
+            "summary": "SELECT m.first_name, m.last_name\nFROM attendance a\nJOIN member m ON a.link_to_member = m.member_id\nWHERE a.link_to_event IN (SELECT event_id FROM event WHERE event_name = 'October Meeting');"
+          },
+          {
+            "name": "verify",
+            "summary": "PASS"
+          },
+          {
+            "name": "execute",
+            "summary": "rows=23"
+          }
+        ]
+      }
+    }
+  ]
+}

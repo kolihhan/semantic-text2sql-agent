@@ -1,0 +1,76 @@
+{
+  "project": "P1 Benchmark-First Text-to-SQL",
+  "protocol_version": 1,
+  "split": "dev",
+  "arm": "direct",
+  "model": "qwen3.5:4b",
+  "source_sha256": "0310b7ca2dfb6247234e2073f93e7a75106ee41ba55231f75d06d2ef68efe2ec",
+  "split_manifest_sha256": "c020168f09af2b60384eb433c68b0222ce3850b6308e8c5b7a8be3560acb22d4",
+  "sample_size": 2,
+  "metrics": {
+    "cases": 2,
+    "result_correct_proxy": 0.0,
+    "execution_success_rate": 0.0,
+    "mean_latency_s": 15.222640700005286,
+    "median_latency_s": 15.222640700005286,
+    "mean_model_calls": 1.0,
+    "verifier_confusion": null,
+    "repair_transitions": {
+      "wrong_to_correct": 0,
+      "correct_to_wrong": 0
+    }
+  },
+  "limitations": [
+    "result_correct_proxy compares local SQLite result sets and is not the official BIRD EX grader.",
+    "Gold SQL is used only after inference for local result-set scoring and is never passed to the model provider.",
+    "Demo fixtures are smoke tests only and are not included in benchmark results."
+  ],
+  "cases": [
+    {
+      "case_id": "943",
+      "database_id": "formula_1",
+      "question": "What is the rate of drivers completing all the laps in the 2008 Australian Grand Prix?",
+      "evidence_chars": 118,
+      "arm": "direct",
+      "status": "execution_failed",
+      "execution_success": false,
+      "result_correct_proxy": false,
+      "predicted_sql": "SELECT \n    (COUNT(r.results.raceId) * 1.0 / COUNT(CASE WHEN lt.time IS NOT NULL THEN 1 END)) AS rate\nFROM races r\nJOIN results res ON r.raceId = res.raceId\nJOIN drivers d ON res.driverId = d.driverId\nJOIN lapTimes lt ON res.resultId = (SELECT MIN(resultId) FROM results WHERE raceId = r.raceId AND driverId = d.driverId) -- Simplified logic: Assuming the first lap with time recorded belongs to the correct driver, or more accurately using a join on all available data.\n\n-- Correction: The BIRD instruction suggests calculating rate as COUNT(raceID where time is not null) / COUNT(raceID). \n-- However, 'time' in 'lapTimes' is per-lap, while 'time' in 'results' is the finish time for the whole race.\n-- Completing all laps usually implies finishing the race (laps > 0 and time is not null in results), or having recorded lap times.\n-- Let's interpret \"completing all the laps\" as having a valid record with a non-null finish time ('results.time') AND being associated with that race, which inherently means they completed the race distance if we consider standard racing logic where finishing implies completing laps.\n-- BUT, the BIRD hint specifically says: \"time is not null\". In the context of 'lapTimes', this means at least one lap time was recorded? Or does it mean for every lap they were expected to run?\n-- The schema doesn't explicitly state 'expected_laps'. \n-- Re-reading BIRD: \"completing all the laps refers to time is not null\". This likely refers to the `results.time` column, as that represents the completion of the race. If `results.time` is NULL, they retired or didn't finish. If it is NOT NULL, they finished (completed the race laps).\n-- Let's try to map this strictly: \"rate = divide(COUNT(raceID where time is not null), COUNT(raceID))\".\n-- Where does 'time' live that signifies completing all laps? `results.time` signifies finishing the race. `lapTimes.time` signifies a specific lap completion.\n-- If a driver finishes the race, their `results.time` is not null.\n-- The prompt asks for \"rate of drivers completing all the laps\".\n-- Let's assume the condition applies to the `results` table's `time` column, as that marks the end of the full set of laps (unless early retirements occurred).\n-- Wait, looking at BIRD again: \"completing all the laps refers to time is not null\". This might be referring to the `lapTimes` table where if a driver finished all laps, maybe their max lap count logic applies? No, simpler interpretation: \n-- In Formula 1 data, 'time' being NULL in 'results' often means DNF (Did Not Finish) or retired.\n-- However, some drivers have multiple records if they started and retired early vs finished late? Usually one record per driver per race.\n-- Let's assume the user implies: For a given race, how many drivers had their finish time (`results.time`) recorded as NOT NULL?\n-- The BIRD instruction is slightly ambiguous about which 'time'. But `results` has `time`, `milliseconds`, `laps`. `lapTimes` has `time`.\n-- If \"completing all the laps\" means \"finishing the race\", then `results.time IS NOT NULL` is the logical filter.\n-- Let's construct the query based on: Rate = (Count of unique driverIds with non-null time in results for 2008 Aus GP) / (Total unique driverIds in results for 2008 Aus GP).\n\n-- First, identify the raceId for 2008 Australian Grand Prix.\nSELECT \n    CAST(COUNT(CASE WHEN res.time IS NOT NULL THEN 1 END) AS REAL) / COUNT(*) AS rate\nFROM races r\nJOIN results res ON r.raceId = res.raceId\nWHERE r.year = 2008 \n  AND UPPER(r.name) LIKE '%AUSTRALIAN GRAND PRIX%' -- Or exact match if data is normalized. Let's try case-insensitive like or upper check? SQLite string functions.\n  AND r.circuitId IN (SELECT circuitId FROM circuits WHERE name = 'Alphard Circuit' OR name = 'Adelaide Street Circuit') -- Wait, 2008 Australian GP circuit was the Adelaide Street Circuit? Or Albert Park? \n  -- Fact check via SQL logic: I must rely on schema. I don't have external knowledge.\n  -- Schema context only. I need to filter by 'name' containing 'Australian Grand Prix'.\n\n-- Correct filtering approach using string matching in schema:\nSELECT \n    CAST(COUNT(CASE WHEN res.time IS NOT NULL THEN 1 END) AS REAL) / COUNT(*) AS rate\nFROM races r\nJOIN results res ON r.raceId = res.raceId\nWHERE r.year = 2008 \n  AND UPPER(r.name) LIKE '%AUSTRALIAN%' -- Assuming the name includes the country or \"Australian\"\n  AND r.circuitId IS NOT NULL",
+      "initial_sql": "SELECT \n    (COUNT(r.results.raceId) * 1.0 / COUNT(CASE WHEN lt.time IS NOT NULL THEN 1 END)) AS rate\nFROM races r\nJOIN results res ON r.raceId = res.raceId\nJOIN drivers d ON res.driverId = d.driverId\nJOIN lapTimes lt ON res.resultId = (SELECT MIN(resultId) FROM results WHERE raceId = r.raceId AND driverId = d.driverId) -- Simplified logic: Assuming the first lap with time recorded belongs to the correct driver, or more accurately using a join on all available data.\n\n-- Correction: The BIRD instruction suggests calculating rate as COUNT(raceID where time is not null) / COUNT(raceID). \n-- However, 'time' in 'lapTimes' is per-lap, while 'time' in 'results' is the finish time for the whole race.\n-- Completing all laps usually implies finishing the race (laps > 0 and time is not null in results), or having recorded lap times.\n-- Let's interpret \"completing all the laps\" as having a valid record with a non-null finish time ('results.time') AND being associated with that race, which inherently means they completed the race distance if we consider standard racing logic where finishing implies completing laps.\n-- BUT, the BIRD hint specifically says: \"time is not null\". In the context of 'lapTimes', this means at least one lap time was recorded? Or does it mean for every lap they were expected to run?\n-- The schema doesn't explicitly state 'expected_laps'. \n-- Re-reading BIRD: \"completing all the laps refers to time is not null\". This likely refers to the `results.time` column, as that represents the completion of the race. If `results.time` is NULL, they retired or didn't finish. If it is NOT NULL, they finished (completed the race laps).\n-- Let's try to map this strictly: \"rate = divide(COUNT(raceID where time is not null), COUNT(raceID))\".\n-- Where does 'time' live that signifies completing all laps? `results.time` signifies finishing the race. `lapTimes.time` signifies a specific lap completion.\n-- If a driver finishes the race, their `results.time` is not null.\n-- The prompt asks for \"rate of drivers completing all the laps\".\n-- Let's assume the condition applies to the `results` table's `time` column, as that marks the end of the full set of laps (unless early retirements occurred).\n-- Wait, looking at BIRD again: \"completing all the laps refers to time is not null\". This might be referring to the `lapTimes` table where if a driver finished all laps, maybe their max lap count logic applies? No, simpler interpretation: \n-- In Formula 1 data, 'time' being NULL in 'results' often means DNF (Did Not Finish) or retired.\n-- However, some drivers have multiple records if they started and retired early vs finished late? Usually one record per driver per race.\n-- Let's assume the user implies: For a given race, how many drivers had their finish time (`results.time`) recorded as NOT NULL?\n-- The BIRD instruction is slightly ambiguous about which 'time'. But `results` has `time`, `milliseconds`, `laps`. `lapTimes` has `time`.\n-- If \"completing all the laps\" means \"finishing the race\", then `results.time IS NOT NULL` is the logical filter.\n-- Let's construct the query based on: Rate = (Count of unique driverIds with non-null time in results for 2008 Aus GP) / (Total unique driverIds in results for 2008 Aus GP).\n\n-- First, identify the raceId for 2008 Australian Grand Prix.\nSELECT \n    CAST(COUNT(CASE WHEN res.time IS NOT NULL THEN 1 END) AS REAL) / COUNT(*) AS rate\nFROM races r\nJOIN results res ON r.raceId = res.raceId\nWHERE r.year = 2008 \n  AND UPPER(r.name) LIKE '%AUSTRALIAN GRAND PRIX%' -- Or exact match if data is normalized. Let's try case-insensitive like or upper check? SQLite string functions.\n  AND r.circuitId IN (SELECT circuitId FROM circuits WHERE name = 'Alphard Circuit' OR name = 'Adelaide Street Circuit') -- Wait, 2008 Australian GP circuit was the Adelaide Street Circuit? Or Albert Park? \n  -- Fact check via SQL logic: I must rely on schema. I don't have external knowledge.\n  -- Schema context only. I need to filter by 'name' containing 'Australian Grand Prix'.\n\n-- Correct filtering approach using string matching in schema:\nSELECT \n    CAST(COUNT(CASE WHEN res.time IS NOT NULL THEN 1 END) AS REAL) / COUNT(*) AS rate\nFROM races r\nJOIN results res ON r.raceId = res.raceId\nWHERE r.year = 2008 \n  AND UPPER(r.name) LIKE '%AUSTRALIAN%' -- Assuming the name includes the country or \"Australian\"\n  AND r.circuitId IS NOT NULL",
+      "initial_execution_success": false,
+      "initial_result_correct_proxy": false,
+      "initial_verification_ok": null,
+      "repair_attempts": 0,
+      "model_calls": 1,
+      "json_model_calls": 0,
+      "text_model_calls": 1,
+      "latency_s": 28.556660900008865,
+      "plan": null,
+      "grounded_plan": null,
+      "error": "near \"SELECT\": syntax error"
+    },
+    {
+      "case_id": "38",
+      "database_id": "california_schools",
+      "question": "What are the webpages for the Los Angeles County school that has between 2,000 and 3,000 test takers?",
+      "evidence_chars": 0,
+      "arm": "direct",
+      "status": "execution_failed",
+      "execution_success": false,
+      "result_correct_proxy": false,
+      "predicted_sql": "SELECT s.Website\nFROM satscores\nJOIN schools ON s.cds = schools.CDSCode\nJOIN frpm ON schools.CDSCode = frpm.CDSCode\nWHERE frpm.County Name = 'Los Angeles County'\n  AND s.NumTstTakr BETWEEN 2000 AND 3000;",
+      "initial_sql": "SELECT s.Website\nFROM satscores\nJOIN schools ON s.cds = schools.CDSCode\nJOIN frpm ON schools.CDSCode = frpm.CDSCode\nWHERE frpm.County Name = 'Los Angeles County'\n  AND s.NumTstTakr BETWEEN 2000 AND 3000;",
+      "initial_execution_success": false,
+      "initial_result_correct_proxy": false,
+      "initial_verification_ok": null,
+      "repair_attempts": 0,
+      "model_calls": 1,
+      "json_model_calls": 0,
+      "text_model_calls": 1,
+      "latency_s": 1.8886205000017071,
+      "plan": null,
+      "grounded_plan": null,
+      "error": "near \"Name\": syntax error"
+    }
+  ]
+}

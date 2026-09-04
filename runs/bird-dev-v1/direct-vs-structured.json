@@ -1,0 +1,17 @@
+{
+  "baseline_arm": "direct",
+  "candidate_arm": "structured",
+  "split": "dev",
+  "comparison": {
+    "cases": 100,
+    "wrong_to_correct": 0,
+    "correct_to_wrong": 7,
+    "net_correct_change": -7,
+    "baseline_mean_latency_s": 35.13409222400107,
+    "candidate_mean_latency_s": 49.41439358400093,
+    "delta_mean_latency_s": 14.28030135999986,
+    "baseline_mean_model_calls": 1.0,
+    "candidate_mean_model_calls": 1.04,
+    "delta_mean_model_calls": 0.040000000000000036
+  }
+}
