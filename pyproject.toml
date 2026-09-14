@@ -7,10 +7,15 @@ name = "semantic-text2sql-agent"
 version = "0.1.0"
 description = "A small LangGraph Text-to-SQL reliability harness with deterministic preflight and bounded repair."
 requires-python = ">=3.11"
-dependencies = ["streamlit>=1.40,<2", "langgraph==1.2.11"]
+dependencies = [
+    "streamlit>=1.40,<2",
+    "langgraph==1.2.11",
+    "fastapi>=0.115,<1",
+    "uvicorn>=0.30,<1",
+]
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<10"]
+dev = ["pytest>=8,<10", "httpx>=0.27,<1"]
 
 [project.scripts]
 semantic-sql = "semantic_sql.cli:main"
