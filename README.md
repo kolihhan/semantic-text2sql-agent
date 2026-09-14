@@ -1,14 +1,8 @@
 # Semantic Text-to-SQL Reliability
 
-One small LangGraph workflow tests a narrow engineering question: does deterministic preflight plus bounded model repair improve local Text-to-SQL enough to justify its cost?
+A local LangGraph Text-to-SQL workflow focused on **safe execution, bounded recovery, and measurable trade-offs**. Generated SQL is checked with SQLite-native guards, executed read-only, and repaired at most twice when execution fails.
 
-## Problem
-
-A model can emit SQL that is unsafe, invalid, or executable-but-wrong. Native SQLite checks can establish read-only safety, compilation, schema resolution, and execution boundaries; they cannot prove that a query answers the user's intent. This project measures the useful middle ground instead of presenting a verifier as a semantic oracle.
-
-## Architecture
-
-The application, CLI, and benchmark use one authoritative LangGraph workflow:
+## What it does
 
 ```text
 question + schema + optional evidence
@@ -24,27 +18,14 @@ question + schema + optional evidence
                execute    refuse
 ```
 
-LangGraph owns state, conditional routing, the bounded repair loop, termination, and stage traces. SQLite/native code owns read-only enforcement, compilation/schema checks, `EXPLAIN QUERY PLAN`, bounded execution, and the authorizer. The model owns generation and repair.
-
-BIRD evidence is optional runtime context: the benchmark supplies it, while the normal product path does not require it. The former SemanticPlan, grounding framework, planner-driven flow, semantic regex verifier, and duplicate graph are retired from primary runtime use; dated design documents and old benchmark artifacts are provenance only.
-
-## Experiment
-
-The frozen benchmark uses 100 manifest-selected BIRD DEV cases and `qwen3.5:4b`. Each case generates SQL exactly once from the question, schema, and optional BIRD evidence. That byte-identical candidate then enters two arms:
-
-- **Direct:** execute the shared candidate under the same SQLite/resource limits.
-- **Guarded:** verify the shared candidate, execute it when accepted, or attempt at most two repairs before refusing.
-
-Both arms include the shared generation call and latency; Guarded additionally includes repair work. Correctness uses the pinned [official BIRD evaluator contract](https://github.com/AlibabaResearch/DAMO-ConvAI/blob/483554eae102996f5ec1f4feab4e78ef29c2a394/bird/llm/src/evaluation.py), including set-of-tuples result comparison. No FINAL/holdout selector is exposed by the primary runner.
-
-The first operational attempt stopped after 20 cases when its 180-second HTTP read timeout expired. Its `incomplete` checkpoint was archived and excluded. The replacement run restarted all 100 cases from scratch with a recorded 600-second transport timeout; no partial generations were selected into the valid result.
+- **LangGraph** owns state, conditional routing, bounded repair, termination, and stage traces.
+- **SQLite/native code** owns read-only enforcement, compilation/schema checks, `EXPLAIN QUERY PLAN`, bounded execution, and the authorizer.
+- **The model** owns SQL generation and repair.
+- BIRD evidence is optional runtime context: the benchmark supplies it, while the normal application path does not require it.
 
 ## Measured result
 
-Valid paired DEV artifact: `runs/bird-paired-dev-v3/paired.json`  
-
-The v3 artifact is preserved historical evidence. Review-v2 keeps LangGraph but changes only the Guarded repair prompt to the predeclared internal step-by-step CoT treatment; its new output path is `runs/bird-paired-dev-v4/paired.json` and is not claimed until rerun.  
-SHA-256: `309b20b08ba682e6cd9df5da16ddb2873022088dcd927632700c360fceea884a`
+Frozen paired DEV evaluation: **100 manifest-selected BIRD DEV cases** with `qwen3.5:4b`.
 
 | Metric | Direct | Guarded | Delta |
 |---|---:|---:|---:|
@@ -54,19 +35,31 @@ SHA-256: `309b20b08ba682e6cd9df5da16ddb2873022088dcd927632700c360fceea884a`
 | Median latency | 3.236 s | 5.491 s | 1.70x |
 | P95 latency | 79.398 s | 147.364 s | 1.86x |
 
-Paired transitions were 3 Direct-wrong to Guarded-correct, 0 Direct-correct to Guarded-wrong, 18 Direct-execution-fail to Guarded-success, and 0 reverse execution regressions. Every Direct candidate used one model call, every initial SQL pair was identical, and Guarded call counts matched `1 + repair_attempts`.
+The guard recovered **18 execution failures**, but only **3** became correct under official BIRD EX. Fifty extra repair calls bought three additional correct answers: **16.7 extra calls per added correct case**.
 
-## Operational cost and tradeoff
+**Decision: `SIMPLIFY GUARDED`.** Keep the deterministic safety boundary, bounded repair, traceability, and fail-closed behavior. Do not treat executability as semantic correctness, and do not restore the earlier planner-heavy architecture.
 
-Thirty Direct candidates failed execution. Repair made 18 executable, but only 3 became correct under official EX. Across the sample, 50 extra repair calls bought three added correct answers: 16.7 extra calls per added correct case. The guard is effective at recovering executability, but executability is a weak proxy for intent correctness, and its long-tail latency is substantial.
+## Why this project exists
 
-The zero correct-to-wrong count should not be oversold: accepted candidates pass through unchanged, while repair is triggered on candidates that already failed execution and therefore could not pass EX.
+A model can emit SQL that is unsafe, invalid, or executable-but-wrong. Deterministic verification is good at establishing safety and executability; it cannot prove that the query answers the user's intent.
 
-## Decision
+This project tests the useful middle ground: how much reliability a small local Text-to-SQL workflow gains from deterministic checks and bounded repair, and what that recovery costs in model calls and latency.
 
-**SIMPLIFY GUARDED.** Keep LangGraph as the orchestration framework and keep the single minimal, fail-closed workflow, deterministic SQLite safety boundary, bounded repair, and traceability. Do not restore the semantic-planning/grounding architecture or claim that deterministic verification establishes semantic correctness.
+## Evaluation design
 
-The measured repair loop remains reproducible as the evaluated treatment, but the evidence does not support presenting broad automatic repair as a clear default winner: the +3-point EX gain is small relative to calls and tail latency. Treat repair as a narrow recovery/escalation mechanism and preserve the simpler Direct path as the cost baseline.
+Each benchmark case generates SQL **once** from the question, schema, and optional BIRD evidence. That byte-identical candidate then enters two arms:
+
+- **Direct:** execute the shared candidate under the same SQLite/resource limits.
+- **Guarded:** verify the shared candidate, execute it when accepted, or attempt at most two repairs before refusing.
+
+Both arms include the shared generation call and latency; Guarded additionally includes repair work. Correctness uses the pinned [official BIRD evaluator contract](https://github.com/AlibabaResearch/DAMO-ConvAI/blob/483554eae102996f5ec1f4feab4e78ef29c2a394/bird/llm/src/evaluation.py), including set-of-tuples result comparison.
+
+The first operational attempt stopped after 20 cases when its 180-second HTTP read timeout expired. That incomplete checkpoint was archived and excluded. The replacement run restarted all 100 cases from scratch with a recorded 600-second transport timeout.
+
+Valid paired DEV artifact: `runs/bird-paired-dev-v3/paired.json`  
+SHA-256: `309b20b08ba682e6cd9df5da16ddb2873022088dcd927632700c360fceea884a`
+
+Review-v2 keeps the same LangGraph workflow and changes only the Guarded repair prompt to the predeclared internal step-by-step CoT treatment. Its output path is `runs/bird-paired-dev-v4/paired.json`; no v4 result is claimed until rerun.
 
 ## Run locally
 
@@ -81,9 +74,9 @@ The bundled demo is a wiring smoke test, not benchmark evidence. BIRD data, data
 
 ## Limitations
 
-- The result is one unseeded local-model run on 100 DEV cases; three favorable discordant pairs are not strong evidence of a general semantic-quality improvement.
+- The result is one unseeded local-model run on 100 DEV cases; three favorable wrong-to-correct transitions are not strong evidence of a general semantic-quality improvement.
 - Preflight establishes safety and executability, not user-intent correctness; valid-but-wrong SQL can pass.
-- Latency depends on the local Ollama runtime and hardware. The recorded values are useful for the paired run, not universal service-level claims.
+- Latency depends on the local Ollama runtime and hardware. The recorded values are paired-run evidence, not universal service-level claims.
 - The sealed FINAL/holdout split was not inspected or run, so this is an architecture decision rather than a leaderboard claim.
 - Historical modules and artifacts remain for provenance and should not be mistaken for supported product paths.
 
