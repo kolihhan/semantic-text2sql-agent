@@ -21,6 +21,7 @@ question + schema + optional evidence
 - **LangGraph** owns state, conditional routing, bounded repair, termination, and stage traces.
 - **SQLite/native code** owns read-only enforcement, compilation/schema checks, `EXPLAIN QUERY PLAN`, bounded execution, and the authorizer.
 - **The model** owns SQL generation and repair.
+- **FastAPI and the CLI** are thin adapters over the same service layer.
 - BIRD evidence is optional runtime context: the benchmark supplies it, while the normal application path does not require it.
 
 ## Measured result
@@ -69,6 +70,14 @@ uv run semantic-sql demo
 uv run semantic-sql --provider ollama --model qwen3.5:4b ask "Show total sales from Czech Republic in 2024"
 uv run streamlit run app.py
 ```
+
+FastAPI adapter:
+
+```bash
+uv run uvicorn semantic_sql.api:app --reload
+```
+
+The module-level API defaults to the deterministic demo service so it can be exercised without an LLM server. `create_app(service=...)` accepts the same `SemanticSQLService` used by the CLI when embedding the API with another provider.
 
 The bundled demo is a wiring smoke test, not benchmark evidence. BIRD data, databases, model weights, virtual environments, and caches are external prerequisites and are not vendored.
 
