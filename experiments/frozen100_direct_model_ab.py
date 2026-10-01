@@ -104,12 +104,9 @@ def main() -> None:
     label_by_id = {l.case_id: l for l in labels}
     selected_ids = deterministic_sample(list(case_by_id), min(args.sample_size, len(case_by_id)))
 
-    baseline_provider = OllamaProvider(model=args.baseline_model, timeout_s=900.0)
-    treatment_provider = OllamaProvider(model=args.treatment_model, timeout_s=900.0)
     catalogs: dict[str, tuple[Path, DatabaseCatalog]] = {}
-    rows: list[dict[str, object]] = []
-
-    for index, case_id in enumerate(selected_ids, start=1):
+    prepared: list[dict[str, object]] = []
+    for case_id in selected_ids:
         case = case_by_id[case_id]
         label = label_by_id[case_id]
         if case.database_id not in catalogs:
@@ -117,61 +114,75 @@ def main() -> None:
             catalogs[case.database_id] = (database, DatabaseCatalog.from_sqlite(database))
         database, catalog = catalogs[case.database_id]
         schema_context, _ = select_schema_context(catalog, database_root, case.database_id, case.question)
-        evidence = case.evidence.strip() or None
-
-        started = time.perf_counter()
-        baseline_sql = generate_direct_sql(
-            case.question, schema_context, baseline_provider, external_evidence=evidence
-        ).sql
-        baseline_latency_s = time.perf_counter() - started
-        baseline_score = score(database, baseline_sql, label.sql)
-
-        started = time.perf_counter()
-        treatment_sql = generate_xiyan(
-            question=case.question,
-            schema_context=schema_context,
-            evidence=evidence,
-            provider=treatment_provider,
-        )
-        treatment_latency_s = time.perf_counter() - started
-        treatment_score = score(database, treatment_sql, label.sql)
-
-        row = {
+        prepared.append({
             "case_id": case_id,
             "database_id": case.database_id,
             "question": case.question,
-            "baseline": {"sql": baseline_sql, **baseline_score, "latency_s": baseline_latency_s},
-            "treatment": {"sql": treatment_sql, **treatment_score, "latency_s": treatment_latency_s},
-        }
-        rows.append(row)
-        print(
-            f"[{index:02d}/{len(selected_ids)}] {case_id} "
-            f"baseline_ex={baseline_score['official_ex']} treatment_ex={treatment_score['official_ex']}",
-            flush=True,
-        )
+            "evidence": case.evidence.strip() or None,
+            "database": database,
+            "schema_context": schema_context,
+            "gold_sql": label.sql,
+        })
 
+    rows: dict[str, dict[str, object]] = {
+        str(item["case_id"]): {
+            "case_id": item["case_id"],
+            "database_id": item["database_id"],
+            "question": item["question"],
+        }
+        for item in prepared
+    }
+
+    baseline_provider = OllamaProvider(model=args.baseline_model, timeout_s=900.0)
+    for index, item in enumerate(prepared, start=1):
+        started = time.perf_counter()
+        sql = generate_direct_sql(
+            str(item["question"]), str(item["schema_context"]), baseline_provider,
+            external_evidence=item["evidence"],
+        ).sql
+        latency_s = time.perf_counter() - started
+        result = score(Path(item["database"]), sql, str(item["gold_sql"]))
+        rows[str(item["case_id"])]["baseline"] = {"sql": sql, **result, "latency_s": latency_s}
+        print(f"[baseline {index:02d}/{len(prepared)}] {item['case_id']} ex={result['official_ex']}", flush=True)
+
+    treatment_provider = OllamaProvider(model=args.treatment_model, timeout_s=900.0)
+    for index, item in enumerate(prepared, start=1):
+        started = time.perf_counter()
+        sql = generate_xiyan(
+            question=str(item["question"]),
+            schema_context=str(item["schema_context"]),
+            evidence=item["evidence"],
+            provider=treatment_provider,
+        )
+        latency_s = time.perf_counter() - started
+        result = score(Path(item["database"]), sql, str(item["gold_sql"]))
+        rows[str(item["case_id"])]["treatment"] = {"sql": sql, **result, "latency_s": latency_s}
+        print(f"[treatment {index:02d}/{len(prepared)}] {item['case_id']} ex={result['official_ex']}", flush=True)
+
+    ordered_rows = [rows[case_id] for case_id in selected_ids]
     wrong_to_correct = sum(
         (not bool(row["baseline"]["official_ex"])) and bool(row["treatment"]["official_ex"])
-        for row in rows
+        for row in ordered_rows
     )
     correct_to_wrong = sum(
         bool(row["baseline"]["official_ex"]) and (not bool(row["treatment"]["official_ex"]))
-        for row in rows
+        for row in ordered_rows
     )
-    baseline_ex = sum(bool(row["baseline"]["official_ex"]) for row in rows) / len(rows)
-    treatment_ex = sum(bool(row["treatment"]["official_ex"]) for row in rows) / len(rows)
-    baseline_exec = sum(bool(row["baseline"]["execution_success"]) for row in rows) / len(rows)
-    treatment_exec = sum(bool(row["treatment"]["execution_success"]) for row in rows) / len(rows)
+    baseline_ex = sum(bool(row["baseline"]["official_ex"]) for row in ordered_rows) / len(ordered_rows)
+    treatment_ex = sum(bool(row["treatment"]["official_ex"]) for row in ordered_rows) / len(ordered_rows)
+    baseline_exec = sum(bool(row["baseline"]["execution_success"]) for row in ordered_rows) / len(ordered_rows)
+    treatment_exec = sum(bool(row["treatment"]["execution_success"]) for row in ordered_rows) / len(ordered_rows)
 
     payload = {
         "experiment": "deterministic paired BIRD model/prompt spike",
         "source_sha256": sha256(source),
         "sample_rule": "lowest SHA256(case_id), independent of model outputs",
-        "sample_size": len(rows),
+        "sample_size": len(ordered_rows),
         "selected_case_ids": selected_ids,
         "baseline_model": args.baseline_model,
         "treatment_model": args.treatment_model,
         "gold_visible_to_models": False,
+        "generation_order": "all baseline cases, then all treatment cases, to avoid repeated model reloads",
         "summary": {
             "baseline_official_ex": baseline_ex,
             "treatment_official_ex": treatment_ex,
@@ -181,7 +192,7 @@ def main() -> None:
             "correct_to_wrong": correct_to_wrong,
             "net_correct_delta": wrong_to_correct - correct_to_wrong,
         },
-        "cases": rows,
+        "cases": ordered_rows,
     }
     output.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     print(json.dumps(payload["summary"], indent=2), flush=True)
