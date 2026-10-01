@@ -1,0 +1,48 @@
+<svg width="1200" height="650" viewBox="0 0 1200 650" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1200" y2="650" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FAFC"/>
+      <stop offset="1" stop-color="#EEF2FF"/>
+    </linearGradient>
+    <style>
+      .title { font: 700 32px 'Inter','Segoe UI',Arial,sans-serif; fill:#0F172A; }
+      .h2 { font: 700 22px 'Inter','Segoe UI',Arial,sans-serif; fill:#0F172A; }
+      .body { font: 500 18px 'Inter','Segoe UI',Arial,sans-serif; fill:#334155; }
+      .small { font: 500 15px 'Inter','Segoe UI',Arial,sans-serif; fill:#64748B; }
+      .mono { font: 500 16px 'SFMono-Regular',Consolas,monospace; fill:#E2E8F0; }
+    </style>
+  </defs>
+  <rect width="1200" height="650" rx="28" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1200" height="60" rx="28" fill="#0F172A"/>
+  <circle cx="32" cy="30" r="7" fill="#FB7185"/><circle cx="56" cy="30" r="7" fill="#FBBF24"/><circle cx="80" cy="30" r="7" fill="#34D399"/>
+  <text x="102" y="37" class="mono">Semantic Text-to-SQL · offline demo preview</text>
+
+  <text x="60" y="118" class="title">Generate → Verify → Repair if needed → Execute safely</text>
+  <text x="60" y="151" class="small">Illustrated from the existing Streamlit UI; the offline provider uses the bundled SQLite demo database.</text>
+
+  <rect x="60" y="190" width="1080" height="72" rx="16" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="84" y="219" class="small">QUESTION</text>
+  <text x="84" y="246" class="body">How many orders were placed in 2024?</text>
+
+  <rect x="60" y="292" width="650" height="182" rx="18" fill="#0F172A"/>
+  <text x="84" y="326" class="small" fill="#94A3B8">GENERATED SQL</text>
+  <text x="84" y="362" class="mono">SELECT COUNT(*)</text>
+  <text x="84" y="392" class="mono">FROM orders</text>
+  <text x="84" y="422" class="mono">WHERE order_date &gt;= '2024-01-01'</text>
+  <text x="84" y="452" class="mono">  AND order_date &lt; '2025-01-01';</text>
+
+  <rect x="742" y="292" width="398" height="82" rx="18" fill="#ECFDF5" stroke="#86EFAC"/>
+  <text x="766" y="324" class="small">VERIFICATION</text>
+  <text x="766" y="354" class="h2" fill="#166534">PASS · read-only + compile-safe</text>
+
+  <rect x="742" y="392" width="398" height="82" rx="18" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="766" y="424" class="small">PIPELINE ACTIVITY</text>
+  <text x="766" y="454" class="body">1. sql   2. verify   3. execute</text>
+
+  <rect x="60" y="506" width="1080" height="92" rx="18" fill="#FFFFFF" stroke="#CBD5E1"/>
+  <text x="84" y="539" class="small">RESULT</text>
+  <text x="84" y="576" class="h2">Status: OK</text>
+  <text x="310" y="576" class="h2">SQL attempts: 1</text>
+  <text x="596" y="576" class="h2">Rows returned: 1</text>
+  <text x="912" y="576" class="h2">Count: 3</text>
+</svg>
