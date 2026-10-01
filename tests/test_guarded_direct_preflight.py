@@ -231,3 +231,28 @@ def test_semantic_revision_corrects_valid_but_wrong_projection_once(database: Pa
     )
     assert "PROJECTION" in result.stages[2].summary
     assert provider.text_calls == 2
+
+
+def test_semantic_revision_fails_open_on_valid_json_with_wrong_shape(database: Path) -> None:
+    initial = 'SELECT "County Name" FROM schools'
+    provider = SequenceProvider(initial, "[]")
+
+    result = inference.run_guarded(
+        database=database,
+        provider=provider,
+        question="Return the county name.",
+        schema_context='schools(id, "County Name")',
+        semantic_revision=True,
+        max_repairs=1,
+        max_rows=10,
+    )
+
+    assert result.status == "ok"
+    assert result.candidate is not None
+    assert result.candidate.sql == initial
+    assert result.rows == (("Alpha",),)
+    assert tuple(stage.name for stage in result.stages) == (
+        "sql", "verify", "semantic_revision", "verify", "execute",
+    )
+    assert "OTHER" in result.stages[2].summary
+    assert provider.text_calls == 2
