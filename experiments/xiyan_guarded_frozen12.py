@@ -58,8 +58,9 @@ def official_ex(database: Path, predicted_sql: str | None, gold_sql: str) -> boo
     return set(predicted.rows) == set(gold.rows)
 
 
-def deterministic_sample(case_ids: list[str], sample_size: int) -> list[str]:
-    return sorted(case_ids, key=lambda case_id: hashlib.sha256(case_id.encode()).hexdigest())[:sample_size]
+def deterministic_sample(case_ids: list[str], sample_size: int, offset: int) -> list[str]:
+    ranked = sorted(case_ids, key=lambda case_id: hashlib.sha256(case_id.encode()).hexdigest())
+    return ranked[offset:offset + sample_size]
 
 
 def generate_xiyan(*, question: str, schema_context: str, evidence: str | None, provider: CountingProvider) -> str:
@@ -87,6 +88,7 @@ def main() -> None:
     parser.add_argument("--baseline", default="runs/bird-paired-dev-v4/paired.json")
     parser.add_argument("--model", required=True)
     parser.add_argument("--sample-size", type=int, default=12)
+    parser.add_argument("--sample-offset", type=int, default=0)
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
 
@@ -94,7 +96,9 @@ def main() -> None:
     database_root = Path(args.database_root)
     baseline_payload = json.loads(Path(args.baseline).read_text(encoding="utf-8"))
     baseline_cases = {str(row["case_id"]): row for row in baseline_payload["cases"]}
-    selected_ids = deterministic_sample(list(baseline_cases), min(args.sample_size, len(baseline_cases)))
+    selected_ids = deterministic_sample(list(baseline_cases), args.sample_size, args.sample_offset)
+    if not selected_ids:
+        raise RuntimeError("sample offset selected no frozen cases")
 
     cases, labels = load_bird_json(source)
     case_by_id = {case.case_id: case for case in cases}
@@ -161,7 +165,7 @@ def main() -> None:
                 "status": result.status,
                 "model_calls": provider.calls - calls_before,
                 "latency_s": latency_s,
-                "repair_attempts": final_sql is not None and sum(stage.name == "repair" for stage in result.stages),
+                "repair_attempts": sum(stage.name == "repair" for stage in result.stages),
             },
         }
         rows.append(row)
@@ -181,7 +185,8 @@ def main() -> None:
 
     payload = {
         "experiment": "frozen-100 subset: qwen guarded baseline vs XiYan guarded treatment",
-        "sample_rule": "lowest SHA256(case_id) among the existing frozen 100 BIRD cases",
+        "sample_rule": "SHA256(case_id) ordering over the existing frozen 100 BIRD cases",
+        "sample_offset": args.sample_offset,
         "sample_size": len(rows),
         "selected_case_ids": selected_ids,
         "baseline_artifact": args.baseline,
