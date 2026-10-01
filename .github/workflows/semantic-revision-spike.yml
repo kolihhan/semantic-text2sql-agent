@@ -1,17 +1,17 @@
-name: Semantic prompt spike
+name: XiYanSQL model spike
 
 on:
   push:
     branches: [semantic-revision-spike]
     paths:
-      - experiments/semantic_prompt_spike.py
+      - experiments/xiyan_model_spike.py
       - .github/workflows/semantic-revision-spike.yml
 
 permissions:
   contents: write
 
 jobs:
-  prompt-sample:
+  xiyan-sample:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -20,31 +20,31 @@ jobs:
       - name: Install Ollama binary
         run: curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
 
-      - name: Start Ollama and pull frozen model
+      - name: Start Ollama and pull XiYanSQL Q4
         run: |
           ollama serve > /tmp/ollama.log 2>&1 &
           for i in {1..30}; do
             if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
             sleep 1
           done
-          ollama pull qwen3.5:4b
+          ollama pull hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M
 
-      - name: Run semantic prompt sample
-        run: python experiments/semantic_prompt_spike.py
+      - name: Run XiYanSQL sample
+        run: python experiments/xiyan_model_spike.py
 
       - name: Commit result to spike branch
         if: success()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add semantic-prompt-results.json
-          git commit -m "Record semantic prompt spike results" || exit 0
+          git add xiyan-model-results.json
+          git commit -m "Record XiYanSQL model spike results" || exit 0
           git push
 
       - name: Upload result
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: semantic-prompt-results
-          path: semantic-prompt-results.json
+          name: xiyan-model-results
+          path: xiyan-model-results.json
           if-no-files-found: ignore
