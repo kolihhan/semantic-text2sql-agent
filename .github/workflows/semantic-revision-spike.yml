@@ -1,19 +1,19 @@
-name: XiYanSQL model spike
+name: Frozen-100 XiYan direct A/B
 
 on:
   push:
     branches: [semantic-revision-spike]
     paths:
-      - experiments/xiyan_model_spike.py
+      - experiments/frozen100_direct_model_ab.py
       - .github/workflows/semantic-revision-spike.yml
 
 permissions:
   contents: write
 
 jobs:
-  xiyan-sample:
+  frozen100-direct:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -29,22 +29,44 @@ jobs:
           done
           ollama pull hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M
 
-      - name: Run XiYanSQL sample
-        run: python experiments/xiyan_model_spike.py
+      - name: Download canonical BIRD dev release
+        run: |
+          mkdir -p /tmp/bird
+          curl -fL --retry 3 https://bird-bench.oss-cn-beijing.aliyuncs.com/dev.zip -o /tmp/bird/dev.zip
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          DEV_JSON=$(find /tmp/bird/unpacked -type f -name dev.json | head -n1)
+          DB_ZIP=$(find /tmp/bird/unpacked -type f -name dev_databases.zip | head -n1)
+          test -n "$DEV_JSON"
+          test -n "$DB_ZIP"
+          mkdir -p /tmp/bird/databases
+          unzip -q "$DB_ZIP" -d /tmp/bird/databases
+          echo "DEV_JSON=$DEV_JSON" >> "$GITHUB_ENV"
+          DB_ROOT=$(find /tmp/bird/databases -type d -name dev_databases | head -n1)
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=/tmp/bird/databases; fi
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+          sha256sum "$DEV_JSON"
+
+      - name: Run frozen 100 direct-only XiYan A/B
+        run: |
+          python experiments/frozen100_direct_model_ab.py \
+            --source "$DEV_JSON" \
+            --database-root "$DB_ROOT" \
+            --model hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M \
+            --output frozen100-xiyan-direct.json
 
       - name: Commit result to spike branch
         if: success()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add xiyan-model-results.json
-          git commit -m "Record XiYanSQL model spike results" || exit 0
+          git add frozen100-xiyan-direct.json
+          git commit -m "Record frozen-100 XiYan direct results" || exit 0
           git push
 
       - name: Upload result
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: xiyan-model-results
-          path: xiyan-model-results.json
+          name: frozen100-xiyan-direct
+          path: frozen100-xiyan-direct.json
           if-no-files-found: ignore
