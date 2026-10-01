@@ -115,6 +115,8 @@ def _semantic_revise(state: GuardedState, runtime) -> dict[str, Any]:
     changed = False
     try:
         payload = json.loads(response.strip())
+        if not isinstance(payload, dict):
+            raise ValueError("semantic revision response must be a JSON object")
         issue_type = str(payload.get("issue_type", "OTHER")).upper()
         if issue_type not in _SEMANTIC_ISSUE_TYPES:
             issue_type = "OTHER"
