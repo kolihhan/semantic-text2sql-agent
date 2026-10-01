@@ -1,0 +1,239 @@
+{
+  "experiment": "deterministic paired BIRD model/prompt spike",
+  "source_sha256": "630272f2b1c44d8cef2c3b246f623355cf0bbc1e832c81061df895530dfc2f06",
+  "sample_rule": "lowest SHA256(case_id), independent of model outputs",
+  "sample_size": 12,
+  "selected_case_ids": [
+    "1039",
+    "886",
+    "286",
+    "1467",
+    "1064",
+    "671",
+    "245",
+    "374",
+    "1392",
+    "610",
+    "178",
+    "1391"
+  ],
+  "baseline_model": "qwen3.5:4b",
+  "treatment_model": "hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M",
+  "gold_visible_to_models": false,
+  "generation_order": "all baseline cases, then all treatment cases, to avoid repeated model reloads",
+  "summary": {
+    "baseline_official_ex": 0.25,
+    "treatment_official_ex": 0.5,
+    "baseline_execution_success": 0.9166666666666666,
+    "treatment_execution_success": 1.0,
+    "wrong_to_correct": 3,
+    "correct_to_wrong": 0,
+    "net_correct_delta": 3
+  },
+  "cases": [
+    {
+      "case_id": "1039",
+      "database_id": "european_football_2",
+      "question": "Find the average number of long-shot done by Ahmed Samir Farag.",
+      "baseline": {
+        "sql": "SELECT AVG(player_Attributes.long_shots) FROM Player_Attributes INNER JOIN Player ON Player_Attributes.player_api_id = Player.player_api_id WHERE player_name = 'Ahmed Samir Farag';",
+        "execution_success": true,
+        "official_ex": true,
+        "latency_s": 153.815528987
+      },
+      "treatment": {
+        "sql": "SELECT CAST(SUM(T2.long_shots) AS REAL) / COUNT(T1.player_api_id) FROM Player AS T1 INNER JOIN Player_Attributes AS T2 ON T1.player_api_id = T2.player_api_id WHERE T1.player_name = 'Ahmed Samir Farag'",
+        "execution_success": true,
+        "official_ex": true,
+        "latency_s": 258.8513247530001
+      }
+    },
+    {
+      "case_id": "886",
+      "database_id": "formula_1",
+      "question": "Which year has the most number of races?",
+      "baseline": {
+        "sql": "SELECT year, COUNT(*) AS total_races\nFROM races\nGROUP BY year\nORDER BY total_races DESC\nLIMIT 1;",
+        "execution_success": true,
+        "official_ex": false,
+        "latency_s": 76.774657217
+      },
+      "treatment": {
+        "sql": "SELECT YEAR FROM races GROUP BY YEAR ORDER BY count(*) DESC LIMIT 1",
+        "execution_success": true,
+        "official_ex": true,
+        "latency_s": 116.49341628000002
+      }
+    },
+    {
+      "case_id": "286",
+      "database_id": "toxicology",
+      "question": "Among all chemical compounds identified in the database, what percent of compounds form a triple-bond.",
+      "baseline": {
+        "sql": "SELECT 100.0 * COUNT(DISTINCT CASE WHEN b.bond_type = '#' THEN m.molecule_id END) / NULLIF(COUNT(DISTINCT m.molecule_id), 0) AS percent_triple_bond FROM molecule AS m INNER JOIN bond AS b ON m.molecule_id = b.molecule_id;",
+        "execution_success": true,
+        "official_ex": false,
+        "latency_s": 24.61024297099999
+      },
+      "treatment": {
+        "sql": "SELECT CAST(SUM(CASE WHEN bond_type = '#' THEN 1 ELSE 0 END) AS REAL) * 100 / COUNT(*) FROM bond",
+        "execution_success": true,
+        "official_ex": true,
+        "latency_s": 29.627868734999993
+      }
+    },
+    {
+      "case_id": "1467",
+      "database_id": "student_club",
+      "question": "Calculate the total amount spent on speaker gifts and list the name of the event they were spent on.",
+      "baseline": {
+        "sql": "SELECT COALESCE(SUM(b.spent), 0) AS total_spent, e.event_name\nFROM budget b\nJOIN event e ON b.link_to_event = e.event_id\nWHERE b.category = 'Speaker Gifts';",
+        "execution_success": true,
+        "official_ex": false,
+        "latency_s": 53.12905577999999
+      },
+      "treatment": {
+        "sql": "SELECT SUM(T1.spent) AS total_amount_spent, T2.event_name FROM budget AS T1 INNER JOIN event AS T2 ON T1.link_to_event = T2.event_id WHERE T1.category = 'Speaker Gifts'",
+        "execution_success": true,
+        "official_ex": false,
+        "latency_s": 81.96416447899992
+      }
+    },
+    {
+      "case_id": "1064",
+      "database_id": "european_football_2",
+      "question": "List out of players whose preferred foot is left.",
+      "baseline": {
+        "sql": "SELECT Player.player_name\nFROM Player_Attributes\nJOIN Player ON Player_Attributes.player_api_id = Player.player_api_id\nWHERE preferred_foot = 'left';",
+        "execution_success": true,
+        "official_ex": false,
+        "latency_s": 147.655287698
+      },
+      "treatment": {
+        "sql": "SELECT DISTINCT T1.player_name FROM Player AS T1 INNER JOIN Player_Attributes AS T2 ON T1.player_api_id = T2.player_api_id WHERE T2.preferred_foot = 'left'",
+        "execution_success": true,
+        "official_ex": false,
+        "latency_s": 240.97007049400008
+      }
+    },
+    {
+      "case_id": "671",
+      "database_id": "codebase_community",
+      "question": "What is the display name of the user who acquired the first Autobiographer badge?",
+      "baseline": {
+        "sql": "SELECT UserDisplayName \nFROM badges b\nJOIN users u ON b.UserId = u.Id\nWHERE b.Name = 'Autobiographer'\n  AND (b.Date, UserId) = (\n    SELECT MIN(b1.Date), b1.UserId \n    FROM badges b1 \n    WHERE b1.Name = 'Autobiographer'\n  );",
+        "execution_success": false,
+        "official_ex": false,
+        "latency_s": 71.61233336199996
+      },
+      "treatment": {
+        "sql": "SELECT T1.DisplayName FROM users AS T1 INNER JOIN badges AS T2 ON T1.Id = T2.UserId WHERE T2.Name = 'Autobiographer' ORDER BY T2.Date LIMIT 1",
+        "execution_success": true,
+        "official_ex": true,
+        "latency_s": 106.43056424499991
+      }
+    },
+    {
+      "case_id": "245",
+      "database_id": "toxicology",
+      "question": "What is the average number of bonds the atoms with the element iodine have?",
+      "baseline": {
+        "sql": "SELECT AVG(1) AS average_bonds \nFROM atom \nJOIN connected ON atom.atom_id = connected.atom_id \nWHERE atom.element = 'I' \nGROUP BY atom.atom_id;",
+        "execution_success": true,
+        "official_ex": false,
+        "latency_s": 21.826262990000032
+      },
+      "treatment": {
+        "sql": "SELECT CAST(COUNT(T1.bond_id) AS REAL) / COUNT(DISTINCT T2.atom_id) AS avg_bonds FROM bond AS T1 INNER JOIN atom AS T2 ON T1.bond_id = T2.atom_id WHERE T2.element = 'i'",
+        "execution_success": true,
+        "official_ex": false,
+        "latency_s": 34.89868173800005
+      }
+    },
+    {
+      "case_id": "374",
+      "database_id": "card_games",
+      "question": "How many black border cards are only available on mtgo?",
+      "baseline": {
+        "sql": "SELECT COUNT(*) \nFROM cards \nWHERE borderColor = 'black' \n  AND availability = 'mtgo';",
+        "execution_success": true,
+        "official_ex": true,
+        "latency_s": 122.063449752
+      },
+      "treatment": {
+        "sql": "SELECT COUNT(*) FROM cards WHERE borderColor = 'black' AND availability = 'mtgo';",
+        "execution_success": true,
+        "official_ex": true,
+        "latency_s": 188.40387283299992
+      }
+    },
+    {
+      "case_id": "1392",
+      "database_id": "student_club",
+      "question": "Indicate the top source of funds received in September 2019 based on their amount.",
+      "baseline": {
+        "sql": "SELECT source \nFROM income \nWHERE date_received BETWEEN '2019-09-01' AND '2019-09-30' \nORDER BY amount DESC \nLIMIT 1;",
+        "execution_success": true,
+        "official_ex": true,
+        "latency_s": 50.75497278099999
+      },
+      "treatment": {
+        "sql": "SELECT source FROM income WHERE date_received LIKE '2019-09%' ORDER BY amount DESC LIMIT 1",
+        "execution_success": true,
+        "official_ex": true,
+        "latency_s": 74.31518504699989
+      }
+    },
+    {
+      "case_id": "610",
+      "database_id": "codebase_community",
+      "question": "What are the name of badge that users who have the highest reputation obtained?",
+      "baseline": {
+        "sql": "SELECT DISTINCT b.Name\nFROM badges b\nJOIN users u ON b.UserId = u.Id\nORDER BY u.Reputation DESC\nLIMIT 1;",
+        "execution_success": true,
+        "official_ex": false,
+        "latency_s": 66.21766838199994
+      },
+      "treatment": {
+        "sql": "SELECT T1.Name FROM badges AS T1 INNER JOIN users AS T2 ON T1.UserId = T2.Id WHERE T2.Reputation = ( SELECT MAX(Reputation) FROM users )",
+        "execution_success": true,
+        "official_ex": false,
+        "latency_s": 105.4787708470003
+      }
+    },
+    {
+      "case_id": "178",
+      "database_id": "financial",
+      "question": "Which kind of credit card does client number 9 possess?",
+      "baseline": {
+        "sql": "SELECT card.type\nFROM client\nJOIN disp ON client.client_id = disp.client_id\nJOIN card ON disp.disp_id = card.card_id\nWHERE client.client_id = 9;",
+        "execution_success": true,
+        "official_ex": false,
+        "latency_s": 48.518253655999956
+      },
+      "treatment": {
+        "sql": "SELECT T1.type FROM card AS T1 INNER JOIN disp AS T2 ON T1.card_id = T2.disp_id WHERE T2.client_id = 9",
+        "execution_success": true,
+        "official_ex": false,
+        "latency_s": 73.41853912100032
+      }
+    },
+    {
+      "case_id": "1391",
+      "database_id": "student_club",
+      "question": "What is the ratio between students majored in finance and physics?",
+      "baseline": {
+        "sql": "SELECT SUM(CASE WHEN major.major_name = 'Finance' THEN 1 ELSE 0 END) / \n       NULLIF(SUM(CASE WHEN major.major_name = 'Physics' THEN 1 ELSE 0 END), 0) AS ratio\nFROM member\nJOIN major ON member.link_to_major = major.major_id;",
+        "execution_success": true,
+        "official_ex": false,
+        "latency_s": 55.196697733000065
+      },
+      "treatment": {
+        "sql": "SELECT CAST(SUM(CASE WHEN T1.major_name = 'Finance' THEN 1 ELSE 0 END) AS REAL) / SUM(CASE WHEN T1.major_name = 'Physics' THEN 1 ELSE 0 END) AS ratio FROM major AS T1 INNER JOIN member AS T2 ON T1.major_id = T2.link_to_major",
+        "execution_success": true,
+        "official_ex": false,
+        "latency_s": 85.41986719499982
+      }
+    }
+  ]
+}
