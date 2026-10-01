@@ -2,6 +2,10 @@ name: XiYan frozen-100 evaluation
 
 on:
   workflow_dispatch:
+  push:
+    branches: [semantic-revision-spike]
+    paths:
+      - .github/xiyan-frozen100.trigger
 
 permissions:
   contents: read
