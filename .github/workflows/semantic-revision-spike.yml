@@ -7,6 +7,9 @@ on:
       - experiments/semantic_revision_spike.py
       - .github/workflows/semantic-revision-spike.yml
 
+permissions:
+  contents: write
+
 jobs:
   review-sample:
     runs-on: ubuntu-latest
@@ -14,8 +17,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Ollama
-        run: curl -fsSL https://ollama.com/install.sh | sh
+      - name: Install Ollama binary
+        run: curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
 
       - name: Start Ollama and pull frozen model
         run: |
@@ -28,6 +31,15 @@ jobs:
 
       - name: Run semantic revision sample
         run: python experiments/semantic_revision_spike.py
+
+      - name: Commit result to spike branch
+        if: success()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add semantic-revision-results.json
+          git commit -m "Record semantic revision spike results" || exit 0
+          git push
 
       - name: Upload result
         if: always()
