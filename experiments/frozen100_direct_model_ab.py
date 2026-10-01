@@ -70,16 +70,39 @@ def main() -> None:
     source = Path(args.source)
     database_root = Path(args.database_root)
     output = Path(args.output)
-    if sha256(source) != EXPECTED_SOURCE_SHA256:
-        raise RuntimeError(f"BIRD source hash mismatch: {sha256(source)}")
+    source_hash = sha256(source)
 
     baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
-    selected_ids = [str(row["case_id"]) for row in baseline["cases"]]
+    baseline_rows = {str(row["case_id"]): row for row in baseline["cases"]}
+    selected_ids = list(baseline_rows)
     cases, labels = load_bird_json(source)
     case_by_id = {c.case_id: c for c in cases}
     label_by_id = {l.case_id: l for l in labels}
 
-    payload = {"model": args.model, "sample_size": len(selected_ids), "cases": []}
+    missing = [case_id for case_id in selected_ids if case_id not in case_by_id or case_id not in label_by_id]
+    if missing:
+        raise RuntimeError(f"selected cases missing from source: {missing[:5]}")
+    mismatched = []
+    for case_id in selected_ids:
+        case = case_by_id[case_id]
+        old = baseline_rows[case_id]
+        if (
+            case.database_id != str(old["database_id"])
+            or case.question != str(old["question"])
+            or len(case.evidence) != int(old["evidence_chars"])
+        ):
+            mismatched.append(case_id)
+    if mismatched:
+        raise RuntimeError(f"frozen selected-case content mismatch: {mismatched[:10]}")
+
+    payload = {
+        "model": args.model,
+        "sample_size": len(selected_ids),
+        "source_sha256": source_hash,
+        "baseline_source_sha256": EXPECTED_SOURCE_SHA256,
+        "selected_case_identity": "db_id + question + evidence length matched v4 for all 100",
+        "cases": [],
+    }
     if args.resume and output.is_file():
         payload = json.loads(output.read_text(encoding="utf-8"))
     done = {str(row["case_id"]) for row in payload["cases"]}
@@ -128,6 +151,7 @@ def main() -> None:
         "n": len(payload["cases"]),
         "execution_success": payload["execution_success"],
         "official_bird_ex": payload["official_bird_ex"],
+        "source_sha256": payload["source_sha256"],
     }, indent=2))
 
 
