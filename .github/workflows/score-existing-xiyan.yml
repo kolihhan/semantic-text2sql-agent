@@ -1,0 +1,51 @@
+name: Score completed XiYan spike
+
+on:
+  push:
+    branches: [semantic-revision-spike]
+    paths:
+      - experiments/score_existing_xiyan.py
+      - .github/workflows/score-existing-xiyan.yml
+
+permissions:
+  contents: write
+
+jobs:
+  score:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download pinned BIRD dev release
+        run: |
+          mkdir -p /tmp/bird
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
+          echo "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  /tmp/bird/dev.zip" | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          DEV_JSON=$(find /tmp/bird/unpacked -type f -name dev.json ! -path '*/__MACOSX/*' | head -n1)
+          DB_ZIP=$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DEV_JSON"
+          test -n "$DB_ZIP"
+          mkdir -p /tmp/bird/databases
+          unzip -q "$DB_ZIP" -d /tmp/bird/databases
+          DB_ROOT=$(find /tmp/bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=/tmp/bird/databases; fi
+          echo "DEV_JSON=$DEV_JSON" >> "$GITHUB_ENV"
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+
+      - name: Score existing XiYan outputs by execution
+        run: |
+          python experiments/score_existing_xiyan.py \
+            --source "$DEV_JSON" \
+            --database-root "$DB_ROOT" \
+            --results xiyan-model-results.json \
+            --output xiyan-model-scored.json
+
+      - name: Commit score
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "4189826+github-actions[bot]@users.noreply.github.com"
+          git add xiyan-model-scored.json
+          git commit -m "Record XiYan spike execution scores" || exit 0
+          git push
