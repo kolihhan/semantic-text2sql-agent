@@ -2,6 +2,10 @@ name: XiYan guarded frozen-12 spike
 
 on:
   workflow_dispatch:
+  push:
+    branches: [semantic-revision-spike]
+    paths:
+      - .github/xiyan-frozen12-trigger.txt
 
 permissions:
   contents: read
@@ -50,20 +54,21 @@ jobs:
           if [ -z "$DB_ROOT" ]; then DB_ROOT=/tmp/bird/databases; fi
           echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
 
-      - name: Run frozen-12 XiYan guarded treatment
+      - name: Run second frozen-12 XiYan guarded treatment
         run: |
           python experiments/xiyan_guarded_frozen12.py \
             --source "$DEV_JSON" \
             --database-root "$DB_ROOT" \
             --baseline runs/bird-paired-dev-v4/paired.json \
             --model hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M \
+            --sample-offset 12 \
             --sample-size 12 \
-            --output xiyan-guarded-frozen12.json
+            --output xiyan-guarded-frozen12b.json
 
       - name: Upload result
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: xiyan-guarded-frozen12
-          path: xiyan-guarded-frozen12.json
+          name: xiyan-guarded-frozen12b
+          path: xiyan-guarded-frozen12b.json
           if-no-files-found: ignore
