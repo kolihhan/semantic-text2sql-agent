@@ -1,29 +1,40 @@
-name: Paired BIRD free-model spike
+name: XiYan guarded frozen-12 spike
 
 on:
   workflow_dispatch:
+  push:
+    branches: [semantic-revision-spike]
+    paths:
+      - .github/xiyan-frozen12-trigger.txt
 
 permissions:
   contents: read
 
 jobs:
-  paired-model-spike:
+  xiyan-guarded-spike:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install project
+        run: python -m pip install -e .
+
       - name: Install Ollama binary
         run: curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
 
-      - name: Start Ollama and pull free local models
+      - name: Start Ollama and pull XiYan SQL 7B
         run: |
           ollama serve > /tmp/ollama.log 2>&1 &
           for i in {1..30}; do
             if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
             sleep 1
           done
-          ollama pull qwen3.5:4b
           ollama pull hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M
 
       - name: Download pinned BIRD 2024-06-27 dev release
@@ -42,22 +53,21 @@ jobs:
           DB_ROOT=$(find /tmp/bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
           if [ -z "$DB_ROOT" ]; then DB_ROOT=/tmp/bird/databases; fi
           echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
-          sha256sum "$DEV_JSON"
 
-      - name: Run deterministic paired 12-case A/B
+      - name: Run frozen-12 XiYan guarded treatment
         run: |
-          python experiments/frozen100_direct_model_ab.py \
+          python experiments/xiyan_guarded_frozen12.py \
             --source "$DEV_JSON" \
             --database-root "$DB_ROOT" \
-            --baseline-model qwen3.5:4b \
-            --treatment-model hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M \
+            --baseline runs/bird-paired-dev-v4/paired.json \
+            --model hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M \
             --sample-size 12 \
-            --output paired-model-spike-results.json
+            --output xiyan-guarded-frozen12.json
 
       - name: Upload result
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: paired-model-spike-results
-          path: paired-model-spike-results.json
+          name: xiyan-guarded-frozen12
+          path: xiyan-guarded-frozen12.json
           if-no-files-found: ignore
