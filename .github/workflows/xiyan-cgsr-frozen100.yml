@@ -2,9 +2,6 @@ name: XiYan CGSR frozen-100 ablation
 
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - .github/CGSR_FROZEN100_TRIGGER
 
 permissions:
   contents: read
