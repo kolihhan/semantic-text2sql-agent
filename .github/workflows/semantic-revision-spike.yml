@@ -29,10 +29,11 @@ jobs:
           done
           ollama pull hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M
 
-      - name: Download canonical BIRD dev release
+      - name: Download pinned BIRD 2024-06-27 dev release
         run: |
           mkdir -p /tmp/bird
-          curl -fL --retry 3 https://bird-bench.oss-cn-beijing.aliyuncs.com/dev.zip -o /tmp/bird/dev.zip
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
+          echo "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  /tmp/bird/dev.zip" | sha256sum -c -
           unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
           DEV_JSON=$(find /tmp/bird/unpacked -type f -name dev.json | head -n1)
           DB_ZIP=$(find /tmp/bird/unpacked -type f -name dev_databases.zip | head -n1)
