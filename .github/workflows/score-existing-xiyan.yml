@@ -1,14 +1,10 @@
 name: Score completed XiYan spike
 
 on:
-  push:
-    branches: [semantic-revision-spike]
-    paths:
-      - experiments/score_existing_xiyan.py
-      - .github/workflows/score-existing-xiyan.yml
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   score:
@@ -38,10 +34,8 @@ jobs:
             --results xiyan-model-results.json \
             --output xiyan-model-scored.json
 
-      - name: Commit score
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "4189826+github-actions[bot]@users.noreply.github.com"
-          git add xiyan-model-scored.json
-          git commit -m "Record XiYan spike execution scores" || exit 0
-          git push
+      - name: Upload score
+        uses: actions/upload-artifact@v4
+        with:
+          name: xiyan-model-scored
+          path: xiyan-model-scored.json
