@@ -1,0 +1,224 @@
+name: CGSR frozen-100 paired ablation
+
+on:
+  push:
+    branches:
+      - experiment/cgsr-frozen100
+    paths:
+      - .github/workflows/cgsr-frozen100.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  complete-direct:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install project
+        run: python -m pip install -e .
+      - name: Install Ollama and pull XiYanSQL 7B
+        run: |
+          curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          ollama serve > /tmp/ollama.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 1
+          done
+          ollama pull hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M
+      - name: Download pinned BIRD 2024-06-27 dev release
+        run: |
+          mkdir -p /tmp/bird
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
+          echo "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  /tmp/bird/dev.zip" | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          DEV_JSON=$(find /tmp/bird/unpacked -type f -name dev.json ! -path '*/__MACOSX/*' | head -n1)
+          DB_ZIP=$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          mkdir -p /tmp/bird/databases
+          unzip -q "$DB_ZIP" -d /tmp/bird/databases
+          DB_ROOT=$(find /tmp/bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=/tmp/bird/databases; fi
+          echo "DEV_JSON=$DEV_JSON" >> "$GITHUB_ENV"
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Complete missing XiYan direct shard 3
+        run: |
+          python experiments/frozen100_xiyan_eval.py \
+            --source "$DEV_JSON" \
+            --database-root "$DB_ROOT" \
+            --frozen runs/bird-paired-dev-v4/paired.json \
+            --model hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M \
+            --shard-index 3 \
+            --num-shards 4 \
+            --output xiyan-frozen100-shard-3.json
+      - name: Upload fixed direct shard
+        uses: actions/upload-artifact@v4
+        with:
+          name: xiyan-frozen100-shard-3-fixed
+          path: xiyan-frozen100-shard-3.json
+
+  semantic:
+    needs: complete-direct
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install project
+        run: python -m pip install -e .
+      - name: Recover completed XiYan direct shards 0-2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p direct
+          for spec in "11178695575:0" "11176398175:1" "11176718299:2"; do
+            artifact_id="${spec%%:*}"
+            shard="${spec##*:}"
+            curl -fL \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/artifacts/$artifact_id/zip" \
+              -o "/tmp/xiyan-$shard.zip"
+            unzip -q "/tmp/xiyan-$shard.zip" -d direct
+          done
+      - name: Download completed XiYan direct shard 3
+        uses: actions/download-artifact@v4
+        with:
+          name: xiyan-frozen100-shard-3-fixed
+          path: direct
+      - name: Freeze all 100 XiYan SQL candidates in original case order
+        run: |
+          python - <<'PY'
+          import glob, json
+          frozen = json.load(open('runs/bird-paired-dev-v4/paired.json', encoding='utf-8'))
+          order = [str(row['case_id']) for row in frozen['cases']]
+          by_id = {}
+          for path in glob.glob('direct/xiyan-frozen100-shard-*.json'):
+              for row in json.load(open(path, encoding='utf-8'))['cases']:
+                  case_id = str(row['case_id'])
+                  if case_id in by_id:
+                      raise SystemExit(f'duplicate case {case_id}')
+                  by_id[case_id] = row
+          missing = [case_id for case_id in order if case_id not in by_id]
+          if missing or len(by_id) != 100:
+              raise SystemExit(f'incomplete direct candidates: total={len(by_id)} missing={missing[:5]}')
+          payload = {
+              'experiment': 'frozen 100 XiYan SQL candidates reused for CGSR paired ablation',
+              'source_run_id_for_shards_0_2': 36885165600,
+              'gold_visible_to_model': False,
+              'cases': [by_id[case_id] for case_id in order],
+          }
+          json.dump(payload, open('xiyan-frozen100-all.json', 'w', encoding='utf-8'), indent=2)
+          print('frozen candidates:', len(payload['cases']))
+          PY
+      - name: Install Ollama and pull XiYanSQL 7B
+        run: |
+          curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          ollama serve > /tmp/ollama.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 1
+          done
+          ollama pull hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M
+      - name: Download pinned BIRD 2024-06-27 dev release
+        run: |
+          mkdir -p /tmp/bird
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
+          echo "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  /tmp/bird/dev.zip" | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          DEV_JSON=$(find /tmp/bird/unpacked -type f -name dev.json ! -path '*/__MACOSX/*' | head -n1)
+          DB_ZIP=$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          mkdir -p /tmp/bird/databases
+          unzip -q "$DB_ZIP" -d /tmp/bird/databases
+          DB_ROOT=$(find /tmp/bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=/tmp/bird/databases; fi
+          echo "DEV_JSON=$DEV_JSON" >> "$GITHUB_ENV"
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Run one-pass CGSR shard
+        run: |
+          python experiments/frozen100_cgsr_eval.py \
+            --source "$DEV_JSON" \
+            --database-root "$DB_ROOT" \
+            --xiyan-inputs xiyan-frozen100-all.json \
+            --model hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M \
+            --shard-index ${{ matrix.shard }} \
+            --num-shards 4 \
+            --output cgsr-frozen100-shard-${{ matrix.shard }}.json
+      - name: Upload CGSR shard
+        uses: actions/upload-artifact@v4
+        with:
+          name: cgsr-frozen100-shard-${{ matrix.shard }}
+          path: cgsr-frozen100-shard-${{ matrix.shard }}.json
+
+  aggregate:
+    needs: semantic
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: cgsr-frozen100-shard-*
+          path: shards
+          merge-multiple: true
+      - name: Aggregate paired ablation
+        run: |
+          python - <<'PY'
+          import collections, glob, json, statistics
+          cases = []
+          for path in sorted(glob.glob('shards/cgsr-frozen100-shard-*.json')):
+              cases.extend(json.load(open(path, encoding='utf-8'))['cases'])
+          if len(cases) != 100 or len({str(r['case_id']) for r in cases}) != 100:
+              raise SystemExit(f'expected 100 unique cases, got {len(cases)}')
+          cases.sort(key=lambda r: int(r['case_id']))
+          n = len(cases)
+          xiyan_correct = sum(bool(r['xiyan_official_ex']) for r in cases)
+          cgsr_correct = sum(bool(r['cgsr_official_ex']) for r in cases)
+          wrong_to_correct = sum((not r['xiyan_official_ex']) and r['cgsr_official_ex'] for r in cases)
+          correct_to_wrong = sum(r['xiyan_official_ex'] and (not r['cgsr_official_ex']) for r in cases)
+          latencies = sorted(float(r['cgsr_latency_s']) for r in cases)
+          issue_counts = collections.Counter(str(r['cgsr_issue_type']) for r in cases)
+          summary = {
+              'sample_size': n,
+              'xiyan_direct_ex': xiyan_correct / n,
+              'cgsr_ex': cgsr_correct / n,
+              'ex_delta_points': (cgsr_correct - xiyan_correct) * 100 / n,
+              'wrong_to_correct': wrong_to_correct,
+              'correct_to_wrong': correct_to_wrong,
+              'net_correct_cases': cgsr_correct - xiyan_correct,
+              'xiyan_execution_success': sum(bool(r['xiyan_execution_success']) for r in cases) / n,
+              'cgsr_execution_success': sum(bool(r['cgsr_execution_success']) for r in cases) / n,
+              'review_ran': sum(bool(r['cgsr_review_ran']) for r in cases),
+              'review_changed': sum(bool(r['cgsr_changed']) for r in cases),
+              'issue_counts': dict(issue_counts),
+              'cgsr_latency_median_s': statistics.median(latencies),
+              'cgsr_latency_p95_s': latencies[94],
+          }
+          payload = {
+              'experiment': 'frozen-100 XiYan vs XiYan + one-pass Clause-Guided Semantic Revision',
+              'gold_visible_to_model': False,
+              'same_frozen_xiyan_sql_for_both_arms': True,
+              'max_repairs': 0,
+              'summary': summary,
+              'cases': cases,
+          }
+          json.dump(payload, open('cgsr-frozen100-summary.json', 'w', encoding='utf-8'), indent=2)
+          print(json.dumps(summary, indent=2))
+          PY
+      - name: Upload paired summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: cgsr-frozen100-summary
+          path: cgsr-frozen100-summary.json
