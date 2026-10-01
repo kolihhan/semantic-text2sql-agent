@@ -201,3 +201,58 @@ def test_readonly_execution_still_rejects_multiple_statements(tmp_path):
         con.execute("CREATE TABLE items (value TEXT)")
     with pytest.raises(SQLExecutionError, match="multiple statements"):
         execute_readonly(database, "SELECT 1; SELECT 2")
+
+
+def test_semantic_revision_corrects_valid_but_wrong_projection_once(database: Path) -> None:
+    initial = "SELECT id FROM schools"
+    revised = 'SELECT "County Name" FROM schools'
+    provider = SequenceProvider(
+        initial,
+        '{"changed": true, "issue_type": "PROJECTION", '
+        '"sql": "SELECT \\"County Name\\" FROM schools"}',
+    )
+
+    result = inference.run_guarded(
+        database=database,
+        provider=provider,
+        question="Return the county name.",
+        schema_context='schools(id, "County Name")',
+        semantic_revision=True,
+        max_repairs=1,
+        max_rows=10,
+    )
+
+    assert result.status == "ok"
+    assert result.candidate is not None
+    assert result.candidate.sql == revised
+    assert result.rows == (("Alpha",),)
+    assert tuple(stage.name for stage in result.stages) == (
+        "sql", "verify", "semantic_revision", "verify", "execute",
+    )
+    assert "PROJECTION" in result.stages[2].summary
+    assert provider.text_calls == 2
+
+
+def test_semantic_revision_fails_open_on_valid_json_with_wrong_shape(database: Path) -> None:
+    initial = 'SELECT "County Name" FROM schools'
+    provider = SequenceProvider(initial, "[]")
+
+    result = inference.run_guarded(
+        database=database,
+        provider=provider,
+        question="Return the county name.",
+        schema_context='schools(id, "County Name")',
+        semantic_revision=True,
+        max_repairs=1,
+        max_rows=10,
+    )
+
+    assert result.status == "ok"
+    assert result.candidate is not None
+    assert result.candidate.sql == initial
+    assert result.rows == (("Alpha",),)
+    assert tuple(stage.name for stage in result.stages) == (
+        "sql", "verify", "semantic_revision", "verify", "execute",
+    )
+    assert "OTHER" in result.stages[2].summary
+    assert provider.text_calls == 2

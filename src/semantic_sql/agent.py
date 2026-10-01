@@ -16,12 +16,14 @@ class SemanticSQLService:
         provider: ModelProvider,
         max_repairs: int = 2,
         max_rows: int = 100,
+        semantic_revision: bool = False,
     ) -> None:
         self.database = Path(database)
         self.catalog = DatabaseCatalog.from_sqlite(self.database)
         self.provider = provider
         self.max_repairs = max_repairs
         self.max_rows = max_rows
+        self.semantic_revision = semantic_revision
 
     def ask(
         self,
@@ -39,4 +41,5 @@ class SemanticSQLService:
             initial_candidate=initial_candidate,
             max_repairs=self.max_repairs,
             max_rows=self.max_rows,
+            semantic_revision=self.semantic_revision,
         )
