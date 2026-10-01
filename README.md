@@ -1,63 +1,79 @@
-# Semantic Text-to-SQL
+# Semantic Text-to-SQL Agent
 
-A local Text-to-SQL service built with LangGraph, FastAPI, and SQLite.
+A local Text-to-SQL service that treats LLM-generated SQL as a software-reliability problem: generate a query, validate it deterministically, execute it against SQLite, and use a bounded repair loop when the first attempt fails.
 
-The flow is simple: generate SQL, check it, run it read-only, and retry up to two times if the database returns an error. The CLI and API both use the same service layer.
-
-## Results
-
-I compared a direct path with the guarded path on 100 BIRD DEV questions using `qwen3.5:4b`.
-
-| Metric | Direct | Guarded |
-|---|---:|---:|
-| Official BIRD EX | 30/100 | 33/100 |
-| Execution success | 70/100 | 88/100 |
-| Model calls | 100 | 150 |
-| Median latency | 3.236 s | 5.491 s |
-| P95 latency | 79.398 s | 147.364 s |
-
-The repair loop recovered 18 failed executions, but only 3 of those became correct under the BIRD evaluator. In other words, getting SQL to run is useful, but it is not the same as getting the answer right.
-
-That is why the current version keeps the database checks and small repair loop instead of adding more planner logic.
-
-## How it works
+## What it does
 
 ```text
-question + schema
-      |
-   generate
-      |
-    verify
-   /      \
-run      repair
-           |
-         verify
-        /      \
-      run     refuse
+natural-language question
+        ↓
+LLM generates SQL
+        ↓
+deterministic verification
+        ↓
+read-only SQLite execution
+        ↓
+execution error?
+   ├─ no  → return result
+   └─ yes → bounded repair → verify → retry
 ```
 
-LangGraph handles the workflow. SQLite handles the database checks and read-only execution. The model handles SQL generation and repair.
+The service is exposed through FastAPI and uses a local `qwen3.5:4b` model through Ollama.
 
-## Run locally
+## Frozen evaluation
 
-```bash
-uv sync
-uv run semantic-sql demo
-uv run streamlit run app.py
-uv run uvicorn semantic_sql.api:app --reload
-```
+The latest frozen run evaluates **100 BIRD DEV queries** and compares direct generation with a guarded workflow that adds deterministic verification and at most two repair attempts.
 
-The default API demo does not need a running LLM server. For local model use, the CLI supports Ollama and `qwen3.5:4b`.
+| Metric | Direct | Guarded + repair |
+|---|---:|---:|
+| Execution success | 63% | **82%** |
+| Official BIRD EX | 31% | **34%** |
+| Median latency | 28.1 s | 46.7 s |
 
-## Notes
+The guarded workflow recovered **19 direct execution failures**. It also increased latency and model calls, so the result is a reliability trade-off rather than a claim that repair universally improves answer quality.
 
-The direct and guarded runs start from the same initial SQL for each question. The 100-case result is one local-model DEV run, so I treat the small EX gain cautiously. The final/holdout split has not been run.
+### Execution success is not correctness
 
-The result artifact is in `runs/bird-paired-dev-v3/paired.json`. More detail on the workflow and evaluation is in `docs/architecture.md`, `docs/design-decisions.md`, and `evaluation/README.md`.
+These two metrics are intentionally reported separately:
 
-## Development
+- **Execution success**: the final SQL executed successfully against SQLite.
+- **Official BIRD EX**: the executed result matched the benchmark answer under the official BIRD evaluator.
 
-```bash
-uv run --extra dev pytest -q -p no:cacheprovider --basetemp <fresh-temp-directory>
-uv run python -m compileall -q src evaluation tests
-```
+A query can execute successfully and still be wrong. The benchmark therefore reports both.
+
+Source of truth: [`runs/bird-paired-dev-v4/paired.json`](runs/bird-paired-dev-v4/paired.json).
+
+## Reliability mechanisms
+
+- deterministic SQL verification before execution
+- read-only SQLite execution
+- bounded repair budget (`max_repairs=2`)
+- structured failure states and per-case traces
+- official BIRD evaluator for correctness
+- frozen run artifacts with model/evaluator identity and latency
+
+## Stack
+
+- Python
+- FastAPI
+- LangGraph
+- SQLite
+- Qwen3.5 4B via Ollama
+- pytest
+
+## Why this project exists
+
+The goal is not just to produce SQL. It is to make failure behavior measurable:
+
+- Does the generated query compile?
+- Can it be executed safely?
+- Can a bounded repair step recover execution failures?
+- Does higher execution reliability improve benchmark correctness?
+- What latency does the reliability layer cost?
+
+## Limits
+
+- The evaluation is a 100-query BIRD DEV sample, not the full benchmark.
+- Execution success is not semantic correctness.
+- The current workflow targets SQLite rather than arbitrary production databases.
+- Results are specific to this frozen local-model configuration.
