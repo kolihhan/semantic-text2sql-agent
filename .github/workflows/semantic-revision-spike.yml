@@ -1,17 +1,17 @@
-name: Semantic plan spike
+name: Semantic prompt spike
 
 on:
   push:
     branches: [semantic-revision-spike]
     paths:
-      - experiments/semantic_plan_spike.py
+      - experiments/semantic_prompt_spike.py
       - .github/workflows/semantic-revision-spike.yml
 
 permissions:
   contents: write
 
 jobs:
-  plan-sample:
+  prompt-sample:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -29,22 +29,22 @@ jobs:
           done
           ollama pull qwen3.5:4b
 
-      - name: Run semantic plan sample
-        run: python experiments/semantic_plan_spike.py
+      - name: Run semantic prompt sample
+        run: python experiments/semantic_prompt_spike.py
 
       - name: Commit result to spike branch
         if: success()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add semantic-plan-results.json
-          git commit -m "Record semantic plan spike results" || exit 0
+          git add semantic-prompt-results.json
+          git commit -m "Record semantic prompt spike results" || exit 0
           git push
 
       - name: Upload result
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: semantic-plan-results
-          path: semantic-plan-results.json
+          name: semantic-prompt-results
+          path: semantic-prompt-results.json
           if-no-files-found: ignore
