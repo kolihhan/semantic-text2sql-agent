@@ -38,6 +38,17 @@ def test_health_and_query_delegate_to_service():
     assert service.calls == [("return one", "demo evidence")]
 
 
+def test_portfolio_demo_page_exposes_reliability_flow():
+    client = TestClient(create_app(service=FakeService()))
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "Semantic Text-to-SQL" in response.text
+    assert "Generate" in response.text
+    assert "Verify" in response.text
+    assert "Repair" in response.text
+    assert "/query" in response.text
+
+
 def test_query_rejects_blank_question():
     client = TestClient(create_app(service=FakeService()))
     response = client.post("/query", json={"question": ""})
