@@ -1,14 +1,10 @@
 name: Paired BIRD free-model spike
 
 on:
-  push:
-    branches: [semantic-revision-spike]
-    paths:
-      - experiments/frozen100_direct_model_ab.py
-      - .github/workflows/semantic-revision-spike.yml
+  workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   paired-model-spike:
@@ -57,15 +53,6 @@ jobs:
             --treatment-model hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M \
             --sample-size 12 \
             --output paired-model-spike-results.json
-
-      - name: Commit result to spike branch
-        if: success()
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "4189826+github-actions[bot]@users.noreply.github.com"
-          git add paired-model-spike-results.json
-          git commit -m "Record paired free-model spike results" || exit 0
-          git push
 
       - name: Upload result
         if: always()
