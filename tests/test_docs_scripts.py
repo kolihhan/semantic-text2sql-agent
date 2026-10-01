@@ -12,3 +12,8 @@ def test_windows_launchers_are_non_global_and_create_project_local_run_dirs():
     assert "ExecutionPolicy Bypass" in cmd
     assert "run-demo.ps1" in cmd
 
+
+def test_demo_launcher_opens_existing_streamlit_showcase():
+    root = Path(__file__).parents[1]
+    ps = (root / "run-demo.ps1").read_text(encoding="utf-8")
+    assert "streamlit run app.py" in ps

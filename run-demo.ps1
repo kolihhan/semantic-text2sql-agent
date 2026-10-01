@@ -13,7 +13,7 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
 Push-Location $Root
 try {
     uv sync
-    uv run semantic-sql demo
+    uv run streamlit run app.py
 } finally {
     Pop-Location
 }
