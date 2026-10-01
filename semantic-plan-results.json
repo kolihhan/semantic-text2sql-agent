@@ -1,0 +1,66 @@
+[
+  {
+    "id": "325",
+    "kind": "wrong",
+    "plan": "OUTPUT:\nCOUNT(*)\n\nENTITIES/LITERALS:\n- element = 'n'\n- label = '+'\n\nTABLES:\n- atom\n- molecule\n\nJOINS:\natom.molecule_id = molecule.molecule_id\n\nFILTERS:\n- atom.element = 'n'\n- molecule.label = '+'\n\nAGGREGATION/GRANULARITY:\nAggregate over the joined result set (count rows where both conditions are met)\n\nORDERING/TOP-K:\nNone",
+    "generated": "SELECT COUNT(*) FROM atom JOIN molecule ON atom.molecule_id = molecule.molecule_id WHERE atom.element = 'n' AND molecule.label = '+';",
+    "baseline": "SELECT COUNT(*) FROM atom WHERE element = 'n' AND EXISTS (SELECT 1 FROM molecule WHERE molecule_id = atom.molecule_id AND label = '+');",
+    "gold": "SELECT COUNT(DISTINCT T1.molecule_id) FROM molecule AS T1 INNER JOIN atom AS T2 ON T1.molecule_id = T2.molecule_id WHERE T2.element = 'n' AND T1.label = '+'"
+  },
+  {
+    "id": "476",
+    "kind": "wrong",
+    "plan": "OUTPUT:\n- `name` from table `cards` (literal string)\n\nENTITIES/LITERALS:\n- `Coldsnap` (string literal matching `setCode`)\n\nTABLES:\n- `cards`\n- `sets`\n\nJOINS:\n- `cards.setCode = sets.code` (INNER JOIN on set code)\n\nFILTERS:\n- `cards.setCode = 'Coldsnap'`\n- `cards.convertedManaCost = MAX(cards.convertedManaCost)` (Filter for the maximum value within the filtered set)\n\nAGGREGATION/GRANULARITY:\n- Aggregate by `setCode` to find the maximum `convertedManaCost` for the specific set 'Coldsnap'.\n- Return rows where `convertedManaCost` equals this calculated maximum.\n\nORDERING/TOP-K:\n- Order by `",
+    "generated": "SELECT cards.name\nFROM cards\nJOIN sets ON cards.setCode = sets.code\nWHERE cards.setCode = 'Coldsnap'\n  AND cards.convertedManaCost = (\n    SELECT MAX(cards2.convertedManaCost)\n    FROM cards cards2\n    WHERE cards2.setCode = 'Coldsnap'\n  );",
+    "baseline": "SELECT DISTINCT c.asciiName FROM cards c INNER JOIN sets s ON c.printings LIKE '%' || s.code || '%' WHERE s.name = 'Coldsnap' ORDER BY c.convertedManaCost DESC;",
+    "gold": "SELECT T1.name FROM cards AS T1 INNER JOIN sets AS T2 ON T2.code = T1.setCode WHERE T2.name = 'Coldsnap' AND T1.convertedManaCost = (SELECT MAX(convertedManaCost) FROM cards AS T1 INNER JOIN sets AS T2 ON T2.code = T1.setCode WHERE T2.name = 'Coldsnap')"
+  },
+  {
+    "id": "790",
+    "kind": "wrong",
+    "plan": "OUTPUT:\nA single numeric value representing the difference (Emil Blonsky's weight minus Charles Chandler's weight).\n\nENTITIES/LITERALS:\n- \"Emil Blonsky\": A literal string matching `superhero.full_name`.\n- \"Charles Chandler\": A literal string matching `superhero.full_name`.\n- `weight_kg`: The attribute to retrieve for both entities.\n\nTABLES:\n- `superhero` (used twice, once for Emil Blonsky, once for Charles Chandler).\n\nJOINS:\n- Implicit cross-reference or self-join on the `superhero` table where one instance matches \"Emil Blonsky\" and the other matches \"Charles Chandler\". No explicit JOIN clause needed if using correlated subqueries or CASE logic; logically equivalent to joining `superhero` with itself on distinct full_name values.\n\nFILTERS:",
+    "generated": "SELECT e.weight_kg - c.weight_kg AS difference FROM superhero e JOIN superhero c ON 1=1 WHERE e.full_name = 'Emil Blonsky' AND c.full_name = 'Charles Chandler';",
+    "baseline": "SELECT s1.weight_kg - s2.weight_kg FROM superhero s1 JOIN superhero s2 ON s1.id = s2.id AND LOWER(s1.full_name) = 'Emil Blonsky' AND LOWER(s2.full_name) = 'Charles Chandler';",
+    "gold": "SELECT (SELECT weight_kg FROM superhero WHERE full_name LIKE 'Emil Blonsky') - (SELECT weight_kg FROM superhero WHERE full_name LIKE 'Charles Chandler') AS CALCULATE"
+  },
+  {
+    "id": "300",
+    "kind": "wrong",
+    "plan": "OUTPUT:\n- SELECT `element` FROM `atom` WHERE `molecule_id` = 'TR186' GROUP BY `element` ORDER BY COUNT(*) DESC;\n\nENTITIES/LITERALS:\n- Target entity: `element` (from table `atom`)\n- Literal value for filtering: 'TR186' (quoted as a string literal)\n\nTABLES:\n- `atom`\n\nJOINS:\n- None (single table query)\n\nFILTERS:\n- `molecule_id` = 'TR186'\n\nAGGREGATION/GRANULARITY:\n- Grouping by `element` to list unique atoms comprising the molecule\n- Aggregation function: COUNT(*) used for ordering purposes (to prioritize most frequent elements if ties exist, though the question implies a set listing)\n\nORDERING/TOP-K:",
+    "generated": "SELECT `element` FROM `atom` WHERE `molecule_id` = 'TR186' GROUP BY `element` ORDER BY COUNT(*) DESC;",
+    "baseline": "SELECT DISTINCT element FROM atom WHERE molecule_id = 186;",
+    "gold": "SELECT T.atom_id FROM atom AS T WHERE T.molecule_id = 'TR186'"
+  },
+  {
+    "id": "1130",
+    "kind": "wrong",
+    "plan": "OUTPUT:\nteam_short_name\n\nENTITIES/LITERALS:\nchanceCreationPassingClass = 'Safe'\n\nTABLES:\nTeam\nTeam_Attributes\n\nJOINS:\nTeam.team_api_id = Team_Attributes.team_api_id\n\nFILTERS:\nTeam_Attributes.chanceCreationPassingClass = 'Safe'\n\nAGGREGATION/GRANULARITY:\nPer team (no aggregation function, distinct rows per team)\n\nORDERING/TOP-K:\nNone specified",
+    "generated": "SELECT T.team_short_name\nFROM Team T\nJOIN Team_Attributes TA ON T.team_api_id = TA.team_api_id\nWHERE TA.chanceCreationPassingClass = 'Safe';",
+    "baseline": "SELECT Team_Attributes.chanceCreationPassing, Team_Attributes.chanceCreationPassingClass FROM Team_Attributes WHERE Team_Attributes.chanceCreationPassingClass = 'Safe' AND Team_Attributes.chanceCreationPassing IS NOT NULL;",
+    "gold": "SELECT DISTINCT t1.team_short_name FROM Team AS t1 INNER JOIN Team_Attributes AS t2 ON t1.team_api_id = t2.team_api_id WHERE t2.chanceCreationPassingClass = 'Safe'"
+  },
+  {
+    "id": "622",
+    "kind": "control",
+    "plan": "OUTPUT:\nName of badge\n\nENTITIES/LITERALS:\n'Sharpie' (as DisplayName value)\n\nTABLES:\nusers\nbadges\n\nJOINS:\nusers.Id = badges.UserId (INNER JOIN implied by existence requirement)\n\nFILTERS:\nusers.DisplayName = 'Sharpie'\n\nAGGREGATION/GRANULARITY:\nSingle row per matching user; no aggregation function needed (direct selection)\n\nORDERING/TOP-K:\nNone specified",
+    "generated": "SELECT badges.Name\nFROM users\nJOIN badges ON users.Id = badges.UserId\nWHERE users.DisplayName = 'Sharpie';",
+    "baseline": "SELECT Name FROM badges WHERE UserId = (SELECT Id FROM users WHERE DisplayName = 'Sharpie');",
+    "gold": "SELECT T2.Name FROM users AS T1 INNER JOIN badges AS T2 ON T1.Id = T2.UserId WHERE T1.DisplayName = 'Sharpie'"
+  },
+  {
+    "id": "838",
+    "kind": "control",
+    "plan": "OUTPUT:\nfull_name\n\nENTITIES/LITERALS:\nsuperhero_name = 'Alien'\n\nTABLES:\nsuperhero\n\nJOINS:\nnone\n\nFILTERS:\nsuperhero.superhero_name = 'Alien'\n\nAGGREGATION/GRANULARITY:\nsingle_row (return the specific full_name for the matching superhero)\n\nORDERING/TOP-K:\nnone",
+    "generated": "SELECT full_name FROM superhero WHERE superhero_name = 'Alien';",
+    "baseline": "SELECT full_name FROM superhero WHERE superhero_name = 'Alien';",
+    "gold": "SELECT full_name FROM superhero WHERE superhero_name = 'Alien'"
+  },
+  {
+    "id": "455",
+    "kind": "control",
+    "plan": "OUTPUT:\nENTITIES/LITERALS:\nTABLES:\ncards(name, isPromo, side)\nJOINS:\nNONE\nFILTERS:\nisPromo = 1 AND COUNT(DISTINCT side) > 1\nAGGREGATION/GRANULARITY:\nGROUP BY name\nORDERING/TOP-K:\nNONE",
+    "generated": "SELECT name FROM cards WHERE isPromo = 1 GROUP BY name HAVING COUNT(DISTINCT side) > 1;",
+    "baseline": "SELECT name FROM cards WHERE isPromo = 1 AND side IS NOT NULL;",
+    "gold": "SELECT name FROM cards WHERE isPromo = 1 AND side IS NOT NULL"
+  }
+]
