@@ -1,0 +1,112 @@
+name: XiYan frozen-100 evaluation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  treatment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ollama binary
+        run: curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+
+      - name: Start Ollama and pull XiYanSQL 7B
+        run: |
+          ollama serve > /tmp/ollama.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 1
+          done
+          ollama pull hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M
+
+      - name: Download pinned BIRD 2024-06-27 dev release
+        run: |
+          mkdir -p /tmp/bird
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
+          echo "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  /tmp/bird/dev.zip" | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          DEV_JSON=$(find /tmp/bird/unpacked -type f -name dev.json ! -path '*/__MACOSX/*' | head -n1)
+          DB_ZIP=$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DEV_JSON"
+          test -n "$DB_ZIP"
+          mkdir -p /tmp/bird/databases
+          unzip -q "$DB_ZIP" -d /tmp/bird/databases
+          DB_ROOT=$(find /tmp/bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=/tmp/bird/databases; fi
+          echo "DEV_JSON=$DEV_JSON" >> "$GITHUB_ENV"
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+
+      - name: Run XiYan treatment shard
+        run: |
+          python experiments/frozen100_xiyan_eval.py \
+            --source "$DEV_JSON" \
+            --database-root "$DB_ROOT" \
+            --frozen runs/bird-paired-dev-v4/paired.json \
+            --model hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M \
+            --shard-index ${{ matrix.shard }} \
+            --num-shards 4 \
+            --output xiyan-frozen100-shard-${{ matrix.shard }}.json
+
+      - name: Upload shard result
+        uses: actions/upload-artifact@v4
+        with:
+          name: xiyan-frozen100-shard-${{ matrix.shard }}
+          path: xiyan-frozen100-shard-${{ matrix.shard }}.json
+
+  aggregate:
+    needs: treatment
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: xiyan-frozen100-shard-*
+          path: shards
+          merge-multiple: true
+
+      - name: Aggregate frozen-100 result
+        run: |
+          python - <<'PY'
+          import glob, json, statistics
+          cases = []
+          for path in sorted(glob.glob('shards/xiyan-frozen100-shard-*.json')):
+              cases.extend(json.load(open(path, encoding='utf-8'))['cases'])
+          cases.sort(key=lambda r: int(r['case_id']))
+          n = len(cases)
+          summary = {
+              'sample_size': n,
+              'qwen_direct_ex': sum(r['qwen_direct_ex'] for r in cases) / n,
+              'qwen_guarded_ex': sum(r['qwen_guarded_ex'] for r in cases) / n,
+              'xiyan_direct_ex': sum(r['xiyan_official_ex'] for r in cases) / n,
+              'xiyan_execution_success': sum(r['xiyan_execution_success'] for r in cases) / n,
+              'qwen_direct_wrong_to_xiyan_correct': sum((not r['qwen_direct_ex']) and r['xiyan_official_ex'] for r in cases),
+              'qwen_direct_correct_to_xiyan_wrong': sum(r['qwen_direct_ex'] and (not r['xiyan_official_ex']) for r in cases),
+              'qwen_guarded_wrong_to_xiyan_correct': sum((not r['qwen_guarded_ex']) and r['xiyan_official_ex'] for r in cases),
+              'qwen_guarded_correct_to_xiyan_wrong': sum(r['qwen_guarded_ex'] and (not r['xiyan_official_ex']) for r in cases),
+              'xiyan_latency_median_s': statistics.median(r['xiyan_latency_s'] for r in cases),
+          }
+          payload = {
+              'experiment': 'frozen-100 XiYan direct generator evaluation',
+              'model': 'XiYanSQL-QwenCoder-7B-2504 Q4_K_M',
+              'gold_visible_to_model': False,
+              'summary': summary,
+              'cases': cases,
+          }
+          json.dump(payload, open('xiyan-frozen100-summary.json', 'w', encoding='utf-8'), indent=2)
+          print(json.dumps(summary, indent=2))
+          PY
+
+      - name: Upload summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: xiyan-frozen100-summary
+          path: xiyan-frozen100-summary.json
