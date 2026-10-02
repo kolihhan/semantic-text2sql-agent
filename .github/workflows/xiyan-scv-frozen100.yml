@@ -2,6 +2,9 @@ name: XiYan SCV frozen-100 ablation
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - .github/SCV_FROZEN100_TRIGGER
 
 permissions:
   contents: read
