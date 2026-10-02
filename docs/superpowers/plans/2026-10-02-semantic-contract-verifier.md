@@ -159,7 +159,7 @@ git commit -m "feat: add semantic contract extraction"
 
 - [ ] **Step 1: Add SQLGlot dependency and write failing basic AST tests**
 
-Add `sqlglot>=27,<29` to project dependencies.
+Add `sqlglot>=30.21,<31` to project dependencies.
 
 Tests:
 - `test_parse_sql_semantics_extracts_projection_aggregate_group_order_limit`
