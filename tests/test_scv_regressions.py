@@ -94,13 +94,14 @@ def test_wrong_join_key_is_rejected_but_fk_join_passes(tmp_path: Path) -> None:
         projection=("constructors.name",),
         join_entities=("constructors", "results"),
     )
+    catalog = _catalog(tmp_path)
     wrong = verify_semantic_contract(
         contract,
         _semantics(
             "SELECT c.name FROM constructors c "
             "JOIN results r ON c.constructorId = r.raceId"
         ),
-        _catalog(tmp_path),
+        catalog,
     )
     correct = verify_semantic_contract(
         contract,
@@ -108,7 +109,7 @@ def test_wrong_join_key_is_rejected_but_fk_join_passes(tmp_path: Path) -> None:
             "SELECT c.name FROM constructors c "
             "JOIN results r ON c.constructorId = r.constructorId"
         ),
-        _catalog(tmp_path),
+        catalog,
     )
     assert "JOIN_EDGE_INVALID" in _codes(wrong)
     assert correct.status == "pass"
