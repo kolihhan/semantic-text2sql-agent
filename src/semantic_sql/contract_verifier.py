@@ -180,7 +180,17 @@ def verify_semantic_contract(
                     confidence=contract.confidence,
                 )
             )
-        if ranking.top_k is not None and semantics.limit != ranking.top_k:
+        if ranking.ties == "all" and semantics.limit is not None:
+            violations.append(
+                SCVViolation(
+                    code="TOPK_MISMATCH",
+                    expected="all ties without a hard row LIMIT",
+                    actual=f"LIMIT {semantics.limit}",
+                    evidence="contract explicitly requires returning every row tied at the ranked boundary",
+                    confidence=contract.confidence,
+                )
+            )
+        elif ranking.top_k is not None and semantics.limit != ranking.top_k:
             violations.append(
                 SCVViolation(
                     code="TOPK_MISMATCH",
