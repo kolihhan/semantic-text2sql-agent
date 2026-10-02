@@ -22,7 +22,7 @@ The frozen-100 evaluation is the decision gate.
 
 Primary success criteria:
 
-- SCV official EX must exceed the paired XiYan baseline.
+- SCV paired execution accuracy under the frozen evaluator must exceed the paired XiYan baseline.
 - `wrong→correct > correct→wrong`.
 - `correct→wrong <= 2/57`.
 - Preferred practical bar: at least **+3 net correct cases** on the frozen 100.
@@ -415,8 +415,8 @@ For every frozen case:
 
 Report:
 
-- baseline EX;
-- SCV EX;
+- baseline execution accuracy under the frozen evaluator;
+- SCV execution accuracy under the same frozen evaluator;
 - execution success;
 - wrong→correct;
 - correct→wrong;
@@ -427,7 +427,7 @@ Report:
 - SCV skip count;
 - median semantic overhead.
 
-Do not call the result “official BIRD EX” unless the evaluator exactly matches the official BIRD execution evaluation. If the project’s local set-equality scorer is used, label it accurately.
+Do not call the result “official BIRD EX” unless the evaluator exactly matches the official BIRD execution evaluation. If the project’s local set-equality scorer is used, label it explicitly as the project’s frozen paired execution-accuracy metric.
 
 ## 16. Evidence and interpretation rules
 
