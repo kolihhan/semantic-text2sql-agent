@@ -120,6 +120,20 @@ The guarded path recovered **19 direct execution failures**. It improves executi
 
 Source of truth: [`runs/bird-paired-dev-v4/paired.json`](runs/bird-paired-dev-v4/paired.json).
 
+### Separate XiYan grounding ablation
+
+A later frozen-100 experiment tested **Decomposed Grounded Schema Linking (DGSL v1)** with the same XiYanSQL 7B generator and a project-local set-equality execution scorer. This is a **different model and scorer** from the Qwen3.5 / official-BIRD-EX table above, so the numbers are not directly interchangeable.
+
+| XiYan frozen-100 | Lexical baseline | DGSL v1 |
+|---|---:|---:|
+| Frozen execution match | **58/100** | **58/100** |
+| Wrong → correct | — | 7 |
+| Correct → wrong | — | 7 |
+| Success gate | — | 61/100 |
+| Gate met | — | **No** |
+
+DGSL improved schema-context precision and observable value grounding, but the gains were offset by regressions and produced **no net correctness gain**. See [the DGSL experiment note](docs/dgsl-experiment.md) and [the compact frozen result](runs/xiyan-dgsl-frozen100/summary.json).
+
 ## Two failures worth inspecting
 
 The aggregate numbers hide the most important engineering lesson: **a query becoming executable is not the same thing as becoming correct**.
