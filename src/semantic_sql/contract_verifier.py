@@ -83,6 +83,11 @@ def verify_semantic_contract(
     )
     if expected_projection:
         actual = set(semantics.projections)
+        actual.update(
+            item.target
+            for item in semantics.aggregations
+            if item.target is not None
+        )
         missing = tuple(
             ref
             for ref in expected_projection
@@ -93,7 +98,7 @@ def verify_semantic_contract(
                 SCVViolation(
                     code="PROJECTION_MISMATCH",
                     expected=_refs_text(list(expected_projection)),
-                    actual=_refs_text(list(semantics.projections)),
+                    actual=_refs_text(sorted(actual)),
                     evidence="resolved requested projection is absent from the SQL projection",
                     confidence=contract.confidence,
                 )
