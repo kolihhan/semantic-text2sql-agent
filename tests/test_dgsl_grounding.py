@@ -9,9 +9,11 @@ from evaluation.grounding_metrics import (
 )
 from semantic_sql.catalog import DatabaseCatalog
 from semantic_sql.grounding import (
+    IndexedValue,
     QuestionDecomposition,
     build_grounding_pack,
     build_value_index,
+    match_indexed_values,
 )
 
 
@@ -132,3 +134,12 @@ def test_gold_usage_and_grounding_metrics_are_offline_only(tmp_path: Path) -> No
     assert metrics["column_recall"] == 1.0
     assert metrics["fk_bridge_recall"] == 1.0
     assert metrics["value_grounding_recall"] == 1.0
+
+
+def test_numeric_value_matching_respects_digit_boundaries() -> None:
+    hits = match_indexed_values(
+        (IndexedValue(table="races", column="raceId", value="10"),),
+        question="Which races happened in 2010?",
+    )
+
+    assert hits == ()
