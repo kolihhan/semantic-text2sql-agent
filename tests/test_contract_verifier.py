@@ -289,3 +289,16 @@ def test_medium_confidence_contract_is_skipped_before_hard_violations(tmp_path: 
     assert result.status == "skipped"
     assert result.reason == "contract_not_high_confidence"
     assert result.violations == ()
+
+
+def test_aggregation_target_mismatch_detected(tmp_path: Path) -> None:
+    contract = SemanticContract(
+        confidence="high",
+        aggregation=AggregationSpec(function="SUM", target="results.points"),
+    )
+    result = verify_semantic_contract(
+        contract,
+        _semantics("SELECT SUM(r.raceId) FROM results r"),
+        _catalog(tmp_path),
+    )
+    assert "AGGREGATION_TARGET_MISMATCH" in _codes(result)
