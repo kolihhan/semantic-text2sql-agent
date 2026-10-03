@@ -173,7 +173,9 @@ def _value_is_usable(value: str) -> bool:
     if not normalized:
         return False
     if normalized.isdigit():
-        return len(normalized) >= 2
+        # Pure numeric literals (years, counts, IDs) create too many accidental
+        # value anchors. DGSL v1 grounds them through schema semantics instead.
+        return False
     return len(normalized) >= 3
 
 
@@ -344,18 +346,23 @@ def build_grounding_pack(
     ]
 
     fallback_full_schema = not ranked_tables
+    bridge_edges: list[tuple[str, str, str, str]] = []
     if fallback_full_schema:
         anchor_tables = tuple(sorted(catalog.tables))
         selected = set(catalog.tables)
+        bridge_edges.extend(catalog.foreign_keys)
     else:
         anchor_tables = tuple(ranked_tables[:max(1, max_anchor_tables)])
         selected = {anchor_tables[0]}
         for table in anchor_tables[1:]:
             bridge = _shortest_bridge(catalog, selected, table)
             if bridge is not None:
-                for source, _source_col, target, _target_col in bridge:
+                for edge in bridge:
+                    source, _source_col, target, _target_col = edge
                     selected.add(source)
                     selected.add(target)
+                    if edge not in bridge_edges:
+                        bridge_edges.append(edge)
             selected.add(table)
 
     anchor_columns: list[str] = []
@@ -372,7 +379,7 @@ def build_grounding_pack(
                 keep.append(hit.column)
         anchor_columns.extend(f"{table}.{column}" for column in keep)
 
-    join_edges = _join_edges_for_tables(catalog, selected)
+    join_edges = tuple(bridge_edges)
     context_columns = tuple(
         f"{table}.{column}"
         for table in sorted(selected)
