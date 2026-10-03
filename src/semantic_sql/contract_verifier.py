@@ -225,8 +225,11 @@ def verify_semantic_contract(
             )
 
     graph = SchemaGraph.from_catalog(catalog)
+    physical_tables = {table.casefold() for table in catalog.tables}
     for join in semantics.joins:
         if join.left.table is None or join.right.table is None:
+            continue
+        if join.left.table not in physical_tables or join.right.table not in physical_tables:
             continue
         if join.left.table == join.right.table:
             continue
