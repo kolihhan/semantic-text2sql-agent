@@ -177,6 +177,12 @@ def _value_is_usable(value: str) -> bool:
     return len(normalized) >= 3
 
 
+def _value_matches_haystack(needle: str, haystack: str) -> bool:
+    if needle.isdigit():
+        return re.search(rf"(?<!\\d){re.escape(needle)}(?!\\d)", haystack) is not None
+    return needle in haystack
+
+
 def match_indexed_values(
     value_index: Iterable[IndexedValue],
     *,
@@ -200,7 +206,7 @@ def match_indexed_values(
         needle = _normalise_value(item.value)
         if not _value_is_usable(needle):
             continue
-        if needle not in haystack:
+        if not _value_matches_haystack(needle, haystack):
             continue
         token_bonus = min(4, len(_tokens(item.value)))
         char_bonus = min(2.0, len(needle) / 20.0)
