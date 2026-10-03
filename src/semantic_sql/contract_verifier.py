@@ -129,13 +129,19 @@ def verify_semantic_contract(
                 )
             else:
                 expected_target = _contract_ref(aggregation.target)
-                if expected_target is not None and not any(
-                    item.target is not None and _ref_compatible(expected_target, item.target)
-                    for item in matching_aggregates
+                unresolved_target = any(item.target is None for item in matching_aggregates)
+                actual_targets = [
+                    item.target for item in matching_aggregates if item.target is not None
+                ]
+                if (
+                    expected_target is not None
+                    and not unresolved_target
+                    and actual_targets
+                    and not any(
+                        _ref_compatible(expected_target, item)
+                        for item in actual_targets
+                    )
                 ):
-                    actual_targets = [
-                        item.target for item in matching_aggregates if item.target is not None
-                    ]
                     violations.append(
                         SCVViolation(
                             code="AGGREGATION_TARGET_MISMATCH",
