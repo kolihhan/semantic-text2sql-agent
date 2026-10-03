@@ -1,0 +1,132 @@
+name: XiYan SCV frozen-100 ablation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  treatment:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install project
+        run: python -m pip install -e ".[dev]"
+
+      - name: Install Ollama
+        run: curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+
+      - name: Start Ollama and pull models
+        run: |
+          ollama serve > /tmp/ollama.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 1
+          done
+          ollama pull hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M
+          ollama pull qwen3.5:4b
+
+      - name: Download pinned BIRD 2024-06-27 dev release
+        run: |
+          mkdir -p /tmp/bird
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
+          echo "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  /tmp/bird/dev.zip" | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          DEV_JSON=$(find /tmp/bird/unpacked -type f -name dev.json ! -path '*/__MACOSX/*' | head -n1)
+          DB_ZIP=$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DEV_JSON"
+          test -n "$DB_ZIP"
+          mkdir -p /tmp/bird/databases
+          unzip -q "$DB_ZIP" -d /tmp/bird/databases
+          DB_ROOT=$(find /tmp/bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=/tmp/bird/databases; fi
+          echo "DEV_JSON=$DEV_JSON" >> "$GITHUB_ENV"
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+
+      - name: Run paired XiYan vs SCV shard
+        run: |
+          python experiments/xiyan_scv_frozen100.py \
+            --source "$DEV_JSON" \
+            --database-root "$DB_ROOT" \
+            --frozen runs/bird-paired-dev-v4/paired.json \
+            --generator-model hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M \
+            --semantic-model qwen3.5:4b \
+            --shard-index ${{ matrix.shard }} \
+            --num-shards 4 \
+            --output xiyan-scv-shard-${{ matrix.shard }}.json
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xiyan-scv-shard-${{ matrix.shard }}
+          path: xiyan-scv-shard-${{ matrix.shard }}.json
+          if-no-files-found: warn
+
+  aggregate:
+    needs: treatment
+    if: ${{ always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: xiyan-scv-shard-*
+          path: shards
+          merge-multiple: true
+
+      - name: Aggregate paired results
+        run: |
+          python - <<'PY'
+          import glob
+          import json
+          from experiments.xiyan_scv_frozen100 import aggregate_case_rows
+
+          rows = []
+          metadata = None
+          for path in sorted(glob.glob("shards/xiyan-scv-shard-*.json")):
+              with open(path, encoding="utf-8") as handle:
+                  payload = json.load(handle)
+              metadata = metadata or payload
+              rows.extend(payload["cases"])
+
+          assert len(rows) == 100, len(rows)
+          assert len({str(row["case_id"]) for row in rows}) == 100
+
+          summary = aggregate_case_rows(rows)
+          output = {
+              "experiment": "XiYan candidate vs same XiYan candidate + Semantic Contract Verifier",
+              "generator_model": metadata["generator_model"],
+              "semantic_model": metadata["semantic_model"],
+              "gold_visible_to_generation_or_scv": False,
+              "scorer": metadata["scorer"],
+              "semantic_repair_budget": 1,
+              **summary,
+              "cases": sorted(rows, key=lambda row: int(row["case_id"])),
+          }
+          with open("xiyan-scv-frozen100.json", "w", encoding="utf-8") as handle:
+              json.dump(output, handle, indent=2, ensure_ascii=False)
+
+          printable = {key: value for key, value in output.items() if key != "cases"}
+          print(json.dumps(printable, indent=2, ensure_ascii=False))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xiyan-scv-frozen100
+          path: xiyan-scv-frozen100.json

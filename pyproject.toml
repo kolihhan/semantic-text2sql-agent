@@ -12,6 +12,7 @@ dependencies = [
     "langgraph==1.2.11",
     "fastapi>=0.115,<1",
     "uvicorn>=0.30,<1",
+    "sqlglot>=30.21,<31",
 ]
 
 [project.optional-dependencies]
