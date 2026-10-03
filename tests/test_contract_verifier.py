@@ -267,3 +267,10 @@ def test_missing_optional_contract_fields_do_not_create_violations(tmp_path: Pat
     )
     assert result.status == "pass"
     assert result.violations == ()
+
+
+def test_schema_graph_skips_incomplete_foreign_key_metadata(tmp_path: Path) -> None:
+    catalog = _catalog(tmp_path)
+    catalog.foreign_keys = (*catalog.foreign_keys, ("results", "raceId", "races", None))
+    graph = SchemaGraph.from_catalog(catalog)
+    assert graph.supports_fk_equality("results", "raceId", "races", "raceId")
