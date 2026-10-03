@@ -38,6 +38,12 @@ def _contract_ref(value: str | None) -> ColumnRef | None:
     return ColumnRef(table, column)
 
 
+def _ref_compatible(expected: ColumnRef, actual: ColumnRef) -> bool:
+    if expected == actual:
+        return True
+    return actual.table is None and expected.column == actual.column
+
+
 def _refs_text(refs: tuple[ColumnRef, ...] | list[ColumnRef]) -> str:
     return ", ".join(
         f"{ref.table}.{ref.column}" if ref.table else ref.column for ref in refs
@@ -77,7 +83,11 @@ def verify_semantic_contract(
     )
     if expected_projection:
         actual = set(semantics.projections)
-        missing = tuple(ref for ref in expected_projection if ref not in actual)
+        missing = tuple(
+            ref
+            for ref in expected_projection
+            if not any(_ref_compatible(ref, candidate) for candidate in actual)
+        )
         if missing:
             violations.append(
                 SCVViolation(
@@ -120,7 +130,8 @@ def verify_semantic_contract(
             else:
                 expected_target = _contract_ref(aggregation.target)
                 if expected_target is not None and not any(
-                    item.target == expected_target for item in matching_aggregates
+                    item.target is not None and _ref_compatible(expected_target, item.target)
+                    for item in matching_aggregates
                 ):
                     actual_targets = [
                         item.target for item in matching_aggregates if item.target is not None
@@ -164,7 +175,10 @@ def verify_semantic_contract(
                     confidence=contract.confidence,
                 )
             )
-        elif not set(expected_group).issubset(set(semantics.group_by)):
+        elif any(
+            not any(_ref_compatible(expected, actual) for actual in semantics.group_by)
+            for expected in expected_group
+        ):
             violations.append(
                 SCVViolation(
                     code="GROUP_BY_MISMATCH",
