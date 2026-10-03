@@ -274,3 +274,18 @@ def test_schema_graph_skips_incomplete_foreign_key_metadata(tmp_path: Path) -> N
     catalog.foreign_keys = (*catalog.foreign_keys, ("results", "raceId", "races", None))
     graph = SchemaGraph.from_catalog(catalog)
     assert graph.supports_fk_equality("results", "raceId", "races", "raceId")
+
+
+def test_medium_confidence_contract_is_skipped_before_hard_violations(tmp_path: Path) -> None:
+    contract = SemanticContract(
+        confidence="medium",
+        projection=("constructors.name",),
+    )
+    result = verify_semantic_contract(
+        contract,
+        _semantics("SELECT c.constructorId FROM constructors c"),
+        _catalog(tmp_path),
+    )
+    assert result.status == "skipped"
+    assert result.reason == "contract_not_high_confidence"
+    assert result.violations == ()
