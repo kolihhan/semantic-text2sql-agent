@@ -361,3 +361,17 @@ def test_unresolved_actual_count_target_abstains_from_target_mismatch(tmp_path: 
         _catalog(tmp_path),
     )
     assert "AGGREGATION_TARGET_MISMATCH" not in _codes(result)
+
+
+def test_aggregate_target_can_satisfy_projection_for_scalar_aggregate(tmp_path: Path) -> None:
+    contract = SemanticContract(
+        confidence="high",
+        projection=("results.points",),
+        aggregation=AggregationSpec(function="SUM", target="results.points"),
+    )
+    result = verify_semantic_contract(
+        contract,
+        _semantics("SELECT SUM(r.points) FROM results r"),
+        _catalog(tmp_path),
+    )
+    assert "PROJECTION_MISMATCH" not in _codes(result)
