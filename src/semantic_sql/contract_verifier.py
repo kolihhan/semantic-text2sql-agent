@@ -75,6 +75,11 @@ def verify_semantic_contract(
             status="skipped",
             reason="contract_not_high_confidence",
         )
+    if semantics.has_derived_sources:
+        return SCVVerification(
+            status="skipped",
+            reason="derived_query_unsupported",
+        )
 
     violations: list[SCVViolation] = []
 
