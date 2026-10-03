@@ -1,0 +1,32 @@
+{
+  "experiment": "XiYan lexical schema context vs DGSL v1 grounded schema context",
+  "sample_size": 100,
+  "model": "hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M",
+  "scorer": "project frozen set-equality execution match; not official BIRD EX",
+  "gold_visible_to_generation_or_grounding": false,
+  "gold_used_for_offline_metrics_only": true,
+  "workflow_run_id": 37109330875,
+  "workflow_run_url": "https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/37109330875",
+  "artifact_id": 11270057215,
+  "artifact_digest": "sha256:8c5613f1a9ca8b386c764d5d651a487497d84b992328aac1a9f1180927320dd0",
+  "source_head_sha": "74724e911bcb5be14b2f8464b4e807690b55714f",
+  "aggregate": {
+    "baseline_correct": 58,
+    "dgsl_correct": 58,
+    "net_correct_delta": 0,
+    "wrong_to_correct": 7,
+    "correct_to_wrong": 7,
+    "min_correct_gate": 61,
+    "gate_met": false,
+    "grounding_metrics_macro": {
+      "table_recall": {"lexical": 0.995, "dgsl": 0.97},
+      "table_precision": {"lexical": 0.3585480352980353, "dgsl": 0.5078333333333334},
+      "column_recall": {"lexical": 0.9966666666666667, "dgsl": 0.9703571428571428},
+      "column_precision": {"lexical": 0.09185739144560409, "dgsl": 0.12463368672999899},
+      "fk_bridge_recall": {"lexical": 1.0, "dgsl": 0.7950819672131147},
+      "value_grounding_recall": {"lexical": 0.0, "dgsl": 0.6916666666666667}
+    },
+    "median_decomposition_latency_s": 13.26975880499998,
+    "median_dgsl_generation_latency_s": 46.83043488599998
+  }
+}
