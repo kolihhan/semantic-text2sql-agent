@@ -47,6 +47,7 @@ class SQLSemantics:
     literals: tuple[str, ...] = ()
     joins: tuple[NormalizedJoin, ...] = ()
     distinct: bool = False
+    has_derived_sources: bool = False
 
 
 @dataclass(frozen=True)
@@ -250,5 +251,9 @@ def parse_sql_semantics(sql: str) -> SQLSemanticsParse:
             literals=literals,
             joins=tuple(joins),
             distinct=select.args.get("distinct") is not None,
+            has_derived_sources=(
+                tree.find(exp.CTE) is not None
+                or tree.find(exp.Subquery) is not None
+            ),
         ),
     )
