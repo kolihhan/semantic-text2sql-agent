@@ -9,6 +9,10 @@ def _norm(value: str) -> str:
     return value.casefold()
 
 
+def _complete_fk(parts: tuple[object, object, object, object]) -> bool:
+    return all(isinstance(value, str) and value.strip() for value in parts)
+
+
 @dataclass(frozen=True)
 class SchemaGraph:
     fk_edges: frozenset[tuple[str, str, str, str]]
@@ -24,6 +28,7 @@ class SchemaGraph:
                     _norm(target_col),
                 )
                 for source_table, source_col, target_table, target_col in catalog.foreign_keys
+                if _complete_fk((source_table, source_col, target_table, target_col))
             )
         )
 
