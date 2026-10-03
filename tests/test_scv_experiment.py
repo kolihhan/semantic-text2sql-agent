@@ -111,3 +111,70 @@ def test_score_guarded_result_does_not_execute_refused_candidate(tmp_path: Path)
         "frozen_execution_match": False,
         "truncated": False,
     }
+
+
+def test_aggregate_case_rows_reports_repair_success_and_skip_counts() -> None:
+    rows = [
+        {
+            "case_id": "1",
+            "baseline_execution_success": True,
+            "baseline_frozen_execution_match": False,
+            "scv_execution_success": True,
+            "scv_frozen_execution_match": True,
+            "sql_changed": True,
+            "contract_summary": "SCV_CONTRACT_OK",
+            "scv_status": "SCV_REPAIR_PASS",
+            "scv_violation_codes": ["PROJECTION_MISMATCH"],
+            "scv_latency_s": 1.0,
+        },
+        {
+            "case_id": "2",
+            "baseline_execution_success": True,
+            "baseline_frozen_execution_match": False,
+            "scv_execution_success": False,
+            "scv_frozen_execution_match": False,
+            "sql_changed": True,
+            "contract_summary": "SCV_CONTRACT_OK",
+            "scv_status": "SCV_REPAIR_FAILED",
+            "scv_violation_codes": ["PROJECTION_MISMATCH"],
+            "scv_latency_s": 2.0,
+        },
+        {
+            "case_id": "3",
+            "baseline_execution_success": True,
+            "baseline_frozen_execution_match": False,
+            "scv_execution_success": True,
+            "scv_frozen_execution_match": False,
+            "sql_changed": False,
+            "contract_summary": "SCV_SKIPPED_CONTRACT:low_confidence",
+            "scv_status": "SCV_SKIPPED_CONTRACT",
+            "scv_violation_codes": [],
+            "scv_latency_s": 3.0,
+        },
+        {
+            "case_id": "4",
+            "baseline_execution_success": True,
+            "baseline_frozen_execution_match": False,
+            "scv_execution_success": True,
+            "scv_frozen_execution_match": False,
+            "sql_changed": False,
+            "contract_summary": "SCV_CONTRACT_OK",
+            "scv_status": "SCV_SKIPPED_AST",
+            "scv_violation_codes": [],
+            "scv_latency_s": 4.0,
+        },
+    ]
+
+    summary = aggregate_case_rows(rows)
+
+    assert summary["skip_count"] == 2
+    assert summary["contract_status_counts"] == {
+        "SCV_CONTRACT_OK": 3,
+        "SCV_SKIPPED_CONTRACT": 1,
+    }
+    assert summary["repair_success_by_violation"] == {
+        "PROJECTION_MISMATCH": {
+            "attempted": 2,
+            "successful": 1,
+        }
+    }
