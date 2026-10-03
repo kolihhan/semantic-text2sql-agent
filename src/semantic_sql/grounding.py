@@ -179,7 +179,7 @@ def _value_is_usable(value: str) -> bool:
 
 def _value_matches_haystack(needle: str, haystack: str) -> bool:
     if needle.isdigit():
-        return re.search(rf"(?<!\\d){re.escape(needle)}(?!\\d)", haystack) is not None
+        return re.search(rf"(?<!\d){re.escape(needle)}(?!\d)", haystack) is not None
     return needle in haystack
 
 
