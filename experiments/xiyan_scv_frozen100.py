@@ -123,10 +123,28 @@ def aggregate_case_rows(rows: list[dict[str, object]]) -> dict[str, object]:
     changed_sql = sum(bool(row.get("sql_changed")) for row in rows)
 
     status_counts = Counter(str(row.get("scv_status") or "UNKNOWN") for row in rows)
+    contract_status_counts: Counter[str] = Counter()
     violation_counts: Counter[str] = Counter()
+    repair_attempts: Counter[str] = Counter()
+    repair_successes: Counter[str] = Counter()
+    skip_count = 0
     for row in rows:
-        for code in row.get("scv_violation_codes") or []:
-            violation_counts[str(code)] += 1
+        status = str(row.get("scv_status") or "UNKNOWN")
+        if status.startswith("SCV_SKIPPED"):
+            skip_count += 1
+
+        contract_summary = str(row.get("contract_summary") or "UNKNOWN")
+        contract_status_counts[contract_summary.split(":", 1)[0]] += 1
+
+        codes = [str(code) for code in row.get("scv_violation_codes") or []]
+        for code in codes:
+            violation_counts[code] += 1
+
+        if status in {"SCV_REPAIR_PASS", "SCV_REPAIR_FAILED"}:
+            for code in set(codes):
+                repair_attempts[code] += 1
+                if status == "SCV_REPAIR_PASS":
+                    repair_successes[code] += 1
 
     latencies = [float(row["scv_latency_s"]) for row in rows if row.get("scv_latency_s") is not None]
 
@@ -149,7 +167,16 @@ def aggregate_case_rows(rows: list[dict[str, object]]) -> dict[str, object]:
             "net_correct_delta": scv_correct - baseline_correct,
         },
         "scv_status_counts": dict(sorted(status_counts.items())),
+        "contract_status_counts": dict(sorted(contract_status_counts.items())),
         "violation_counts": dict(sorted(violation_counts.items())),
+        "repair_success_by_violation": {
+            code: {
+                "attempted": repair_attempts[code],
+                "successful": repair_successes[code],
+            }
+            for code in sorted(repair_attempts)
+        },
+        "skip_count": skip_count,
         "median_scv_latency_s": median(latencies) if latencies else None,
     }
 
