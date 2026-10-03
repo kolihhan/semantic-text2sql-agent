@@ -64,6 +64,12 @@ def verify_semantic_contract(
     semantics: SQLSemantics,
     catalog: DatabaseCatalog,
 ) -> SCVVerification:
+    if contract.confidence != "high":
+        return SCVVerification(
+            status="skipped",
+            reason="contract_not_high_confidence",
+        )
+
     violations: list[SCVViolation] = []
 
     expected_projection = tuple(
