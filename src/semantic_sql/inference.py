@@ -355,6 +355,7 @@ def run_guarded(
     semantic_repair_budget: int = 1,
 ) -> AgentResult:
     database = Path(database)
+    effective_semantic_repair_budget = 1 if semantic_repair_budget > 0 else 0
     output = _build_guarded_graph(
         semantic_revision=semantic_revision,
         semantic_contract_verification=semantic_contract_verification,
@@ -373,7 +374,7 @@ def run_guarded(
         config={
             "recursion_limit": (
                 2 * max(0, max_repairs)
-                + 3 * max(0, semantic_repair_budget)
+                + 3 * effective_semantic_repair_budget
                 + 12
             )
         },
@@ -384,7 +385,7 @@ def run_guarded(
             max_rows=max_rows,
             semantic_revision=semantic_revision,
             semantic_contract_verification=semantic_contract_verification,
-            semantic_repair_budget=max(0, semantic_repair_budget),
+            semantic_repair_budget=effective_semantic_repair_budget,
         ),
     )
     result = output["result"] if isinstance(output, dict) else output.result
