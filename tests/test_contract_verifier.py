@@ -375,3 +375,34 @@ def test_aggregate_target_can_satisfy_projection_for_scalar_aggregate(tmp_path: 
         _catalog(tmp_path),
     )
     assert "PROJECTION_MISMATCH" not in _codes(result)
+
+
+def test_semantic_verifier_skips_cte_query_with_derived_clause_ownership(tmp_path: Path) -> None:
+    contract = SemanticContract(
+        confidence="high",
+        projection=("constructors.name",),
+        aggregation=AggregationSpec(function="SUM", target="results.points"),
+        group_by=("constructors.name",),
+        ranking=RankingSpec(
+            metric="SUM(results.points)",
+            direction="DESC",
+            top_k=1,
+            ties="single",
+        ),
+    )
+    result = verify_semantic_contract(
+        contract,
+        _semantics(
+            "WITH totals AS ("
+            "SELECT constructorId, SUM(points) AS total_points "
+            "FROM results GROUP BY constructorId"
+            ") "
+            "SELECT c.name FROM totals t "
+            "JOIN constructors c ON t.constructorId = c.constructorId "
+            "ORDER BY t.total_points DESC LIMIT 1"
+        ),
+        _catalog(tmp_path),
+    )
+    assert result.status == "skipped"
+    assert result.reason == "derived_query_unsupported"
+    assert result.violations == ()
