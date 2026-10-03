@@ -2,11 +2,6 @@ name: XiYan DGSL frozen-100 ablation
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - experiment/dgsl-frozen100
-    paths:
-      - .github/workflows/xiyan-dgsl-frozen100.yml
 
 permissions:
   contents: read
