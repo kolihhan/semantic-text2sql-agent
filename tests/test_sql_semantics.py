@@ -107,3 +107,14 @@ def test_cte_query_does_not_crash_normalizer() -> None:
     assert result.status == "ok"
     assert result.semantics is not None
     assert result.semantics.limit == 1
+
+
+def test_order_by_select_alias_resolves_to_underlying_expression() -> None:
+    result = parse_sql_semantics(
+        "SELECT c.name, SUM(r.points) AS total_points "
+        "FROM constructors c JOIN results r ON c.constructorId = r.constructorId "
+        "GROUP BY c.name ORDER BY total_points DESC LIMIT 1"
+    )
+    assert result.status == "ok"
+    assert result.semantics is not None
+    assert result.semantics.order_by[0].expression == "sum(results.points)"
