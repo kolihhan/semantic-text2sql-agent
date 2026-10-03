@@ -302,3 +302,20 @@ def test_aggregation_target_mismatch_detected(tmp_path: Path) -> None:
         _catalog(tmp_path),
     )
     assert "AGGREGATION_TARGET_MISMATCH" in _codes(result)
+
+
+def test_join_validation_skips_derived_or_cte_sources(tmp_path: Path) -> None:
+    contract = SemanticContract(confidence="high")
+    result = verify_semantic_contract(
+        contract,
+        _semantics(
+            "WITH ranked AS ("
+            "SELECT constructorId, SUM(points) AS total_points "
+            "FROM results GROUP BY constructorId"
+            ") "
+            "SELECT c.name FROM ranked r "
+            "JOIN constructors c ON r.constructorId = c.constructorId"
+        ),
+        _catalog(tmp_path),
+    )
+    assert "JOIN_EDGE_INVALID" not in _codes(result)
