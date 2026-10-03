@@ -319,3 +319,32 @@ def test_join_validation_skips_derived_or_cte_sources(tmp_path: Path) -> None:
         _catalog(tmp_path),
     )
     assert "JOIN_EDGE_INVALID" not in _codes(result)
+
+
+def test_unresolved_actual_projection_with_same_column_name_abstains(tmp_path: Path) -> None:
+    contract = SemanticContract(confidence="high", projection=("constructors.name",))
+    result = verify_semantic_contract(
+        contract,
+        _semantics(
+            "SELECT name FROM constructors c "
+            "JOIN results r ON c.constructorId = r.constructorId"
+        ),
+        _catalog(tmp_path),
+    )
+    assert "PROJECTION_MISMATCH" not in _codes(result)
+
+
+def test_unresolved_actual_aggregate_target_with_same_column_name_abstains(tmp_path: Path) -> None:
+    contract = SemanticContract(
+        confidence="high",
+        aggregation=AggregationSpec(function="SUM", target="results.points"),
+    )
+    result = verify_semantic_contract(
+        contract,
+        _semantics(
+            "SELECT SUM(points) FROM results r "
+            "JOIN constructors c ON r.constructorId = c.constructorId"
+        ),
+        _catalog(tmp_path),
+    )
+    assert "AGGREGATION_TARGET_MISMATCH" not in _codes(result)
