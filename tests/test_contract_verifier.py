@@ -348,3 +348,16 @@ def test_unresolved_actual_aggregate_target_with_same_column_name_abstains(tmp_p
         _catalog(tmp_path),
     )
     assert "AGGREGATION_TARGET_MISMATCH" not in _codes(result)
+
+
+def test_unresolved_actual_count_target_abstains_from_target_mismatch(tmp_path: Path) -> None:
+    contract = SemanticContract(
+        confidence="high",
+        aggregation=AggregationSpec(function="COUNT", target="races.raceId"),
+    )
+    result = verify_semantic_contract(
+        contract,
+        _semantics("SELECT COUNT(*) FROM races"),
+        _catalog(tmp_path),
+    )
+    assert "AGGREGATION_TARGET_MISMATCH" not in _codes(result)
