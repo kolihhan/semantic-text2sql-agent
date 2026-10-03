@@ -55,7 +55,7 @@ Reported per-case and macro metrics:
 - column recall / precision over the schema context exposed to XiYan
 - anchor-column recall / precision
 - declared-FK bridge recall
-- DB-value grounding recall for gold string literals that are observable in the bounded value index
+- DB-value grounding recall for gold string literals that are observable in the bounded string-like value index
 - frozen execution match (the project's set-equality scorer)
 
 The schema metrics use a lightweight dependency-free SQL extractor. They are engineering diagnostics, not official BIRD schema-linking metrics.
@@ -98,3 +98,20 @@ python experiments/merge_dgsl_results.py \
 ```
 
 The merged JSON contains the 61/100 gate, transition counts, and lexical-vs-DGSL grounding metrics.
+
+
+## Reproducible GitHub Actions run
+
+The branch includes `.github/workflows/xiyan-dgsl-frozen100.yml`.
+
+It automatically:
+
+1. downloads the pinned BIRD dev release,
+2. pulls the same XiYanSQL 7B model,
+3. downloads the exact baseline shard artifacts from Actions run `37090833784`,
+4. runs four DGSL shards,
+5. merges them,
+6. asserts that the recovered baseline is exactly **58/100**, and
+7. uploads `xiyan-dgsl-frozen100.json`.
+
+The workflow is manual-only so ordinary pushes do not spend model-benchmark compute.
