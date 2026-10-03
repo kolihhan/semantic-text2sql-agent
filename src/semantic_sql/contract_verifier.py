@@ -117,6 +117,23 @@ def verify_semantic_contract(
                         confidence=contract.confidence,
                     )
                 )
+            else:
+                expected_target = _contract_ref(aggregation.target)
+                if expected_target is not None and not any(
+                    item.target == expected_target for item in matching_aggregates
+                ):
+                    actual_targets = [
+                        item.target for item in matching_aggregates if item.target is not None
+                    ]
+                    violations.append(
+                        SCVViolation(
+                            code="AGGREGATION_TARGET_MISMATCH",
+                            expected=_refs_text([expected_target]),
+                            actual=_refs_text(actual_targets),
+                            evidence="aggregate function matches but operates on a different resolved field",
+                            confidence=contract.confidence,
+                        )
+                    )
         if aggregation.distinct is True and matching_aggregates:
             expected_target = _contract_ref(aggregation.target)
             candidates = matching_aggregates
