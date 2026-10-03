@@ -71,6 +71,36 @@ AND grounding metrics improve materially
 
 If DGSL stays around 58-59, stop this Text-to-SQL optimization line instead of adding another architecture layer.
 
+## Observed result
+
+The frozen-100 run completed successfully in GitHub Actions run **37109330875** using the same XiYanSQL 7B baseline cases.
+
+| Metric | Lexical baseline | DGSL v1 |
+|---|---:|---:|
+| Frozen execution match | **58/100** | **58/100** |
+| Table recall | **0.9950** | 0.9700 |
+| Table precision | 0.3585 | **0.5078** |
+| Column recall | **0.9967** | 0.9704 |
+| Column precision | 0.0919 | **0.1246** |
+| Declared-FK bridge recall | **1.0000** | 0.7951 |
+| Observable value grounding recall | 0.0000 | **0.6917** |
+
+Transitions:
+
+- wrong -> correct: **7**
+- correct -> wrong: **7**
+- net correct delta: **0**
+- required gate: **61/100**
+- gate met: **false**
+
+Median decomposition latency was **13.27 s** and median DGSL generation latency was **46.83 s**.
+
+Interpretation: DGSL made the exposed schema context more precise and added useful DB-value grounding, but those grounding gains did **not** translate into a net frozen execution-match improvement. It also reduced table/column recall slightly and hurt declared-FK bridge recall. Under the pre-registered gate, this experiment does not justify promoting DGSL as the default generation path.
+
+Compact source-of-truth summary: [`runs/xiyan-dgsl-frozen100/summary.json`](../runs/xiyan-dgsl-frozen100/summary.json).
+
+The full 100-case artifact is preserved by GitHub Actions artifact **11270057215** from run **37109330875** with digest `sha256:8c5613f1a9ca8b386c764d5d651a487497d84b992328aac1a9f1180927320dd0`.
+
 ## Run one shard
 
 First combine the four baseline SCV shard JSON files into one payload with a `cases` list, or pass an existing combined baseline result.
