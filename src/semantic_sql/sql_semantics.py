@@ -157,6 +157,14 @@ def parse_sql_semantics(sql: str) -> SQLSemanticsParse:
         return SQLSemanticsParse(status="skipped", semantics=None, reason="no_select")
 
     aliases, physical_sources = _alias_context(select)
+    select_aliases: dict[str, str] = {}
+    for expression in select.expressions:
+        if isinstance(expression, exp.Alias):
+            select_aliases[expression.alias.casefold()] = _normalize_expression(
+                expression.this,
+                aliases,
+                physical_sources,
+            )
 
     projections: list[ColumnRef] = []
     for expression in select.expressions:
@@ -190,9 +198,17 @@ def parse_sql_semantics(sql: str) -> SQLSemanticsParse:
             direction: Literal["ASC", "DESC"] = (
                 "DESC" if isinstance(ordered, exp.Ordered) and bool(ordered.args.get("desc")) else "ASC"
             )
+            if (
+                isinstance(node, exp.Column)
+                and not node.table
+                and node.name.casefold() in select_aliases
+            ):
+                normalized_order = select_aliases[node.name.casefold()]
+            else:
+                normalized_order = _normalize_expression(node, aliases, physical_sources)
             orders.append(
                 NormalizedOrder(
-                    expression=_normalize_expression(node, aliases, physical_sources),
+                    expression=normalized_order,
                     direction=direction,
                 )
             )
