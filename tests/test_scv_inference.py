@@ -275,3 +275,39 @@ def test_scv_invalid_repair_is_preflighted_and_not_repaired_again(
     assert result.status == "verification_failed"
     assert len(provider.calls) == 1
     assert tuple(stage.name for stage in result.stages).count("semantic_repair") == 1
+
+
+def test_scv_semantic_repair_budget_is_capped_at_one(
+    database: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_contract(monkeypatch)
+    _patch_parse(monkeypatch)
+    violation = SCVViolation(
+        code="PROJECTION_MISMATCH",
+        expected="schools.County Name",
+        actual="schools.id",
+        evidence="requested county name is absent",
+    )
+    monkeypatch.setattr(
+        inference,
+        "verify_semantic_contract",
+        lambda *args, **kwargs: SCVVerification(
+            status="violation", violations=(violation,)
+        ),
+        raising=False,
+    )
+    provider = RecordingProvider("SELECT id FROM schools")
+    result = inference.run_guarded(
+        database=database,
+        provider=provider,
+        question="Return county name.",
+        schema_context='schools(id, "County Name")',
+        initial_candidate=inference.SQLCandidate(sql="SELECT id FROM schools"),
+        max_repairs=0,
+        semantic_contract_verification=True,
+        semantic_repair_budget=3,
+    )
+    assert result.status == "verification_failed"
+    assert tuple(stage.name for stage in result.stages).count("semantic_repair") == 1
+    assert len(provider.calls) == 1
