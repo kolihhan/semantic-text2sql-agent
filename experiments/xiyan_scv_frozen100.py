@@ -78,6 +78,27 @@ def score_query(
     }
 
 
+def score_guarded_result(
+    database: Path,
+    result,
+    gold_sql: str,
+    *,
+    max_rows: int = 50_000,
+) -> dict[str, bool]:
+    if result.status != "ok" or result.candidate is None:
+        return {
+            "execution_success": False,
+            "frozen_execution_match": False,
+            "truncated": False,
+        }
+    return score_query(
+        database,
+        result.candidate.sql,
+        gold_sql,
+        max_rows=max_rows,
+    )
+
+
 def aggregate_case_rows(rows: list[dict[str, object]]) -> dict[str, object]:
     sample_size = len(rows)
     if sample_size == 0:
@@ -271,7 +292,7 @@ def main() -> None:
         )
         scv_latency_s = time.perf_counter() - scv_started
         scv_sql = scv_result.candidate.sql if scv_result.candidate else None
-        scv_score = score_query(database, scv_sql, label.sql)
+        scv_score = score_guarded_result(database, scv_result, label.sql)
         scv_status, contract_summary, violation_codes = _scv_diagnostics(scv_result)
 
         row = {
