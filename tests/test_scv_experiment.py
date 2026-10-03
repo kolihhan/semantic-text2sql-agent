@@ -3,7 +3,8 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from experiments.xiyan_scv_frozen100 import aggregate_case_rows, score_query
+from experiments.xiyan_scv_frozen100 import aggregate_case_rows, score_guarded_result, score_query
+from semantic_sql.contracts import AgentResult, SQLCandidate
 
 
 def test_score_query_uses_explicit_frozen_execution_match_label(tmp_path: Path) -> None:
@@ -90,3 +91,23 @@ def test_aggregate_case_rows_reports_paired_transitions_and_diagnostics() -> Non
         "PROJECTION_MISMATCH": 1,
     }
     assert summary["median_scv_latency_s"] == 2.5
+
+
+def test_score_guarded_result_does_not_execute_refused_candidate(tmp_path: Path) -> None:
+    db = tmp_path / "guarded-score.sqlite"
+    with sqlite3.connect(db) as con:
+        con.execute("CREATE TABLE items (id INTEGER)")
+        con.executemany("INSERT INTO items VALUES (?)", [(1,), (2,)])
+
+    refused = AgentResult(
+        status="verification_failed",
+        question="Return item ids.",
+        candidate=SQLCandidate(sql="SELECT id FROM items"),
+    )
+    score = score_guarded_result(db, refused, "SELECT id FROM items")
+
+    assert score == {
+        "execution_success": False,
+        "frozen_execution_match": False,
+        "truncated": False,
+    }
