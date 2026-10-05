@@ -1,0 +1,232 @@
+name: Qwen3.5 9B frozen-100 XiYan-style
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/QWEN9B_XIYAN_STYLE_TRIGGER"
+
+permissions:
+  contents: read
+
+env:
+  BASELINE_COMMIT: d3b687759cba2d9e7b4d8fb1d42bc4c33da575c4
+  SOURCE_HF_COMMIT: 3c11fb193e5439b338e23677fa0aae11e8b85db9
+  SOURCE_RAW_SHA256: ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb
+  SOURCE_SHA256: 0310b7ca2dfb6247234e2073f93e7a75106ee41ba55231f75d06d2ef68efe2ec
+  DB_ZIP_SHA256: cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630
+  MODEL: qwen3.5:9b-q4_K_M
+
+jobs:
+  treatment:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: Checkout exact v5 baseline code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ env.BASELINE_COMMIT }}
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install project
+        run: python -m pip install -e ".[dev]"
+
+      - name: Restore exact historical BIRD source and shard manifest
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          mkdir -p /tmp/qwen9b
+          curl -fL --retry 3 \
+            "https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/${SOURCE_HF_COMMIT}/data/dev_20251106-00000-of-00001.json?download=true" \
+            -o /tmp/qwen9b/source-lf.json
+          echo "${SOURCE_RAW_SHA256}  /tmp/qwen9b/source-lf.json" | sha256sum -c -
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+
+          raw = Path('/tmp/qwen9b/source-lf.json').read_bytes()
+          assert b'\r\n' not in raw
+          historical = raw.replace(b'\n', b'\r\n')
+          source = Path('/tmp/qwen9b/source.json')
+          source.write_bytes(historical)
+          assert hashlib.sha256(historical).hexdigest() == os.environ['SOURCE_SHA256']
+
+          reference = json.loads(Path('runs/bird-paired-dev-v5/paired.json').read_text(encoding='utf-8'))
+          assert reference['status'] == 'complete'
+          assert reference['sample_size'] == 100
+          assert reference['model'] == 'qwen3.5:4b'
+          assert reference['source_sha256'] == os.environ['SOURCE_SHA256']
+          assert reference['runtime']['max_repairs'] == 2
+          assert reference['runtime']['max_rows'] == 50000
+
+          rows = json.loads(historical.decode('utf-8'))
+          by_id = {str(row['question_id']): row for row in rows}
+          cases = reference['cases']
+          for case in cases:
+              row = by_id[str(case['case_id'])]
+              assert str(row['db_id']) == str(case['database_id'])
+              assert str(row['question']) == str(case['question'])
+
+          shard = int(os.environ['SHARD'])
+          ids = [str(case['case_id']) for i, case in enumerate(cases) if i % 4 == shard]
+          assert len(ids) == 25 and len(set(ids)) == 25
+          manifest = {
+              'protocol_version': 1,
+              'source_sha256': os.environ['SOURCE_SHA256'],
+              'seed': f'qwen9b-v5-shard-{shard}',
+              'dev_case_ids': ids,
+              'final_case_ids': [],
+          }
+          Path(f'/tmp/qwen9b/manifest-{shard}.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
+          print(f'exact_v5_shard={shard} cases={len(ids)} source=PASS')
+          PY
+
+      - name: Download BIRD databases
+        run: |
+          mkdir -p /tmp/bird
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
+          echo "${DB_ZIP_SHA256}  /tmp/bird/dev.zip" | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          DB_ZIP=$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          mkdir -p /tmp/bird/databases
+          unzip -q "$DB_ZIP" -d /tmp/bird/databases
+          DB_ROOT=$(find /tmp/bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=/tmp/bird/databases; fi
+          test -d "$DB_ROOT"
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+
+      - name: Install Ollama
+        run: curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+
+      - name: Start Ollama and pull Qwen3.5 9B
+        run: |
+          ollama serve > /tmp/ollama.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 1
+          done
+          ollama pull "$MODEL"
+          ollama list
+
+      - name: Run paired Qwen 9B shard
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python -m evaluation.run_bird paired-dev \
+            --source /tmp/qwen9b/source.json \
+            --database-root "$DB_ROOT" \
+            --manifest "/tmp/qwen9b/manifest-${SHARD}.json" \
+            --model "$MODEL" \
+            --timeout 600 \
+            --max-rows 50000 \
+            --output "qwen9b-shard-${SHARD}.json"
+
+      - name: Upload shard
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qwen9b-xiyan-style-shard-${{ matrix.shard }}
+          path: qwen9b-shard-${{ matrix.shard }}.json
+          if-no-files-found: warn
+
+  aggregate:
+    needs: treatment
+    if: ${{ always() && needs.treatment.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout exact v5 baseline code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          ref: ${{ env.BASELINE_COMMIT }}
+
+      - name: Download shards
+        uses: actions/download-artifact@v4
+        with:
+          pattern: qwen9b-xiyan-style-shard-*
+          path: shards
+          merge-multiple: true
+
+      - name: Aggregate exact 100
+        run: |
+          python - <<'PY'
+          import glob, json, os
+          from pathlib import Path
+          from statistics import median
+
+          reference = json.loads(Path('runs/bird-paired-dev-v5/paired.json').read_text(encoding='utf-8'))
+          expected = {str(case['case_id']): case for case in reference['cases']}
+          paths = sorted(glob.glob('shards/qwen9b-shard-*.json'))
+          assert len(paths) == 4, paths
+          payloads = [json.loads(Path(p).read_text(encoding='utf-8')) for p in paths]
+          assert all(p['status'] == 'complete' for p in payloads)
+          assert all(p['model'] == os.environ['MODEL'] for p in payloads)
+          assert all(p['source_sha256'] == os.environ['SOURCE_SHA256'] for p in payloads)
+          assert all(p['runtime']['max_repairs'] == 2 for p in payloads)
+          assert all(p['runtime']['max_rows'] == 50000 for p in payloads)
+
+          cases = [case for p in payloads for case in p['cases']]
+          ids = [str(case['case_id']) for case in cases]
+          assert len(cases) == 100 and len(set(ids)) == 100
+          assert set(ids) == set(expected)
+          assert all(case.get('initial_sql_identical') is True for case in cases)
+          for case in cases:
+              ref = expected[str(case['case_id'])]
+              assert str(case['database_id']) == str(ref['database_id'])
+              assert str(case['question']) == str(ref['question'])
+
+          def p95(xs):
+              xs = sorted(xs)
+              return xs[max(0, int(0.95 * len(xs) + 0.999999) - 1)]
+          def metrics(arm):
+              rows = [c[arm] for c in cases]
+              lat = [float(r['latency_s']) for r in rows]
+              return {
+                  'official_bird_ex': sum(bool(r['official_ex']) for r in rows) / 100,
+                  'execution_success': sum(bool(r['execution_success']) for r in rows) / 100,
+                  'model_calls': sum(int(r['model_calls']) for r in rows),
+                  'latency_median_s': median(lat),
+                  'latency_p95_s': p95(lat),
+              }
+
+          digests = {p['model_digest'] for p in payloads}
+          assert len(digests) == 1
+          result = {
+              'status': 'complete',
+              'experiment': 'Qwen3.5 9B exact v5 frozen-100, XiYan-style 4x25 CPU shards',
+              'model': os.environ['MODEL'],
+              'model_digest': next(iter(digests)),
+              'sample_size': 100,
+              'source_sha256': os.environ['SOURCE_SHA256'],
+              'runtime': {'max_repairs': 2, 'max_rows': 50000, 'think': False},
+              'metrics': {
+                  'direct': metrics('direct'),
+                  'guarded': metrics('guarded'),
+                  'transitions': {
+                      'direct_wrong_to_guarded_correct': sum((not c['direct']['official_ex']) and c['guarded']['official_ex'] for c in cases),
+                      'direct_correct_to_guarded_wrong': sum(c['direct']['official_ex'] and (not c['guarded']['official_ex']) for c in cases),
+                      'direct_execution_fail_to_guarded_success': sum((not c['direct']['execution_success']) and c['guarded']['execution_success'] for c in cases),
+                      'direct_execution_success_to_guarded_fail': sum(c['direct']['execution_success'] and (not c['guarded']['execution_success']) for c in cases),
+                  },
+              },
+              'baseline_qwen3_5_4b_metrics': reference['metrics'],
+              'cases': cases,
+          }
+          Path('qwen9b-xiyan-style-frozen100.json').write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding='utf-8')
+          print(json.dumps(result['metrics'], indent=2))
+          print('aggregate=PASS cases=100')
+          PY
+
+      - name: Upload aggregate
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen9b-xiyan-style-frozen100
+          path: qwen9b-xiyan-style-frozen100.json
