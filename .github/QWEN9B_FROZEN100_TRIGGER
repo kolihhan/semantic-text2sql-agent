@@ -1,1 +1,1 @@
-run 2026-10-05 qwen3.5:9b-q4_K_M frozen-100 paired benchmark v2
+run 2026-10-05 qwen3.5:9b-q4_K_M semantic frozen-100 paired benchmark v3
