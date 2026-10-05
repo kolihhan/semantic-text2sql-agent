@@ -1,4 +1,4 @@
-name: Qwen3.5 9B paired frozen-100
+name: Qwen3.5 9B exact v5 frozen-100
 
 on:
   workflow_dispatch:
@@ -9,30 +9,34 @@ on:
 permissions:
   contents: read
 
+env:
+  BASELINE_COMMIT: d3b687759cba2d9e7b4d8fb1d42bc4c33da575c4
+  SOURCE_HF_COMMIT: 3c11fb193e5439b338e23677fa0aae11e8b85db9
+  SOURCE_RAW_SHA256: ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb
+  SOURCE_HISTORICAL_SHA256: 0310b7ca2dfb6247234e2073f93e7a75106ee41ba55231f75d06d2ef68efe2ec
+  REFERENCE_SPLIT_SHA256: b3b4ec070e63a7106d023917e0f0cc61ea75e2be2f2888b8c7bdaf2064fb3ae1
+  DB_ZIP_SHA256: cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630
+  MODEL: qwen3.5:9b-q4_K_M
+
 jobs:
-  resolve:
+  preflight:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
-      - name: Checkout
+      - name: Checkout exact v5 baseline code
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-
-      - name: Set up Python
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
-          python-version: "3.11"
+          ref: ${{ env.BASELINE_COMMIT }}
 
-      - name: Download pinned BIRD 2024-06-27 dev release
+      - name: Download pinned BIRD SQL Dev 2025-11-06 source
         run: |
-          mkdir -p /tmp/bird
-          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
-          echo "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  /tmp/bird/dev.zip" | sha256sum -c -
-          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
-          DEV_JSON=$(find /tmp/bird/unpacked -type f -name dev.json ! -path '*/__MACOSX/*' | head -n1)
-          test -n "$DEV_JSON"
-          echo "DEV_JSON=$DEV_JSON" >> "$GITHUB_ENV"
+          mkdir -p frozen-inputs
+          curl -fL --retry 3 \
+            "https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/${SOURCE_HF_COMMIT}/data/dev_20251106-00000-of-00001.json?download=true" \
+            -o frozen-inputs/bird-sql-dev-lf.json
+          echo "${SOURCE_RAW_SHA256}  frozen-inputs/bird-sql-dev-lf.json" | sha256sum -c -
 
-      - name: Resolve and verify semantic frozen-100
+      - name: Restore historical bytes and verify exact v5 frozen set
         run: |
           python - <<'PY'
           import hashlib
@@ -40,64 +44,88 @@ jobs:
           import os
           from pathlib import Path
 
-          from evaluation.protocol import resolve_semantic_frozen_cases, sha256_file
-
+          raw_path = Path("frozen-inputs/bird-sql-dev-lf.json")
+          historical_path = Path("frozen-inputs/bird-sql-dev-historical-crlf.json")
           reference_path = Path("runs/bird-paired-dev-v5/paired.json")
+
+          raw = raw_path.read_bytes()
+          assert hashlib.sha256(raw).hexdigest() == os.environ["SOURCE_RAW_SHA256"]
+          assert b"\r\n" not in raw, "pinned HF source unexpectedly already contains CRLF"
+          historical = raw.replace(b"\n", b"\r\n")
+          historical_path.write_bytes(historical)
+          historical_sha = hashlib.sha256(historical).hexdigest()
+          assert historical_sha == os.environ["SOURCE_HISTORICAL_SHA256"], historical_sha
+
+          rows = json.loads(historical.decode("utf-8"))
+          assert len(rows) == 1534, len(rows)
+          by_id = {str(row.get("question_id") or row.get("id") or i): row for i, row in enumerate(rows)}
+
           reference = json.loads(reference_path.read_text(encoding="utf-8"))
           assert reference["status"] == "complete"
           assert reference["sample_size"] == 100
+          assert reference["model"] == "qwen3.5:4b"
+          assert reference["source_sha256"] == os.environ["SOURCE_HISTORICAL_SHA256"]
+          assert reference["split_manifest_sha256"] == os.environ["REFERENCE_SPLIT_SHA256"]
+          assert reference["runtime"]["guarded_treatment"] == "langgraph_preflight_plus_internal_cot_repair_v1"
           assert reference["runtime"]["schema_grounding"] == "deterministic_lexical_v1"
-          reference_cases = reference["cases"]
-          assert len(reference_cases) == 100
+          assert reference["runtime"]["max_repairs"] == 2
+          assert reference["runtime"]["max_rows"] == 50000
 
-          semantic_keys = [
-              (str(row["database_id"]), str(row["question"]))
-              for row in reference_cases
-          ]
-          assert len(set(semantic_keys)) == 100, "reference semantic identities are not unique"
+          cases = reference["cases"]
+          ids = [str(case["case_id"]) for case in cases]
+          assert len(ids) == 100 and len(set(ids)) == 100
+          missing = [case_id for case_id in ids if case_id not in by_id]
+          assert not missing, f"missing exact v5 IDs: {missing[:10]}"
 
-          dev_path = Path(os.environ["DEV_JSON"])
-          source_rows = json.loads(dev_path.read_text(encoding="utf-8"))
-          resolved = resolve_semantic_frozen_cases(reference_cases, source_rows)
-          assert len(resolved) == 100
-          assert len({row["case_id"] for row in resolved}) == 100, "resolved current case IDs are not unique"
-          assert [
-              (row["database_id"], row["question"]) for row in resolved
-          ] == semantic_keys
-
-          semantic_bytes = json.dumps(
-              [{"database_id": db, "question": question} for db, question in semantic_keys],
-              ensure_ascii=False,
-              separators=(",", ":"),
-          ).encode("utf-8")
+          mismatches = []
+          frozen_cases = []
+          for case in cases:
+              case_id = str(case["case_id"])
+              source = by_id[case_id]
+              if str(source["db_id"]) != str(case["database_id"]) or str(source["question"]) != str(case["question"]):
+                  mismatches.append(case_id)
+              frozen_cases.append({
+                  "case_id": case_id,
+                  "database_id": str(case["database_id"]),
+                  "question": str(case["question"]),
+              })
+          assert not mismatches, f"v5 source identity mismatches: {mismatches[:10]}"
 
           payload = {
               "status": "complete",
+              "baseline_commit": os.environ["BASELINE_COMMIT"],
+              "source_dataset": "birdsql/bird_sql_dev_20251106",
+              "source_hf_commit": os.environ["SOURCE_HF_COMMIT"],
+              "source_rows": len(rows),
+              "source_raw_sha256": os.environ["SOURCE_RAW_SHA256"],
+              "source_historical_sha256": historical_sha,
               "reference": str(reference_path),
-              "reference_source_sha256": reference["source_sha256"],
               "reference_split_manifest_sha256": reference["split_manifest_sha256"],
+              "baseline_model": reference["model"],
+              "baseline_model_digest": reference["model_digest"],
+              "baseline_metrics": reference["metrics"],
+              "runtime": reference["runtime"],
+              "official_bird_evaluator": reference["official_bird_evaluator"],
               "sample_size": 100,
-              "identity": "database_id + exact question text",
-              "semantic_fingerprint_sha256": hashlib.sha256(semantic_bytes).hexdigest(),
-              "pinned_bird_zip_sha256": "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630",
-              "source_sha256": sha256_file(dev_path),
-              "cases": resolved,
+              "cases": frozen_cases,
           }
-          Path("resolved-frozen100.json").write_text(
+          Path("frozen-inputs/frozen100-reference.json").write_text(
               json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
           )
-          print(json.dumps({k: v for k, v in payload.items() if k != "cases"}, indent=2))
-          print(f"resolved_cases={len(resolved)} unique_current_ids={len({row['case_id'] for row in resolved})}")
+          print(json.dumps({k: v for k, v in payload.items() if k not in {"cases", "baseline_metrics"}}, indent=2))
+          print("PRECHECK exact_source=PASS exact_v5_cases=100/100")
           PY
 
-      - name: Upload resolved frozen set
+      - name: Upload verified frozen inputs
         uses: actions/upload-artifact@v4
         with:
-          name: qwen9b-resolved-frozen100
-          path: resolved-frozen100.json
+          name: qwen9b-v5-frozen-inputs
+          path: |
+            frozen-inputs/bird-sql-dev-historical-crlf.json
+            frozen-inputs/frozen100-reference.json
 
   benchmark:
-    needs: resolve
+    needs: preflight
     strategy:
       fail-fast: false
       matrix:
@@ -105,8 +133,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 240
     steps:
-      - name: Checkout
+      - name: Checkout exact v5 baseline code
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ env.BASELINE_COMMIT }}
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
@@ -114,76 +144,64 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Install project
+      - name: Install exact baseline project
         run: python -m pip install -e ".[dev]"
 
-      - name: Download resolved frozen set
+      - name: Download verified frozen inputs
         uses: actions/download-artifact@v4
         with:
-          name: qwen9b-resolved-frozen100
-          path: resolved
+          name: qwen9b-v5-frozen-inputs
+          path: frozen-inputs
 
-      - name: Download pinned BIRD 2024-06-27 dev release
-        run: |
-          mkdir -p /tmp/bird
-          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
-          echo "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  /tmp/bird/dev.zip" | sha256sum -c -
-          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
-          DEV_JSON=$(find /tmp/bird/unpacked -type f -name dev.json ! -path '*/__MACOSX/*' | head -n1)
-          DB_ZIP=$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
-          test -n "$DEV_JSON"
-          test -n "$DB_ZIP"
-          mkdir -p /tmp/bird/databases
-          unzip -q "$DB_ZIP" -d /tmp/bird/databases
-          DB_ROOT=$(find /tmp/bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
-          if [ -z "$DB_ROOT" ]; then DB_ROOT=/tmp/bird/databases; fi
-          echo "DEV_JSON=$DEV_JSON" >> "$GITHUB_ENV"
-          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
-
-      - name: Build verified shard manifest
+      - name: Verify source and build exact shard manifest
         env:
           SHARD: ${{ matrix.shard }}
         run: |
           python - <<'PY'
+          import hashlib
           import json
           import os
           from pathlib import Path
 
-          from evaluation.protocol import sha256_file
-
-          resolved = json.loads(Path("resolved/resolved-frozen100.json").read_text(encoding="utf-8"))
-          assert resolved["status"] == "complete"
-          assert resolved["sample_size"] == 100
-
-          dev_path = Path(os.environ["DEV_JSON"])
-          actual_source_sha = sha256_file(dev_path)
-          assert actual_source_sha == resolved["source_sha256"], (
-              actual_source_sha, resolved["source_sha256"]
-          )
+          source = Path("frozen-inputs/bird-sql-dev-historical-crlf.json")
+          reference = json.loads(Path("frozen-inputs/frozen100-reference.json").read_text(encoding="utf-8"))
+          source_sha = hashlib.sha256(source.read_bytes()).hexdigest()
+          assert source_sha == os.environ["SOURCE_HISTORICAL_SHA256"]
+          assert reference["source_historical_sha256"] == source_sha
+          assert reference["baseline_commit"] == os.environ["BASELINE_COMMIT"]
+          assert reference["sample_size"] == 100
 
           shard = int(os.environ["SHARD"])
-          selected_rows = [row for i, row in enumerate(resolved["cases"]) if i % 4 == shard]
+          selected_rows = [row for i, row in enumerate(reference["cases"]) if i % 4 == shard]
           assert len(selected_rows) == 25
           selected = [str(row["case_id"]) for row in selected_rows]
           assert len(set(selected)) == 25
 
           manifest = {
               "protocol_version": 1,
-              "source_sha256": actual_source_sha,
-              "seed": f"qwen9b-semantic-frozen100-shard-{shard}",
+              "source_sha256": source_sha,
+              "seed": f"qwen9b-exact-v5-shard-{shard}",
               "dev_case_ids": selected,
               "final_case_ids": [],
           }
-          Path(f"/tmp/qwen9b-shard-{shard}.json").write_text(
-              json.dumps(manifest, indent=2), encoding="utf-8"
-          )
-          print(json.dumps({
-              "shard": shard,
-              "count": len(selected),
-              "semantic_fingerprint_sha256": resolved["semantic_fingerprint_sha256"],
-              "case_ids": selected,
-          }, indent=2))
+          Path(f"/tmp/qwen9b-shard-{shard}.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+          print(json.dumps({"shard": shard, "count": 25, "case_ids": selected}, indent=2))
           PY
+
+      - name: Download and extract historical database package
+        run: |
+          mkdir -p /tmp/bird
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
+          echo "${DB_ZIP_SHA256}  /tmp/bird/dev.zip" | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          DB_ZIP=$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ZIP"
+          mkdir -p /tmp/bird/databases
+          unzip -q "$DB_ZIP" -d /tmp/bird/databases
+          DB_ROOT=$(find /tmp/bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=/tmp/bird/databases; fi
+          test -d "$DB_ROOT"
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
 
       - name: Install Ollama
         run: curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
@@ -195,19 +213,20 @@ jobs:
             if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
             sleep 1
           done
-          ollama pull qwen3.5:9b-q4_K_M
+          ollama pull "$MODEL"
           ollama list
 
-      - name: Run paired Direct vs Guarded shard
+      - name: Run exact historical paired treatment
         env:
           SHARD: ${{ matrix.shard }}
         run: |
           python -m evaluation.run_bird paired-dev \
-            --source "$DEV_JSON" \
+            --source frozen-inputs/bird-sql-dev-historical-crlf.json \
             --database-root "$DB_ROOT" \
             --manifest "/tmp/qwen9b-shard-${SHARD}.json" \
-            --model qwen3.5:9b-q4_K_M \
+            --model "$MODEL" \
             --timeout 600 \
+            --max-repairs 2 \
             --max-rows 50000 \
             --output "qwen9b-paired-shard-${SHARD}.json"
 
@@ -220,18 +239,15 @@ jobs:
           if-no-files-found: warn
 
   aggregate:
-    needs: [resolve, benchmark]
-    if: ${{ always() && needs.resolve.result == 'success' && needs.benchmark.result == 'success' }}
+    needs: [preflight, benchmark]
+    if: ${{ always() && needs.preflight.result == 'success' && needs.benchmark.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-
-      - name: Download resolved frozen set
+      - name: Download verified frozen inputs
         uses: actions/download-artifact@v4
         with:
-          name: qwen9b-resolved-frozen100
-          path: resolved
+          name: qwen9b-v5-frozen-inputs
+          path: frozen-inputs
 
       - name: Download shard results
         uses: actions/download-artifact@v4
@@ -240,43 +256,51 @@ jobs:
           path: shards
           merge-multiple: true
 
-      - name: Aggregate and verify semantic frozen-100 result
+      - name: Aggregate and verify exact comparison
         run: |
           python - <<'PY'
           import glob
           import json
+          import os
           from pathlib import Path
           from statistics import median
 
-          resolved = json.loads(Path("resolved/resolved-frozen100.json").read_text(encoding="utf-8"))
-          assert resolved["status"] == "complete"
-          assert resolved["sample_size"] == 100
-          resolved_rows = resolved["cases"]
-          resolved_ids = [str(row["case_id"]) for row in resolved_rows]
-          assert len(resolved_ids) == 100 and len(set(resolved_ids)) == 100
+          reference = json.loads(Path("frozen-inputs/frozen100-reference.json").read_text(encoding="utf-8"))
+          expected_rows = reference["cases"]
+          expected_ids = [str(row["case_id"]) for row in expected_rows]
+          expected_by_id = {str(row["case_id"]): row for row in expected_rows}
+          assert len(expected_ids) == 100 and len(set(expected_ids)) == 100
 
-          shard_paths = sorted(glob.glob("shards/qwen9b-paired-shard-*.json"))
-          assert len(shard_paths) == 4, shard_paths
-          payloads = [json.loads(Path(p).read_text(encoding="utf-8")) for p in shard_paths]
-          assert all(p["status"] == "complete" for p in payloads)
-          assert all(p["model"] == "qwen3.5:9b-q4_K_M" for p in payloads)
-          digests = {p["model_digest"] for p in payloads}
+          paths = sorted(glob.glob("shards/qwen9b-paired-shard-*.json"))
+          assert len(paths) == 4, paths
+          payloads = [json.loads(Path(path).read_text(encoding="utf-8")) for path in paths]
+          assert all(payload["status"] == "complete" for payload in payloads)
+          assert all(payload["model"] == os.environ["MODEL"] for payload in payloads)
+          assert all(payload["source_sha256"] == os.environ["SOURCE_HISTORICAL_SHA256"] for payload in payloads)
+          assert all(payload["runtime"]["guarded_treatment"] == "langgraph_preflight_plus_internal_cot_repair_v1" for payload in payloads)
+          assert all(payload["runtime"]["schema_grounding"] == "deterministic_lexical_v1" for payload in payloads)
+          assert all(payload["runtime"]["max_repairs"] == 2 for payload in payloads)
+          assert all(payload["runtime"]["max_rows"] == 50000 for payload in payloads)
+          assert all(payload["think"] is False for payload in payloads)
+
+          digests = {payload["model_digest"] for payload in payloads}
           assert len(digests) == 1, digests
-          source_hashes = {p["source_sha256"] for p in payloads}
-          assert source_hashes == {resolved["source_sha256"]}, source_hashes
+          evaluator = payloads[0]["official_bird_evaluator"]
+          assert all(payload["official_bird_evaluator"] == evaluator for payload in payloads)
+          assert evaluator == reference["official_bird_evaluator"]
 
           cases = [case for payload in payloads for case in payload["cases"]]
           assert len(cases) == 100
-          case_ids = [str(case["case_id"]) for case in cases]
-          assert len(set(case_ids)) == 100
-          assert set(case_ids) == set(resolved_ids)
+          actual_ids = [str(case["case_id"]) for case in cases]
+          assert len(set(actual_ids)) == 100
+          assert set(actual_ids) == set(expected_ids)
           assert all(case.get("initial_sql_identical") is True for case in cases)
-
-          resolved_by_id = {str(row["case_id"]): row for row in resolved_rows}
           for case in cases:
-              expected = resolved_by_id[str(case["case_id"])]
+              expected = expected_by_id[str(case["case_id"])]
               assert str(case["database_id"]) == expected["database_id"]
               assert str(case["question"]) == expected["question"]
+
+          cases.sort(key=lambda row: expected_ids.index(str(row["case_id"])))
 
           def p95(values):
               values = sorted(values)
@@ -294,53 +318,49 @@ jobs:
               }
 
           transitions = {
-              "direct_wrong_to_guarded_correct": sum(
-                  (not case["direct"]["official_ex"]) and case["guarded"]["official_ex"] for case in cases
-              ),
-              "direct_correct_to_guarded_wrong": sum(
-                  case["direct"]["official_ex"] and (not case["guarded"]["official_ex"]) for case in cases
-              ),
-              "direct_execution_fail_to_guarded_success": sum(
-                  (not case["direct"]["execution_success"]) and case["guarded"]["execution_success"] for case in cases
-              ),
-              "direct_execution_success_to_guarded_fail": sum(
-                  case["direct"]["execution_success"] and (not case["guarded"]["execution_success"]) for case in cases
-              ),
+              "direct_wrong_to_guarded_correct": sum((not c["direct"]["official_ex"]) and c["guarded"]["official_ex"] for c in cases),
+              "direct_correct_to_guarded_wrong": sum(c["direct"]["official_ex"] and (not c["guarded"]["official_ex"]) for c in cases),
+              "direct_execution_fail_to_guarded_success": sum((not c["direct"]["execution_success"]) and c["guarded"]["execution_success"] for c in cases),
+              "direct_execution_success_to_guarded_fail": sum(c["direct"]["execution_success"] and (not c["guarded"]["execution_success"]) for c in cases),
           }
 
+          metrics = {
+              "direct": arm_metrics("direct"),
+              "guarded": arm_metrics("guarded"),
+              "transitions": transitions,
+          }
           result = {
               "project": "P1 Benchmark-First Text-to-SQL",
-              "experiment": "Qwen3.5 9B paired Direct vs Guarded on semantic frozen-100 BIRD DEV set",
+              "experiment": "Qwen3.5 9B exact rerun of v5 frozen-100 paired benchmark",
               "status": "complete",
-              "model": "qwen3.5:9b-q4_K_M",
+              "model": os.environ["MODEL"],
               "model_digest": next(iter(digests)),
               "sample_size": 100,
-              "frozen_reference": resolved["reference"],
-              "frozen_identity": resolved["identity"],
-              "semantic_fingerprint_sha256": resolved["semantic_fingerprint_sha256"],
-              "source_sha256": resolved["source_sha256"],
-              "reference_source_sha256": resolved["reference_source_sha256"],
-              "reference_split_manifest_sha256": resolved["reference_split_manifest_sha256"],
+              "only_intended_variable": "model (qwen3.5:4b -> qwen3.5:9b-q4_K_M)",
+              "baseline_commit": reference["baseline_commit"],
+              "source_dataset": reference["source_dataset"],
+              "source_hf_commit": reference["source_hf_commit"],
+              "source_sha256": reference["source_historical_sha256"],
+              "reference": reference["reference"],
+              "reference_split_manifest_sha256": reference["reference_split_manifest_sha256"],
               "runtime": {
                   "think": False,
                   "max_repairs": 2,
                   "max_rows": 50000,
-                  "guarded_treatment": payloads[0]["runtime"]["guarded_treatment"],
-                  "schema_grounding": payloads[0]["runtime"]["schema_grounding"],
+                  "guarded_treatment": "langgraph_preflight_plus_internal_cot_repair_v1",
+                  "schema_grounding": "deterministic_lexical_v1",
               },
-              "official_bird_evaluator": payloads[0]["official_bird_evaluator"],
-              "metrics": {
-                  "direct": arm_metrics("direct"),
-                  "guarded": arm_metrics("guarded"),
-                  "transitions": transitions,
+              "official_bird_evaluator": evaluator,
+              "metrics": metrics,
+              "baseline_qwen3_5_4b": {
+                  "model_digest": reference["baseline_model_digest"],
+                  "metrics": reference["baseline_metrics"],
               },
-              "cases": sorted(cases, key=lambda row: resolved_ids.index(str(row["case_id"]))),
+              "cases": cases,
           }
-
-          Path("qwen9b-paired-frozen100.json").write_text(
-              json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8"
-          )
-          print(json.dumps({k: v for k, v in result.items() if k != "cases"}, indent=2))
+          Path("qwen9b-paired-frozen100.json").write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+          print(json.dumps({k: v for k, v in result.items() if k not in {"cases", "baseline_qwen3_5_4b"}}, indent=2))
+          print("AGGREGATE exact_v5_cases=100/100 status=PASS")
           PY
 
       - name: Upload aggregate result
