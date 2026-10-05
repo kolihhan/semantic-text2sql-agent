@@ -9,6 +9,7 @@ from .contracts import AgentResult, SQLCandidate, StageRecord, VerificationResul
 from .direct import _strip_fence, generate_direct_sql
 from .execution import SQLExecutionError, execute_readonly
 from .providers import ModelProvider
+from .semantic_sketch import SemanticSketch, analyze_semantics
 from .verifier import verify_sql_preflight
 
 
@@ -32,12 +33,14 @@ class GuardedContext:
     max_repairs: int = 2
     max_rows: int = 100
     semantic_revision: bool = False
+    semantic_analysis: bool = False
 
 
 class GuardedState(TypedDict, total=False):
     question: str
     schema_context: str
     evidence: str | None
+    semantic_sketch: SemanticSketch | None
     candidate: SQLCandidate | None
     verification: VerificationResult | None
     semantic_revised: bool
@@ -49,12 +52,26 @@ def _append_stage(state: GuardedState, name: str, summary: str) -> tuple[StageRe
     return (*state.get("stages", ()), StageRecord(name, summary))
 
 
+def _semantic_analyze(state: GuardedState, runtime) -> dict[str, Any]:
+    sketch = analyze_semantics(
+        state["question"],
+        state["schema_context"],
+        runtime.context.provider,
+        external_evidence=state.get("evidence"),
+    )
+    return {
+        "semantic_sketch": sketch,
+        "stages": _append_stage(state, "semantic_analysis", sketch.as_prompt()),
+    }
+
+
 def _generate(state: GuardedState, runtime) -> dict[str, Any]:
     candidate = state.get("candidate")
     if candidate is None:
         candidate = generate_direct_sql(
             state["question"], state["schema_context"], runtime.context.provider,
             external_evidence=state.get("evidence"),
+            semantic_sketch=state.get("semantic_sketch"),
         )
     return {"candidate": candidate, "stages": _append_stage(state, "sql", candidate.sql)}
 
@@ -165,10 +182,12 @@ def _verify_route(state: GuardedState, runtime) -> str:
     return "refuse"
 
 
-def _build_guarded_graph(*, semantic_revision: bool = False):
+def _build_guarded_graph(*, semantic_revision: bool = False, semantic_analysis: bool = False):
     from langgraph.graph import END, START, StateGraph
 
     graph = StateGraph(GuardedState, context_schema=GuardedContext)
+    if semantic_analysis:
+        graph.add_node("semantic_analysis", _semantic_analyze)
     graph.add_node("generate", _generate)
     graph.add_node("verify", _verify)
     graph.add_node("repair", _repair)
@@ -176,7 +195,11 @@ def _build_guarded_graph(*, semantic_revision: bool = False):
         graph.add_node("semantic_revision", _semantic_revise)
     graph.add_node("execute", _execute)
     graph.add_node("refuse", _refuse)
-    graph.add_edge(START, "generate")
+    if semantic_analysis:
+        graph.add_edge(START, "semantic_analysis")
+        graph.add_edge("semantic_analysis", "generate")
+    else:
+        graph.add_edge(START, "generate")
     graph.add_edge("generate", "verify")
     routes = {"execute": "execute", "repair": "repair", "refuse": "refuse"}
     if semantic_revision:
@@ -195,13 +218,18 @@ def run_guarded(
     schema_context: str, evidence: str | None = None,
     initial_candidate: SQLCandidate | None = None, max_repairs: int = 2,
     max_rows: int = 100, semantic_revision: bool = False,
+    semantic_analysis: bool = False,
 ) -> AgentResult:
     database = Path(database)
-    output = _build_guarded_graph(semantic_revision=semantic_revision).invoke(
+    output = _build_guarded_graph(
+        semantic_revision=semantic_revision,
+        semantic_analysis=semantic_analysis,
+    ).invoke(
         {
             "question": question,
             "schema_context": schema_context,
             "evidence": evidence,
+            "semantic_sketch": None,
             "candidate": initial_candidate,
             "semantic_revised": False,
             "stages": (),
@@ -213,6 +241,7 @@ def run_guarded(
             max_repairs=max_repairs,
             max_rows=max_rows,
             semantic_revision=semantic_revision,
+            semantic_analysis=semantic_analysis,
         ),
     )
     result = output["result"] if isinstance(output, dict) else output.result
