@@ -92,3 +92,50 @@ def load_case_ids_from_manifest(payload: object) -> list[str]:
             case_id = case_id[5:]
         normalized.append(case_id)
     return normalized
+
+
+def resolve_semantic_frozen_cases(
+    reference_cases: Iterable[dict[str, object]],
+    source_rows: Iterable[dict[str, object]],
+) -> list[dict[str, str]]:
+    """Resolve frozen BIRD cases by (database_id, exact question), not unstable row IDs."""
+    references = list(reference_cases)
+    reference_keys: list[tuple[str, str]] = []
+    seen_reference_keys: set[tuple[str, str]] = set()
+    for row in references:
+        key = (str(row["database_id"]), str(row["question"]))
+        if key in seen_reference_keys:
+            raise ValueError(f"duplicate semantic identity in frozen reference: {key!r}")
+        seen_reference_keys.add(key)
+        reference_keys.append(key)
+
+    matches: dict[tuple[str, str], tuple[int, dict[str, object]]] = {}
+    for index, row in enumerate(source_rows):
+        key = (str(row["db_id"]), str(row["question"]))
+        if key not in seen_reference_keys:
+            continue
+        if key in matches:
+            raise ValueError(f"duplicate semantic identity in source: {key!r}")
+        matches[key] = (index, row)
+
+    missing = [key for key in reference_keys if key not in matches]
+    if missing:
+        raise ValueError(f"missing semantic frozen cases: {missing[:5]}")
+
+    resolved: list[dict[str, str]] = []
+    for reference, key in zip(references, reference_keys, strict=True):
+        index, source = matches[key]
+        case_id = str(source.get("question_id") or source.get("id") or index)
+        evidence = str(source.get("evidence") or "")
+        gold_sql = str(source["SQL"])
+        resolved.append(
+            {
+                "reference_case_id": str(reference["case_id"]),
+                "case_id": case_id,
+                "database_id": key[0],
+                "question": key[1],
+                "evidence_sha256": hashlib.sha256(evidence.encode("utf-8")).hexdigest(),
+                "gold_sql_sha256": hashlib.sha256(gold_sql.encode("utf-8")).hexdigest(),
+            }
+        )
+    return resolved
