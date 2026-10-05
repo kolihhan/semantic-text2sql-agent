@@ -4,6 +4,7 @@ import re
 
 from .contracts import SQLCandidate
 from .providers import ModelProvider
+from .semantic_sketch import SemanticSketch
 
 
 _SYSTEM = """Generate one read-only SQLite SELECT query that answers the user's question using only the supplied schema context.
@@ -22,9 +23,12 @@ def generate_direct_sql(
     provider: ModelProvider,
     *,
     external_evidence: str | None = None,
+    semantic_sketch: SemanticSketch | None = None,
 ) -> SQLCandidate:
     user = f"Question: {question}\nSchema context:\n{schema_context}"
     if external_evidence is not None:
         user += f"\nExternal evidence:\n{external_evidence}"
+    if semantic_sketch is not None:
+        user += f"\nSemantic analysis (must follow):\n{semantic_sketch.as_prompt()}"
     sql = _strip_fence(provider.complete_text(system=_SYSTEM, user=user))
     return SQLCandidate(sql=sql, attempt=0)
