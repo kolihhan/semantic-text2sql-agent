@@ -10,7 +10,94 @@ permissions:
   contents: read
 
 jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Download pinned BIRD 2024-06-27 dev release
+        run: |
+          mkdir -p /tmp/bird
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
+          echo "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  /tmp/bird/dev.zip" | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          DEV_JSON=$(find /tmp/bird/unpacked -type f -name dev.json ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DEV_JSON"
+          echo "DEV_JSON=$DEV_JSON" >> "$GITHUB_ENV"
+
+      - name: Resolve and verify semantic frozen-100
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          from evaluation.protocol import resolve_semantic_frozen_cases, sha256_file
+
+          reference_path = Path("runs/bird-paired-dev-v5/paired.json")
+          reference = json.loads(reference_path.read_text(encoding="utf-8"))
+          assert reference["status"] == "complete"
+          assert reference["sample_size"] == 100
+          assert reference["runtime"]["schema_grounding"] == "deterministic_lexical_v1"
+          reference_cases = reference["cases"]
+          assert len(reference_cases) == 100
+
+          semantic_keys = [
+              (str(row["database_id"]), str(row["question"]))
+              for row in reference_cases
+          ]
+          assert len(set(semantic_keys)) == 100, "reference semantic identities are not unique"
+
+          dev_path = Path(os.environ["DEV_JSON"])
+          source_rows = json.loads(dev_path.read_text(encoding="utf-8"))
+          resolved = resolve_semantic_frozen_cases(reference_cases, source_rows)
+          assert len(resolved) == 100
+          assert len({row["case_id"] for row in resolved}) == 100, "resolved current case IDs are not unique"
+          assert [
+              (row["database_id"], row["question"]) for row in resolved
+          ] == semantic_keys
+
+          semantic_bytes = json.dumps(
+              [{"database_id": db, "question": question} for db, question in semantic_keys],
+              ensure_ascii=False,
+              separators=(",", ":"),
+          ).encode("utf-8")
+
+          payload = {
+              "status": "complete",
+              "reference": str(reference_path),
+              "reference_source_sha256": reference["source_sha256"],
+              "reference_split_manifest_sha256": reference["split_manifest_sha256"],
+              "sample_size": 100,
+              "identity": "database_id + exact question text",
+              "semantic_fingerprint_sha256": hashlib.sha256(semantic_bytes).hexdigest(),
+              "pinned_bird_zip_sha256": "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630",
+              "source_sha256": sha256_file(dev_path),
+              "cases": resolved,
+          }
+          Path("resolved-frozen100.json").write_text(
+              json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
+          )
+          print(json.dumps({k: v for k, v in payload.items() if k != "cases"}, indent=2))
+          print(f"resolved_cases={len(resolved)} unique_current_ids={len({row['case_id'] for row in resolved})}")
+          PY
+
+      - name: Upload resolved frozen set
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen9b-resolved-frozen100
+          path: resolved-frozen100.json
+
   benchmark:
+    needs: resolve
     strategy:
       fail-fast: false
       matrix:
@@ -30,18 +117,11 @@ jobs:
       - name: Install project
         run: python -m pip install -e ".[dev]"
 
-      - name: Install Ollama
-        run: curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
-
-      - name: Start Ollama and pull Qwen3.5 9B
-        run: |
-          ollama serve > /tmp/ollama.log 2>&1 &
-          for i in {1..30}; do
-            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
-            sleep 1
-          done
-          ollama pull qwen3.5:9b-q4_K_M
-          ollama list
+      - name: Download resolved frozen set
+        uses: actions/download-artifact@v4
+        with:
+          name: qwen9b-resolved-frozen100
+          path: resolved
 
       - name: Download pinned BIRD 2024-06-27 dev release
         run: |
@@ -60,52 +140,37 @@ jobs:
           echo "DEV_JSON=$DEV_JSON" >> "$GITHUB_ENV"
           echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
 
-      - name: Build exact frozen shard manifest
+      - name: Build verified shard manifest
         env:
           SHARD: ${{ matrix.shard }}
         run: |
           python - <<'PY'
-          import hashlib
           import json
           import os
           from pathlib import Path
 
-          frozen = json.loads(Path("runs/bird-paired-dev-v5/paired.json").read_text(encoding="utf-8"))
-          assert frozen["status"] == "complete"
-          assert frozen["sample_size"] == 100
-          frozen_rows = frozen["cases"]
-          ids = [str(row["case_id"]) for row in frozen_rows]
-          assert len(ids) == 100 and len(set(ids)) == 100
+          from evaluation.protocol import sha256_file
 
-          # Match the XiYan workflow pattern: the frozen artifact defines the
-          # case IDs, while the pinned BIRD download is the source used now.
+          resolved = json.loads(Path("resolved/resolved-frozen100.json").read_text(encoding="utf-8"))
+          assert resolved["status"] == "complete"
+          assert resolved["sample_size"] == 100
+
           dev_path = Path(os.environ["DEV_JSON"])
-          dev_rows = json.loads(dev_path.read_text(encoding="utf-8"))
-          dev_by_id = {
-              str(row.get("question_id") or row.get("id") or i): row
-              for i, row in enumerate(dev_rows)
-          }
-          frozen_by_id = {str(row["case_id"]): row for row in frozen_rows}
-
-          missing = [case_id for case_id in ids if case_id not in dev_by_id]
-          assert not missing, missing
-          mismatches = []
-          for case_id in ids:
-              old = frozen_by_id[case_id]
-              new = dev_by_id[case_id]
-              if str(new["db_id"]) != str(old["database_id"]) or str(new["question"]) != str(old["question"]):
-                  mismatches.append(case_id)
-          assert not mismatches, f"frozen case identity mismatch: {mismatches[:10]}"
+          actual_source_sha = sha256_file(dev_path)
+          assert actual_source_sha == resolved["source_sha256"], (
+              actual_source_sha, resolved["source_sha256"]
+          )
 
           shard = int(os.environ["SHARD"])
-          selected = [case_id for i, case_id in enumerate(ids) if i % 4 == shard]
-          assert len(selected) == 25
+          selected_rows = [row for i, row in enumerate(resolved["cases"]) if i % 4 == shard]
+          assert len(selected_rows) == 25
+          selected = [str(row["case_id"]) for row in selected_rows]
+          assert len(set(selected)) == 25
 
-          actual_source_sha = hashlib.sha256(dev_path.read_bytes()).hexdigest()
           manifest = {
               "protocol_version": 1,
               "source_sha256": actual_source_sha,
-              "seed": f"qwen9b-frozen100-shard-{shard}",
+              "seed": f"qwen9b-semantic-frozen100-shard-{shard}",
               "dev_case_ids": selected,
               "final_case_ids": [],
           }
@@ -115,11 +180,23 @@ jobs:
           print(json.dumps({
               "shard": shard,
               "count": len(selected),
-              "source_sha256": actual_source_sha,
-              "frozen_reference_sha256": frozen["source_sha256"],
+              "semantic_fingerprint_sha256": resolved["semantic_fingerprint_sha256"],
               "case_ids": selected,
           }, indent=2))
           PY
+
+      - name: Install Ollama
+        run: curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+
+      - name: Start Ollama and pull Qwen3.5 9B
+        run: |
+          ollama serve > /tmp/ollama.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 1
+          done
+          ollama pull qwen3.5:9b-q4_K_M
+          ollama list
 
       - name: Run paired Direct vs Guarded shard
         env:
@@ -134,7 +211,8 @@ jobs:
             --max-rows 50000 \
             --output "qwen9b-paired-shard-${SHARD}.json"
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload shard result
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: qwen9b-paired-shard-${{ matrix.shard }}
@@ -142,20 +220,27 @@ jobs:
           if-no-files-found: warn
 
   aggregate:
-    needs: benchmark
-    if: ${{ always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    needs: [resolve, benchmark]
+    if: ${{ always() && needs.resolve.result == 'success' && needs.benchmark.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
-      - uses: actions/download-artifact@v4
+      - name: Download resolved frozen set
+        uses: actions/download-artifact@v4
+        with:
+          name: qwen9b-resolved-frozen100
+          path: resolved
+
+      - name: Download shard results
+        uses: actions/download-artifact@v4
         with:
           pattern: qwen9b-paired-shard-*
           path: shards
           merge-multiple: true
 
-      - name: Aggregate and verify exact frozen-100 result
+      - name: Aggregate and verify semantic frozen-100 result
         run: |
           python - <<'PY'
           import glob
@@ -163,26 +248,35 @@ jobs:
           from pathlib import Path
           from statistics import median
 
+          resolved = json.loads(Path("resolved/resolved-frozen100.json").read_text(encoding="utf-8"))
+          assert resolved["status"] == "complete"
+          assert resolved["sample_size"] == 100
+          resolved_rows = resolved["cases"]
+          resolved_ids = [str(row["case_id"]) for row in resolved_rows]
+          assert len(resolved_ids) == 100 and len(set(resolved_ids)) == 100
+
           shard_paths = sorted(glob.glob("shards/qwen9b-paired-shard-*.json"))
           assert len(shard_paths) == 4, shard_paths
-
           payloads = [json.loads(Path(p).read_text(encoding="utf-8")) for p in shard_paths]
           assert all(p["status"] == "complete" for p in payloads)
           assert all(p["model"] == "qwen3.5:9b-q4_K_M" for p in payloads)
           digests = {p["model_digest"] for p in payloads}
           assert len(digests) == 1, digests
           source_hashes = {p["source_sha256"] for p in payloads}
-          assert len(source_hashes) == 1, source_hashes
+          assert source_hashes == {resolved["source_sha256"]}, source_hashes
 
           cases = [case for payload in payloads for case in payload["cases"]]
           assert len(cases) == 100
           case_ids = [str(case["case_id"]) for case in cases]
           assert len(set(case_ids)) == 100
-
-          frozen = json.loads(Path("runs/bird-paired-dev-v5/paired.json").read_text(encoding="utf-8"))
-          frozen_ids = [str(case["case_id"]) for case in frozen["cases"]]
-          assert set(case_ids) == set(frozen_ids)
+          assert set(case_ids) == set(resolved_ids)
           assert all(case.get("initial_sql_identical") is True for case in cases)
+
+          resolved_by_id = {str(row["case_id"]): row for row in resolved_rows}
+          for case in cases:
+              expected = resolved_by_id[str(case["case_id"])]
+              assert str(case["database_id"]) == expected["database_id"]
+              assert str(case["question"]) == expected["question"]
 
           def p95(values):
               values = sorted(values)
@@ -216,14 +310,17 @@ jobs:
 
           result = {
               "project": "P1 Benchmark-First Text-to-SQL",
-              "experiment": "Qwen3.5 9B paired Direct vs Guarded on exact frozen-100 BIRD DEV case IDs",
+              "experiment": "Qwen3.5 9B paired Direct vs Guarded on semantic frozen-100 BIRD DEV set",
               "status": "complete",
               "model": "qwen3.5:9b-q4_K_M",
               "model_digest": next(iter(digests)),
               "sample_size": 100,
-              "frozen_reference": "runs/bird-paired-dev-v5/paired.json",
-              "source_sha256": next(iter(source_hashes)),
-              "frozen_reference_source_sha256": frozen["source_sha256"],
+              "frozen_reference": resolved["reference"],
+              "frozen_identity": resolved["identity"],
+              "semantic_fingerprint_sha256": resolved["semantic_fingerprint_sha256"],
+              "source_sha256": resolved["source_sha256"],
+              "reference_source_sha256": resolved["reference_source_sha256"],
+              "reference_split_manifest_sha256": resolved["reference_split_manifest_sha256"],
               "runtime": {
                   "think": False,
                   "max_repairs": 2,
@@ -237,7 +334,7 @@ jobs:
                   "guarded": arm_metrics("guarded"),
                   "transitions": transitions,
               },
-              "cases": sorted(cases, key=lambda row: frozen_ids.index(str(row["case_id"]))),
+              "cases": sorted(cases, key=lambda row: resolved_ids.index(str(row["case_id"]))),
           }
 
           Path("qwen9b-paired-frozen100.json").write_text(
@@ -246,7 +343,8 @@ jobs:
           print(json.dumps({k: v for k, v in result.items() if k != "cases"}, indent=2))
           PY
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload aggregate result
+        uses: actions/upload-artifact@v4
         with:
           name: qwen9b-paired-frozen100
           path: qwen9b-paired-frozen100.json
