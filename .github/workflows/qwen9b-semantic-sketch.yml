@@ -1,0 +1,352 @@
+name: Qwen3.5 9B semantic-sketch ablation
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/SEMANTIC_SKETCH_TRIGGER"
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BASELINE_RUN_ID: 37307108955
+  SOURCE_HF_COMMIT: 3c11fb193e5439b338e23677fa0aae11e8b85db9
+  SOURCE_RAW_SHA256: ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb
+  SOURCE_SHA256: 0310b7ca2dfb6247234e2073f93e7a75106ee41ba55231f75d06d2ef68efe2ec
+  DB_ZIP_SHA256: cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630
+  MODEL: qwen3.5:9b-q4_K_M
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout semantic-sketch branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+
+      - name: Download prior exact Qwen 9B baseline shards
+        uses: actions/download-artifact@v4
+        with:
+          pattern: qwen9b-xiyan-style-shard-*
+          path: baseline-shards
+          merge-multiple: true
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.BASELINE_RUN_ID }}
+
+      - name: Restore exact historical BIRD source
+        run: |
+          mkdir -p inputs
+          curl -fL --retry 3 \
+            "https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/${SOURCE_HF_COMMIT}/data/dev_20251106-00000-of-00001.json?download=true" \
+            -o inputs/source-lf.json
+          echo "${SOURCE_RAW_SHA256}  inputs/source-lf.json" | sha256sum -c -
+          python - <<'PY'
+          import hashlib, os
+          from pathlib import Path
+          raw = Path('inputs/source-lf.json').read_bytes()
+          assert b'\r\n' not in raw
+          historical = raw.replace(b'\n', b'\r\n')
+          Path('inputs/source.json').write_bytes(historical)
+          assert hashlib.sha256(historical).hexdigest() == os.environ['SOURCE_SHA256']
+          PY
+
+      - name: Freeze baseline, pilot-20, and full-100 manifests
+        run: |
+          python - <<'PY'
+          import glob, json, os
+          from pathlib import Path
+
+          reference = json.loads(Path('runs/bird-paired-dev-v5/paired.json').read_text(encoding='utf-8'))
+          assert reference['status'] == 'complete'
+          assert reference['sample_size'] == 100
+          assert reference['source_sha256'] == os.environ['SOURCE_SHA256']
+
+          paths = sorted(glob.glob('baseline-shards/qwen9b-shard-*.json'))
+          assert len(paths) == 4, paths
+          payloads = [json.loads(Path(path).read_text(encoding='utf-8')) for path in paths]
+          assert all(payload['model'] == os.environ['MODEL'] for payload in payloads)
+          assert all(payload['source_sha256'] == os.environ['SOURCE_SHA256'] for payload in payloads)
+
+          raw_cases = [case for payload in payloads for case in payload['cases']]
+          by_id = {str(case['case_id']): case for case in raw_cases}
+          assert len(raw_cases) == 100 and len(by_id) == 100
+
+          ordered = []
+          for ref in reference['cases']:
+              case = by_id[str(ref['case_id'])]
+              assert str(case['database_id']) == str(ref['database_id'])
+              assert str(case['question']) == str(ref['question'])
+              ordered.append(case)
+          assert all(case.get('direct', {}).get('final_sql') for case in ordered)
+
+          pilot_ids = [str(case['case_id']) for case in ordered if not case['direct']['official_ex']][:20]
+          assert len(pilot_ids) == 20 and len(set(pilot_ids)) == 20
+          full_ids = [str(case['case_id']) for case in ordered]
+
+          Path('inputs/baseline.json').write_text(
+              json.dumps({'source_run_id': int(os.environ['BASELINE_RUN_ID']), 'model': os.environ['MODEL'], 'cases': ordered}, indent=2, ensure_ascii=False),
+              encoding='utf-8',
+          )
+          for name, ids in [('pilot', pilot_ids), ('full', full_ids)]:
+              manifest = {
+                  'protocol_version': 1,
+                  'source_sha256': os.environ['SOURCE_SHA256'],
+                  'seed': f'qwen9b-semantic-sketch-{name}',
+                  'dev_case_ids': ids,
+                  'final_case_ids': [],
+              }
+              Path(f'inputs/{name}-manifest.json').write_text(json.dumps(manifest, indent=2), encoding='utf-8')
+          print('baseline=PASS cases=100')
+          print('pilot_ids=' + ','.join(pilot_ids))
+          PY
+
+      - name: Upload frozen inputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: semantic-sketch-frozen-inputs
+          path: |
+            inputs/source.json
+            inputs/baseline.json
+            inputs/pilot-manifest.json
+            inputs/full-manifest.json
+
+  pilot:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - name: Checkout semantic-sketch code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install project
+        run: python -m pip install -e ".[dev]"
+      - name: Download frozen inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: semantic-sketch-frozen-inputs
+          path: inputs
+      - name: Download BIRD databases
+        run: |
+          mkdir -p /tmp/bird
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
+          echo "${DB_ZIP_SHA256}  /tmp/bird/dev.zip" | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          DB_ZIP=$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          mkdir -p /tmp/bird/databases
+          unzip -q "$DB_ZIP" -d /tmp/bird/databases
+          DB_ROOT=$(find /tmp/bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=/tmp/bird/databases; fi
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Install Ollama
+        run: curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+      - name: Start Ollama and pull Qwen 9B
+        run: |
+          ollama serve > /tmp/ollama.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 1
+          done
+          ollama pull "$MODEL"
+          ollama list
+      - name: Run pilot shard
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python -m evaluation.semantic_sketch_ablation \
+            --source inputs/source.json \
+            --database-root "$DB_ROOT" \
+            --manifest inputs/pilot-manifest.json \
+            --baseline inputs/baseline.json \
+            --model "$MODEL" \
+            --shard-index "$SHARD" \
+            --num-shards 4 \
+            --timeout 600 \
+            --max-rows 50000 \
+            --output "pilot-shard-${SHARD}.json"
+      - name: Upload pilot shard
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: semantic-sketch-pilot-shard-${{ matrix.shard }}
+          path: pilot-shard-${{ matrix.shard }}.json
+          if-no-files-found: warn
+
+  pilot_gate:
+    needs: pilot
+    runs-on: ubuntu-latest
+    outputs:
+      pass: ${{ steps.gate.outputs.pass }}
+    steps:
+      - name: Checkout semantic-sketch code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install project
+        run: python -m pip install -e ".[dev]"
+      - name: Download pilot shards
+        uses: actions/download-artifact@v4
+        with:
+          pattern: semantic-sketch-pilot-shard-*
+          path: pilot-shards
+          merge-multiple: true
+      - name: Aggregate and gate pilot
+        id: gate
+        run: |
+          python - <<'PY'
+          import glob, json, os
+          from pathlib import Path
+          from evaluation.semantic_sketch_ablation import aggregate_pairs
+
+          paths = sorted(glob.glob('pilot-shards/pilot-shard-*.json'))
+          assert len(paths) == 4, paths
+          rows = []
+          for path in paths:
+              payload = json.loads(Path(path).read_text(encoding='utf-8'))
+              assert payload['status'] == 'complete'
+              assert payload['model'] == os.environ['MODEL']
+              rows.extend(payload['cases'])
+          ids = [row['case_id'] for row in rows]
+          assert len(rows) == 20 and len(set(ids)) == 20
+          metrics = aggregate_pairs(rows)
+          result = {'status': 'complete', 'experiment': 'semantic-sketch pilot on 20 frozen Qwen 9B direct failures', 'model': os.environ['MODEL'], 'metrics': metrics, 'cases': rows}
+          Path('semantic-sketch-pilot20.json').write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding='utf-8')
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as handle:
+              handle.write('pass=' + ('true' if metrics['pilot_gate_pass'] else 'false') + '\n')
+          print(json.dumps(metrics, indent=2))
+          PY
+      - name: Upload pilot aggregate
+        uses: actions/upload-artifact@v4
+        with:
+          name: semantic-sketch-pilot20
+          path: semantic-sketch-pilot20.json
+
+  full:
+    needs: [prepare, pilot_gate]
+    if: ${{ needs.pilot_gate.outputs.pass == 'true' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: Checkout semantic-sketch code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install project
+        run: python -m pip install -e ".[dev]"
+      - name: Download frozen inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: semantic-sketch-frozen-inputs
+          path: inputs
+      - name: Download BIRD databases
+        run: |
+          mkdir -p /tmp/bird
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
+          echo "${DB_ZIP_SHA256}  /tmp/bird/dev.zip" | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          DB_ZIP=$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          mkdir -p /tmp/bird/databases
+          unzip -q "$DB_ZIP" -d /tmp/bird/databases
+          DB_ROOT=$(find /tmp/bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=/tmp/bird/databases; fi
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Install Ollama
+        run: curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+      - name: Start Ollama and pull Qwen 9B
+        run: |
+          ollama serve > /tmp/ollama.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 1
+          done
+          ollama pull "$MODEL"
+          ollama list
+      - name: Run full shard
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python -m evaluation.semantic_sketch_ablation \
+            --source inputs/source.json \
+            --database-root "$DB_ROOT" \
+            --manifest inputs/full-manifest.json \
+            --baseline inputs/baseline.json \
+            --model "$MODEL" \
+            --shard-index "$SHARD" \
+            --num-shards 4 \
+            --timeout 600 \
+            --max-rows 50000 \
+            --output "full-shard-${SHARD}.json"
+      - name: Upload full shard
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: semantic-sketch-full-shard-${{ matrix.shard }}
+          path: full-shard-${{ matrix.shard }}.json
+          if-no-files-found: warn
+
+  aggregate_full:
+    needs: full
+    if: ${{ needs.full.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout semantic-sketch code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install project
+        run: python -m pip install -e ".[dev]"
+      - name: Download full shards
+        uses: actions/download-artifact@v4
+        with:
+          pattern: semantic-sketch-full-shard-*
+          path: full-shards
+          merge-multiple: true
+      - name: Aggregate full frozen-100
+        run: |
+          python - <<'PY'
+          import glob, json, os
+          from pathlib import Path
+          from evaluation.semantic_sketch_ablation import aggregate_pairs
+
+          paths = sorted(glob.glob('full-shards/full-shard-*.json'))
+          assert len(paths) == 4, paths
+          rows = []
+          for path in paths:
+              payload = json.loads(Path(path).read_text(encoding='utf-8'))
+              assert payload['status'] == 'complete'
+              assert payload['model'] == os.environ['MODEL']
+              rows.extend(payload['cases'])
+          ids = [row['case_id'] for row in rows]
+          assert len(rows) == 100 and len(set(ids)) == 100
+          metrics = aggregate_pairs(rows)
+          result = {'status': 'complete', 'experiment': 'semantic-sketch vs prior direct Qwen 9B on exact v5 frozen-100', 'model': os.environ['MODEL'], 'sample_size': 100, 'metrics': metrics, 'cases': rows}
+          Path('semantic-sketch-frozen100.json').write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding='utf-8')
+          print(json.dumps(metrics, indent=2))
+          PY
+      - name: Upload full aggregate
+        uses: actions/upload-artifact@v4
+        with:
+          name: semantic-sketch-frozen100
+          path: semantic-sketch-frozen100.json
