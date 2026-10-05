@@ -65,22 +65,46 @@ jobs:
           SHARD: ${{ matrix.shard }}
         run: |
           python - <<'PY'
-          import json, os
+          import hashlib
+          import json
+          import os
           from pathlib import Path
 
-          source = json.loads(Path("runs/bird-paired-dev-v5/paired.json").read_text(encoding="utf-8"))
-          assert source["status"] == "complete"
-          assert source["sample_size"] == 100
-          ids = [str(row["case_id"]) for row in source["cases"]]
+          frozen = json.loads(Path("runs/bird-paired-dev-v5/paired.json").read_text(encoding="utf-8"))
+          assert frozen["status"] == "complete"
+          assert frozen["sample_size"] == 100
+          frozen_rows = frozen["cases"]
+          ids = [str(row["case_id"]) for row in frozen_rows]
           assert len(ids) == 100 and len(set(ids)) == 100
+
+          # Match the XiYan workflow pattern: the frozen artifact defines the
+          # case IDs, while the pinned BIRD download is the source used now.
+          dev_path = Path(os.environ["DEV_JSON"])
+          dev_rows = json.loads(dev_path.read_text(encoding="utf-8"))
+          dev_by_id = {
+              str(row.get("question_id") or row.get("id") or i): row
+              for i, row in enumerate(dev_rows)
+          }
+          frozen_by_id = {str(row["case_id"]): row for row in frozen_rows}
+
+          missing = [case_id for case_id in ids if case_id not in dev_by_id]
+          assert not missing, missing
+          mismatches = []
+          for case_id in ids:
+              old = frozen_by_id[case_id]
+              new = dev_by_id[case_id]
+              if str(new["db_id"]) != str(old["database_id"]) or str(new["question"]) != str(old["question"]):
+                  mismatches.append(case_id)
+          assert not mismatches, f"frozen case identity mismatch: {mismatches[:10]}"
 
           shard = int(os.environ["SHARD"])
           selected = [case_id for i, case_id in enumerate(ids) if i % 4 == shard]
           assert len(selected) == 25
 
+          actual_source_sha = hashlib.sha256(dev_path.read_bytes()).hexdigest()
           manifest = {
               "protocol_version": 1,
-              "source_sha256": source["source_sha256"],
+              "source_sha256": actual_source_sha,
               "seed": f"qwen9b-frozen100-shard-{shard}",
               "dev_case_ids": selected,
               "final_case_ids": [],
@@ -88,7 +112,13 @@ jobs:
           Path(f"/tmp/qwen9b-shard-{shard}.json").write_text(
               json.dumps(manifest, indent=2), encoding="utf-8"
           )
-          print(json.dumps({"shard": shard, "count": len(selected), "case_ids": selected}, indent=2))
+          print(json.dumps({
+              "shard": shard,
+              "count": len(selected),
+              "source_sha256": actual_source_sha,
+              "frozen_reference_sha256": frozen["source_sha256"],
+              "case_ids": selected,
+          }, indent=2))
           PY
 
       - name: Run paired Direct vs Guarded shard
@@ -141,6 +171,8 @@ jobs:
           assert all(p["model"] == "qwen3.5:9b-q4_K_M" for p in payloads)
           digests = {p["model_digest"] for p in payloads}
           assert len(digests) == 1, digests
+          source_hashes = {p["source_sha256"] for p in payloads}
+          assert len(source_hashes) == 1, source_hashes
 
           cases = [case for payload in payloads for case in payload["cases"]]
           assert len(cases) == 100
@@ -184,13 +216,14 @@ jobs:
 
           result = {
               "project": "P1 Benchmark-First Text-to-SQL",
-              "experiment": "Qwen3.5 9B paired Direct vs Guarded on exact frozen-100 BIRD DEV set",
+              "experiment": "Qwen3.5 9B paired Direct vs Guarded on exact frozen-100 BIRD DEV case IDs",
               "status": "complete",
               "model": "qwen3.5:9b-q4_K_M",
               "model_digest": next(iter(digests)),
               "sample_size": 100,
               "frozen_reference": "runs/bird-paired-dev-v5/paired.json",
-              "source_sha256": frozen["source_sha256"],
+              "source_sha256": next(iter(source_hashes)),
+              "frozen_reference_source_sha256": frozen["source_sha256"],
               "runtime": {
                   "think": False,
                   "max_repairs": 2,
