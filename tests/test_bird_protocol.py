@@ -8,6 +8,7 @@ import sqlite3
 import pytest
 
 from evaluation.metrics import paired_transition_counts
+from evaluation.protocol import resolve_semantic_frozen_cases
 from evaluation.run_bird import _official_ex, main, run_paired_dev
 
 
@@ -202,3 +203,37 @@ def test_ollama_model_digest_preflight_records_exact_identity(monkeypatch):
 
     monkeypatch.setattr(run_bird, "urlopen", lambda *args, **kwargs: Response())
     assert run_bird._ollama_model_digest("http://localhost:11434", "qwen3.5:4b") == "a" * 64
+
+
+def test_semantic_frozen_resolver_survives_case_id_and_order_drift() -> None:
+    references = [
+        {"case_id": "old-1", "database_id": "db-a", "question": "Question A?"},
+        {"case_id": "old-2", "database_id": "db-b", "question": "Question B?"},
+    ]
+    source_rows = [
+        {"question_id": 900, "db_id": "db-b", "question": "Question B?", "evidence": "ev-b", "SQL": "SELECT 2"},
+        {"question_id": 100, "db_id": "db-a", "question": "Question A?", "evidence": "ev-a", "SQL": "SELECT 1"},
+    ]
+
+    resolved = resolve_semantic_frozen_cases(references, source_rows)
+
+    assert [row["case_id"] for row in resolved] == ["100", "900"]
+    assert [row["reference_case_id"] for row in resolved] == ["old-1", "old-2"]
+    assert resolved[0]["database_id"] == "db-a"
+    assert resolved[0]["question"] == "Question A?"
+    assert resolved[0]["evidence_sha256"] == hashlib.sha256(b"ev-a").hexdigest()
+    assert resolved[0]["gold_sql_sha256"] == hashlib.sha256(b"SELECT 1").hexdigest()
+
+
+def test_semantic_frozen_resolver_rejects_missing_and_duplicate_identity() -> None:
+    references = [{"case_id": "old-1", "database_id": "db-a", "question": "Question A?"}]
+
+    with pytest.raises(ValueError, match="missing semantic frozen cases"):
+        resolve_semantic_frozen_cases(references, [])
+
+    duplicate_source = [
+        {"question_id": 1, "db_id": "db-a", "question": "Question A?", "evidence": "a", "SQL": "SELECT 1"},
+        {"question_id": 2, "db_id": "db-a", "question": "Question A?", "evidence": "b", "SQL": "SELECT 2"},
+    ]
+    with pytest.raises(ValueError, match="duplicate semantic identity"):
+        resolve_semantic_frozen_cases(references, duplicate_source)
