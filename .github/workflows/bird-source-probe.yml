@@ -1,0 +1,78 @@
+name: Probe historical BIRD Mini-Dev source
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/bird-source-probe.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+
+      - name: Download pinned BIRD Mini-Dev JSON
+        run: |
+          curl -fL --retry 3 \
+            "https://huggingface.co/datasets/birdsql/bird_mini_dev/resolve/f65faf4ae3b638c1fa6df1d3370c8d92c8366301/data/mini_dev_sqlite-00000-of-00001.json?download=true" \
+            -o /tmp/mini_dev.json
+
+      - name: Probe byte identity and frozen cases
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path
+
+          expected = "0310b7ca2dfb6247234e2073f93e7a75106ee41ba55231f75d06d2ef68efe2ec"
+          path = Path("/tmp/mini_dev.json")
+          raw = path.read_bytes()
+          raw_sha = hashlib.sha256(raw).hexdigest()
+          crlf = raw if b"\r\n" in raw else raw.replace(b"\n", b"\r\n")
+          crlf_sha = hashlib.sha256(crlf).hexdigest()
+          rows = json.loads(raw.decode("utf-8"))
+
+          frozen = json.loads(Path("runs/bird-paired-dev-v5/paired.json").read_text(encoding="utf-8"))
+          by_id = {str(row.get("question_id") or row.get("id") or i): row for i, row in enumerate(rows)}
+          frozen_cases = frozen["cases"]
+          missing = [str(case["case_id"]) for case in frozen_cases if str(case["case_id"]) not in by_id]
+          mismatched = []
+          for case in frozen_cases:
+              case_id = str(case["case_id"])
+              if case_id not in by_id:
+                  continue
+              row = by_id[case_id]
+              if str(row["db_id"]) != str(case["database_id"]) or str(row["question"]) != str(case["question"]):
+                  mismatched.append(case_id)
+
+          result = {
+              "rows": len(rows),
+              "raw_sha256": raw_sha,
+              "crlf_sha256": crlf_sha,
+              "expected_historical_sha256": expected,
+              "raw_matches_expected": raw_sha == expected,
+              "crlf_matches_expected": crlf_sha == expected,
+              "v5_frozen_cases": len(frozen_cases),
+              "missing_ids": missing,
+              "identity_mismatches": mismatched,
+          }
+          print(json.dumps(result, indent=2))
+
+          assert len(rows) == 1534, f"expected 1534 rows, got {len(rows)}"
+          assert raw_sha == expected or crlf_sha == expected, (
+              f"historical source hash not reproduced: raw={raw_sha} crlf={crlf_sha}"
+          )
+          assert not missing, f"missing frozen IDs: {missing[:10]}"
+          assert not mismatched, f"frozen identity mismatches: {mismatched[:10]}"
+          PY
