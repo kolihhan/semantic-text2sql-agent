@@ -1,6 +1,16 @@
 from evaluation.semantic_revision_ablation import aggregate_pairs, select_smoke_case_ids
 
 
+def _revision(*, reviewed=True, changed=False, applied=False, fallback=False, model_calls=1):
+    return {
+        "reviewed": reviewed,
+        "changed": changed,
+        "applied": applied,
+        "fallback": fallback,
+        "model_calls": model_calls,
+    }
+
+
 def test_select_smoke_case_ids_uses_first_executable_guarded_cases():
     cases = [
         {"case_id": "a", "guarded": {"execution_success": False, "final_sql": "SELECT 1"}},
@@ -17,14 +27,17 @@ def test_aggregate_pairs_counts_semantic_revision_transitions():
         {
             "baseline": {"official_ex": False, "execution_success": True},
             "revised": {"official_ex": True, "execution_success": True},
+            "revision": _revision(changed=True, applied=True),
         },
         {
             "baseline": {"official_ex": True, "execution_success": True},
             "revised": {"official_ex": True, "execution_success": True},
+            "revision": _revision(),
         },
         {
             "baseline": {"official_ex": True, "execution_success": True},
             "revised": {"official_ex": False, "execution_success": False},
+            "revision": _revision(changed=True, applied=True),
         },
     ]
 
@@ -38,6 +51,11 @@ def test_aggregate_pairs_counts_semantic_revision_transitions():
         "execution_fail_to_success": 0,
         "execution_success_to_fail": 1,
     }
+    assert result["reviewed"] == 3
+    assert result["changed"] == 2
+    assert result["applied"] == 2
+    assert result["fallbacks"] == 0
+    assert result["model_calls"] == 3
 
 
 def test_aggregate_pairs_reports_zero_rows_as_error():
