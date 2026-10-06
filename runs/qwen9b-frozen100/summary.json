@@ -1,0 +1,37 @@
+{
+  "status": "complete",
+  "experiment": "Qwen3.5 9B direct vs guarded verification + bounded repair",
+  "sample_size": 100,
+  "split": "BIRD DEV frozen slice",
+  "model": "qwen3.5:9b-q4_K_M",
+  "model_digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+  "source_sha256": "0310b7ca2dfb6247234e2073f93e7a75106ee41ba55231f75d06d2ef68efe2ec",
+  "official_bird_evaluator": {
+    "url": "https://github.com/AlibabaResearch/DAMO-ConvAI/blob/main/bird/llm/src/evaluation.py",
+    "revision": "483554eae102996f5ec1f4feab4e78ef29c2a394"
+  },
+  "metrics": {
+    "direct": {
+      "official_bird_ex": 0.33,
+      "execution_success": 0.75
+    },
+    "guarded": {
+      "official_bird_ex": 0.39,
+      "conservative_execution_success": 0.90
+    },
+    "transitions": {
+      "direct_wrong_to_guarded_correct": 6,
+      "direct_correct_to_guarded_wrong": 0,
+      "direct_execution_fail_to_guarded_success_conservative": 15,
+      "direct_execution_success_to_guarded_fail": 0
+    }
+  },
+  "provenance": {
+    "workflow_run_id": 37307108955,
+    "head_sha": "42835912add020668e136a884d185b33f86b4183"
+  },
+  "notes": [
+    "The raw guarded execution-success count was 91/100, but one capped result invalidated that row for strict comparison; resume-facing reporting uses the conservative 90/100 figure.",
+    "A later frozen-100 semantic-revision ablation moved guarded official EX from 0.39 to 0.38 with 0 wrong-to-correct and 1 correct-to-wrong transition, so semantic revision is not included in the headline path."
+  ]
+}
