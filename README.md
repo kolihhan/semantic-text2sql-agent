@@ -1,7 +1,7 @@
 <h1 align="center">Semantic Text-to-SQL</h1>
 
 <p align="center">
-  <strong>Local NL → SQL with clause-guided semantic revision, deterministic verification, bounded repair, and read-only execution.</strong>
+  <strong>Local NL → SQL with schema/value grounding, deterministic verification, bounded repair, and read-only execution.</strong>
 </p>
 
 <p align="center">
@@ -14,8 +14,8 @@
 
 <p align="center">
   <a href="#demo">Demo</a> ·
-  <a href="#semantic-revision">Semantic revision</a> ·
   <a href="#measured-result">Measured result</a> ·
+  <a href="#semantic-revision-ablation">Semantic ablation</a> ·
   <a href="#architecture">Architecture</a>
 </p>
 
@@ -24,9 +24,9 @@
 | | |
 |---|---|
 | **Problem** | A generated SQL query can be safe, valid, and executable while still answering the wrong question. |
-| **What I built** | A local Text-to-SQL pipeline that separates **semantic review** from **operational reliability**: one-pass clause-guided revision, deterministic preflight, bounded repair, and read-only execution. |
-| **Measured baseline** | On a frozen 100-query BIRD DEV run with `qwen3.5:4b`, deterministic guarding raised execution success from **63% → 82%**, while official EX moved **31% → 34%**. |
-| **Design focus** | Make failure modes visible: semantic mistakes, invalid SQL, repair attempts, and execution are treated as different problems. |
+| **What I built** | A local Text-to-SQL pipeline with schema/value grounding, deterministic preflight, bounded repair, read-only execution, and explicit failure traces. |
+| **Measured result** | On a frozen 100-query BIRD DEV slice with `qwen3.5:9b-q4_K_M`, guarded verification + repair improved official EX from **33% → 39%** and conservative execution success from **75% → 90%**. |
+| **Design focus** | Improve reliability with bounded, inspectable checks instead of adding open-ended agent loops. |
 
 > [!NOTE]
 > The core lesson behind this project is simple: **executable SQL is not necessarily correct SQL**.
@@ -52,11 +52,7 @@ Generate SQL
   ↓
 Verify ── failure ──→ Repair (bounded)
   ↓ pass                  │
-Optional semantic review  │
-  ↓                       │
-Verify again ←────────────┘
-  ↓
-Execute read-only
+Execute read-only ←───────┘
   ↓
 Rows + trace
 ```
@@ -69,60 +65,37 @@ How many orders were placed in 2024?
 
 The built-in offline provider demonstrates the service flow only; benchmark claims below come from frozen local-model runs.
 
-## Semantic revision
-
-Deterministic verification catches unsafe or invalid SQL, but it cannot tell whether a syntactically valid query faithfully answers the user's request. The optional **Clause-Guided Semantic Revision (CGSR)** stage adds one bounded model review before accepting a verified candidate.
-
-It checks five recurring Text-to-SQL failure classes:
-
-| Issue type | Question it asks |
-|---|---|
-| `PROJECTION` | Is the query returning the thing the user actually asked for? |
-| `GRAIN_AGGREGATION` | Is it counting / averaging the correct entity at the correct grain? |
-| `JOIN` | Are relationships and join keys semantically appropriate? |
-| `FILTER_VALUE` | Are required conditions and literal values present and correct? |
-| `ORDER_TOPK` | Are “most”, “least”, “first”, “last”, and top-k semantics implemented correctly? |
-
-The reviewer returns structured JSON with `changed`, `issue_type`, and a revised SQL candidate. A revision is **never trusted directly**: it must pass the same deterministic verifier again before execution.
-
-```text
-verified candidate
-      ↓
-clause-guided review ×1
-      ↓
- typed semantic issue
-      ↓
- revised candidate
-      ↓
-deterministic verify again
-```
-
-CGSR is intentionally one-pass: no open-ended critic loop, no multi-agent voting, and no new parser dependency. It is exposed through `SemanticSQLService(..., semantic_revision=True)` and `run_guarded(..., semantic_revision=True)`.
-
-> [!IMPORTANT]
-> The frozen benchmark numbers below predate CGSR and are **not** presented as evidence that CGSR improves BIRD accuracy. The semantic layer is implemented and tested separately; any future accuracy claim should come from a paired ablation on the same frozen cases.
-
 ## Measured result
 
-Frozen paired evaluation on **100 BIRD DEV queries** using local `qwen3.5:4b` through Ollama, before CGSR was added:
-
-<p align="center">
-  <img src="assets/reliability-summary.svg" alt="Paired BIRD evaluation showing execution success, official EX, and latency for direct versus guarded Text-to-SQL" width="100%" />
-</p>
+Frozen paired evaluation on **100 BIRD DEV queries** using local `qwen3.5:9b-q4_K_M` through Ollama:
 
 | Metric | Direct | Guarded + repair |
 |---|---:|---:|
-| Execution success | 63% | **82%** |
-| Official BIRD EX | 31% | **34%** |
-| Median latency | **28.1 s** | 46.7 s |
+| Official BIRD EX | 33% | **39%** |
+| Execution success | 75% | **90% (conservative)** |
+| EX wrong → correct | — | **6** |
+| EX correct → wrong | — | **0** |
 
-The guarded path recovered **19 direct execution failures**. It improves execution reliability, but costs latency and does **not** guarantee semantic correctness.
+The guarded path recovered **6 correctness failures** with no correct-to-wrong EX regressions, and conservatively recovered **15 direct execution failures**. The raw guarded execution-success count was 91/100, but one capped result invalidated that row for strict comparison, so the resume-facing figure is 90/100.
 
-Source of truth: [`runs/bird-paired-dev-v4/paired.json`](runs/bird-paired-dev-v4/paired.json).
+Source of truth: [`runs/qwen9b-frozen100/summary.json`](runs/qwen9b-frozen100/summary.json). The underlying frozen workflow used the official BIRD evaluator code pinned at revision `483554eae102996f5ec1f4feab4e78ef29c2a394`.
+
+## Semantic revision ablation
+
+A later frozen-100 experiment tested a conservative one-pass semantic reviewer on top of the same Qwen 9B guarded outputs. The reviewer checked projection, aggregation/grain, joins, filters/literals, and ordering/top-k semantics, then re-verified any patch before execution.
+
+| Frozen-100 | Guarded baseline | + Semantic revision |
+|---|---:|---:|
+| Official BIRD EX | **39%** | 38% |
+| Conservative execution success | **90%** | **90%** |
+| Wrong → correct | — | 0 |
+| Correct → wrong | — | 1 |
+
+The semantic layer produced **no positive EX rescue and one regression**, so it is kept as an experiment rather than part of the headline/default path. This is the main reason the project stays with the simpler guarded pipeline.
 
 ### Separate XiYan grounding ablation
 
-A later frozen-100 experiment tested **Decomposed Grounded Schema Linking (DGSL v1)** with the same XiYanSQL 7B generator and a project-local set-equality execution scorer. This is a **different model and scorer** from the Qwen3.5 / official-BIRD-EX table above, so the numbers are not directly interchangeable.
+A separate frozen-100 experiment tested **Decomposed Grounded Schema Linking (DGSL v1)** with XiYanSQL 7B and a project-local set-equality execution scorer. This is a **different model and scorer** from the Qwen3.5 / official-BIRD-EX table above, so the numbers are not directly interchangeable.
 
 | XiYan frozen-100 | Lexical baseline | DGSL v1 |
 |---|---:|---:|
@@ -171,9 +144,9 @@ status: OK
 official EX: false
 ```
 
-**Takeaway:** deterministic checks can reject unsafe or invalid SQL; they cannot prove semantic correctness. That gap motivated the bounded semantic revision layer.
+**Takeaway:** deterministic checks can reject unsafe or invalid SQL; they cannot prove semantic correctness.
 
-Both examples come from the same frozen paired run used for the headline metrics above.
+These two examples come from an earlier frozen 4B run and illustrate the same failure distinction; they are not part of the 9B headline table.
 
 ## Architecture
 
@@ -183,23 +156,21 @@ flowchart LR
     G --> V[Deterministic verification]
     V -->|fail| R[Bounded repair]
     R --> V
-    V -->|pass + semantic review on| S[Clause-guided semantic revision]
-    S --> V2[Verify revised SQL]
-    V2 -->|pass| E[Read-only SQLite execution]
-    V2 -->|fail| R
-    V -->|pass + semantic review off| E
+    V -->|pass| E[Read-only SQLite execution]
     E --> O[Rows + columns + trace]
 ```
 
+An optional semantic-review path remains available for experimentation, but the frozen ablation above did not justify enabling it by default.
+
 ## Engineering choices
 
-- **Clause-guided semantic revision** targets projection, grain / aggregation, joins, filters / values, and top-k semantics with one bounded review call.
-- **Re-verify every revision** so semantic correction cannot bypass deterministic safety checks.
 - **Deterministic checks before execution** instead of asking another model to judge obvious compiler or safety failures.
-- **Read-only SQLite execution** so generated SQL cannot mutate the database.
 - **Bounded repair** with `max_repairs=2`, avoiding an open-ended agent loop.
+- **Read-only SQLite execution** so generated SQL cannot mutate the database.
+- **Schema/value grounding** keeps generation tied to the actual database surface.
 - **One service layer** behind Streamlit, FastAPI, and CLI.
 - **Paired evaluation** keeps reliability and correctness claims tied to the same frozen cases.
+- **Ablation before adoption**: semantic planning/revision ideas are kept only when they show positive net evidence.
 
 ## Quickstart
 
@@ -221,7 +192,7 @@ uv run streamlit run app.py
 
 Choose **Ollama** in the sidebar.
 
-### Enable semantic revision in Python
+### Optional semantic revision in Python
 
 ```python
 service = SemanticSQLService(
@@ -246,12 +217,12 @@ uv run uvicorn semantic_sql.api:app --reload
 ## Evaluation note
 
 > [!IMPORTANT]
-> **Execution success is not Text-to-SQL accuracy.** A query can execute successfully and still answer the wrong question. The 82% figure therefore represents execution reliability, while official BIRD EX is the correctness-oriented metric. CGSR needs its own paired ablation before any benchmark improvement is claimed.
+> **Execution success is not Text-to-SQL accuracy.** A query can execute successfully and still answer the wrong question. The 90% figure represents conservative execution reliability, while official BIRD EX is the correctness-oriented metric. The semantic-revision ablation did not improve EX, so the simpler guarded path remains the headline result.
 
 ## Limits
 
 - Frozen headline evaluation is a 100-query BIRD DEV sample, not the full benchmark.
 - SQLite only in the current implementation.
 - Results depend on the frozen local-model configuration.
-- Semantic revision adds one extra model call when enabled.
+- The optional semantic revision adds one extra model call when enabled and did not improve the frozen-100 EX result.
 - The offline provider is demo infrastructure, not evaluation evidence.
