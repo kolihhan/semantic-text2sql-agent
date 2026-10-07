@@ -24,16 +24,18 @@ Repair can recover an invalid query, but model calls must be finite and observab
 
 Two independent generations confound the treatment with sampling variance. The paired runner generates once, freezes the candidate, sends the same bytes to Direct and Guarded, and counts that shared call and latency in both arms. Only deterministic verification and any repair calls differ.
 
-## Why official BIRD EX?
+## Why a BIRD EX-compatible execution-match scorer?
 
-The older local result proxy was not suitable for a portfolio correctness claim. The current runner follows the pinned official BIRD evaluator's set-of-tuples result comparison and fails closed on truncated executions. Evaluator URL and revision are stored in the artifact.
+The older local result proxy was not suitable for a portfolio correctness claim. The current runner follows the set-of-tuples execution-match semantics of the pinned BIRD evaluator revision and fails closed on truncated executions. Evaluator URL and revision are stored in the artifact. The implementation is project-local rather than a claim that the upstream evaluator is invoked directly at runtime.
 
-## Why SIMPLIFY GUARDED?
+## Why SIMPLIFY GUARDED? — historical 4B decision
 
-On the frozen 100-case DEV run, Guarded improved official EX from 30% to 33% and execution success from 70% to 88%, with three favorable EX transitions and none in the reverse direction. It also increased model calls from 100 to 150, median latency from 3.236s to 5.491s, and p95 latency from 79.398s to 147.364s.
+The original frozen 100-case DEV decision used the earlier 4B configuration. In that run, Guarded improved the BIRD EX-compatible match from 30% to 33% and execution success from 70% to 88%, with three favorable EX transitions and none in the reverse direction. It also increased model calls from 100 to 150, median latency from 3.236s to 5.491s, and p95 latency from 79.398s to 147.364s.
 
-The mechanism clearly improves executability, but only 3 of 30 Direct execution failures became correct. The decision is therefore to keep the minimal LangGraph safety/recovery skeleton while rejecting a stronger claim that the full automatic-repair treatment clearly earns its cost. Direct remains the cost baseline; repair is a narrow bounded escalation, not semantic proof.
+The mechanism clearly improved executability, but only 3 of 30 Direct execution failures became correct. The decision was therefore to keep the minimal LangGraph safety/recovery skeleton while rejecting a stronger claim that the full automatic-repair treatment clearly earns its cost. Direct remains the cost baseline; repair is a narrow bounded escalation, not semantic proof.
+
+The later checked-in 9B frozen summary reports a separate 33% → 39% EX-compatible transition and 75% → 90% conservative execution-success transition. Those figures are not a replacement for the historical 4B decision record; they belong to the newer 9B artifact and carry the workflow-provenance limitation documented in the root README.
 
 ## Why are demos and failed runs not results?
 
-Fixtures protect wiring and regression behavior only. The first live attempt timed out after 20 cases and is preserved as an `incomplete` operational artifact, not merged into the result. Only the complete, independently validated 100-case artifact supports the frozen decision.
+Fixtures protect wiring and regression behavior only. The first live attempt timed out after 20 cases and is preserved as an `incomplete` operational artifact, not merged into the historical result. Failed, incomplete, and backup artifacts remain provenance, not headline evidence.
