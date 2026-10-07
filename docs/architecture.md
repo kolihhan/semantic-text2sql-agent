@@ -56,10 +56,10 @@ The model owns initial SQL generation and repair. Deterministic verification doe
 
 ## Evaluation boundary
 
-Gold SQL is evaluation-only. The runner generates both arm outputs before scoring, uses the pinned official BIRD set-of-tuples execution-match contract, and records calls and latency including shared generation. Truncation of a prediction or gold result invalidates the artifact rather than silently scoring partial rows.
+Gold SQL is evaluation-only. The runner generates both arm outputs before scoring, uses a project-local scorer that follows the pinned BIRD set-of-tuples execution-match contract, and records calls and latency including shared generation. Truncation of a prediction or gold result invalidates the artifact rather than silently scoring partial rows.
 
 Only manifest-selected DEV IDs are runnable from the primary CLI. Existing output paths are refused, atomic checkpoints remain `incomplete` after a crash, and the benchmark records model/runtime/evaluator provenance.
 
 ## Historical boundary
 
-The former SemanticPlan, GroundedPlan, planner, grounder, semantic regex verifier, and duplicate Guarded graph are not part of supported application, CLI, or benchmark control flow. Dated plans and older benchmark artifacts are retained only to explain project history. The current architecture and decision are documented here and in `docs/architecture/p1-dev-decision.md`.
+The former SemanticPlan, GroundedPlan, planner, grounder, semantic regex verifier, and duplicate Guarded graph are not part of supported application, CLI, or benchmark control flow. Dated plans and older benchmark artifacts are retained only to explain project history. Historical 4B metrics and the newer 9B checked-in summary are separate evidence generations and should not be mixed. The current architecture and decision are documented here, in `docs/architecture/p1-dev-decision.md`, and in the root README provenance note.
