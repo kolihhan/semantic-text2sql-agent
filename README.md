@@ -1,7 +1,7 @@
 <h1 align="center">Semantic Text-to-SQL</h1>
 
 <p align="center">
-  <strong>Local NL → SQL with schema/value grounding, deterministic verification, bounded repair, and read-only execution.</strong>
+  <strong>Local NL → SQL with schema grounding, deterministic verification, bounded repair, and read-only execution.</strong>
 </p>
 
 <p align="center">
@@ -24,8 +24,8 @@
 | | |
 |---|---|
 | **Problem** | A generated SQL query can be safe, valid, and executable while still answering the wrong question. |
-| **What I built** | A local Text-to-SQL pipeline with schema/value grounding, deterministic preflight, bounded repair, read-only execution, and explicit failure traces. |
-| **Measured result** | On a frozen 100-query BIRD DEV slice with `qwen3.5:9b-q4_K_M`, guarded verification + repair improved official EX from **33% → 39%** and conservative execution success from **75% → 90%**. |
+| **What I built** | A local Text-to-SQL pipeline with schema grounding, deterministic preflight, bounded repair, read-only execution, and explicit failure traces. |
+| **Measured result** | On a frozen 100-query BIRD DEV slice with `qwen3.5:9b-q4_K_M`, guarded verification + repair improved BIRD EX from **33% → 39%** and conservative execution success from **75% → 90%**. |
 | **Design focus** | Improve reliability with bounded, inspectable checks instead of adding open-ended agent loops. |
 
 > [!NOTE]
@@ -71,14 +71,17 @@ Frozen paired evaluation on **100 BIRD DEV queries** using local `qwen3.5:9b-q4_
 
 | Metric | Direct | Guarded + repair |
 |---|---:|---:|
-| Official BIRD EX | 33% | **39%** |
+| BIRD EX | 33% | **39%** |
 | Execution success | 75% | **90% (conservative)** |
 | EX wrong → correct | — | **6** |
 | EX correct → wrong | — | **0** |
 
 The guarded path recovered **6 correctness failures** with no correct-to-wrong EX regressions, and conservatively recovered **15 direct execution failures**. The raw guarded execution-success count was 91/100, but one capped result invalidated that row for strict comparison, so the resume-facing figure is 90/100.
 
-Source of truth: [`runs/qwen9b-frozen100/summary.json`](runs/qwen9b-frozen100/summary.json). The underlying frozen workflow used the official BIRD evaluator code pinned at revision `483554eae102996f5ec1f4feab4e78ef29c2a394`.
+Source of truth: [`runs/qwen9b-frozen100/summary.json`](runs/qwen9b-frozen100/summary.json). The repository's local BIRD EX scorer follows the set-of-result-rows semantics of the BIRD evaluator pinned at revision `483554eae102996f5ec1f4feab4e78ef29c2a394`; it is not a direct invocation of upstream evaluator code.
+
+> [!IMPORTANT]
+> Provenance workflow run `37307108955` is **not a clean successful workflow run**. All cases in the failing 25-case shard finished, but strict validity marked that shard invalid and the job exited non-zero. The checked-in summary therefore reports the conservative 90/100 guarded execution figure explicitly instead of presenting the workflow status as a clean pass.
 
 ## Semantic revision ablation
 
@@ -86,7 +89,7 @@ A later frozen-100 experiment tested a conservative one-pass semantic reviewer o
 
 | Frozen-100 | Guarded baseline | + Semantic revision |
 |---|---:|---:|
-| Official BIRD EX | **39%** | 38% |
+| BIRD EX | **39%** | 38% |
 | Conservative execution success | **90%** | **90%** |
 | Wrong → correct | — | 0 |
 | Correct → wrong | — | 1 |
@@ -95,7 +98,7 @@ The semantic layer produced **no positive EX rescue and one regression**, so it 
 
 ### Separate XiYan grounding ablation
 
-A separate frozen-100 experiment tested **Decomposed Grounded Schema Linking (DGSL v1)** with XiYanSQL 7B and a project-local set-equality execution scorer. This is a **different model and scorer** from the Qwen3.5 / official-BIRD-EX table above, so the numbers are not directly interchangeable.
+A separate frozen-100 experiment tested **Decomposed Grounded Schema Linking (DGSL v1)** with XiYanSQL 7B and a project-local set-equality execution scorer. This is a **different model and scorer** from the Qwen3.5 / BIRD-EX table above, so the numbers are not directly interchangeable.
 
 | XiYan frozen-100 | Lexical baseline | DGSL v1 |
 |---|---:|---:|
@@ -115,7 +118,7 @@ The aggregate numbers hide the most important engineering lesson: **a query beco
 
 **BIRD case 430 · `card_games`**
 
-The direct query referenced a nonexistent `cardKingdoms` table and failed to execute. The guarded path caught the compile failure, repaired the SQL once, passed verification, and executed successfully — but the final query still failed official BIRD EX.
+The direct query referenced a nonexistent `cardKingdoms` table and failed to execute. The guarded path caught the compile failure, repaired the SQL once, passed verification, and executed successfully — but the final query still failed BIRD EX.
 
 ```text
 Direct
@@ -126,7 +129,7 @@ Guarded
   → repair attempt 1
   → verify: PASS
   → execute: rows=0
-  → official EX: false
+  → BIRD EX: false
 ```
 
 **Takeaway:** bounded repair is useful for operational reliability, but a successful execution is not evidence that the model understood the question.
@@ -135,13 +138,13 @@ Guarded
 
 **BIRD case 1366 · `student_club`**
 
-For “List all the members who attended the event `October Meeting`,” the generated SQL passed deterministic verification and returned 23 rows. Both direct and guarded paths executed successfully, yet official BIRD EX was false.
+For “List all the members who attended the event `October Meeting`,” the generated SQL passed deterministic verification and returned 23 rows. Both direct and guarded paths executed successfully, yet BIRD EX was false.
 
 ```text
 verify: PASS
 execute: rows=23
 status: OK
-official EX: false
+BIRD EX: false
 ```
 
 **Takeaway:** deterministic checks can reject unsafe or invalid SQL; they cannot prove semantic correctness.
@@ -167,7 +170,7 @@ An optional semantic-review path remains available for experimentation, but the 
 - **Deterministic checks before execution** instead of asking another model to judge obvious compiler or safety failures.
 - **Bounded repair** with `max_repairs=2`, avoiding an open-ended agent loop.
 - **Read-only SQLite execution** so generated SQL cannot mutate the database.
-- **Schema/value grounding** keeps generation tied to the actual database surface.
+- **Schema grounding by default** keeps generation tied to the actual database surface; richer value-grounding ideas remain experimental because the frozen DGSL ablation showed no net correctness gain.
 - **One service layer** behind Streamlit, FastAPI, and CLI.
 - **Paired evaluation** keeps reliability and correctness claims tied to the same frozen cases.
 - **Ablation before adoption**: semantic planning/revision ideas are kept only when they show positive net evidence.
@@ -217,7 +220,7 @@ uv run uvicorn semantic_sql.api:app --reload
 ## Evaluation note
 
 > [!IMPORTANT]
-> **Execution success is not Text-to-SQL accuracy.** A query can execute successfully and still answer the wrong question. The 90% figure represents conservative execution reliability, while official BIRD EX is the correctness-oriented metric. The semantic-revision ablation did not improve EX, so the simpler guarded path remains the headline result.
+> **Execution success is not Text-to-SQL accuracy.** A query can execute successfully and still answer the wrong question. The 90% figure represents conservative execution reliability, while BIRD EX is the correctness-oriented metric. The semantic-revision ablation did not improve EX, so the simpler guarded path remains the headline result.
 
 ## Limits
 
@@ -225,4 +228,5 @@ uv run uvicorn semantic_sql.api:app --reload
 - SQLite only in the current implementation.
 - Results depend on the frozen local-model configuration.
 - The optional semantic revision adds one extra model call when enabled and did not improve the frozen-100 EX result.
+- The Qwen 9B provenance workflow contains a strict-validity shard failure; the checked-in summary records the conservative reporting decision.
 - The offline provider is demo infrastructure, not evaluation evidence.
