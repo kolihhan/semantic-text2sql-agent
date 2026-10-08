@@ -3,7 +3,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-from semantic_sql.grounding import build_zero_row_evidence
+from semantic_sql.zero_row import build_zero_row_evidence
 
 
 def test_zero_row_evidence_surfaces_nearby_filter_value(tmp_path: Path) -> None:
