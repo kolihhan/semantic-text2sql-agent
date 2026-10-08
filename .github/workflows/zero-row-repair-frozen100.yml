@@ -1,0 +1,175 @@
+name: Qwen3.5 9B zero-row repair frozen-100
+
+on:
+  push:
+    branches: ["experiment/zero-row-repair"]
+    paths:
+      - ".github/ZERO_ROW_REPAIR_TRIGGER"
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BASELINE_RUN: "37307108955"
+  SOURCE_HF_COMMIT: 3c11fb193e5439b338e23677fa0aae11e8b85db9
+  SOURCE_RAW_SHA256: ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb
+  SOURCE_SHA256: 0310b7ca2dfb6247234e2073f93e7a75106ee41ba55231f75d06d2ef68efe2ec
+  DB_ZIP_SHA256: cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630
+  MODEL: qwen3.5:9b-q4_K_M
+
+jobs:
+  repair:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout experiment code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install project
+        run: python -m pip install -e ".[dev]"
+
+      - name: Download exact frozen baseline shard
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHARD: ${{ matrix.shard }}
+        run: |
+          mkdir -p baseline
+          gh run download "$BASELINE_RUN" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name "qwen9b-xiyan-style-shard-${SHARD}" \
+            --dir baseline
+          test -f "baseline/qwen9b-shard-${SHARD}.json"
+
+      - name: Restore exact historical BIRD source
+        run: |
+          mkdir -p /tmp/qwen9b
+          curl -fL --retry 3 \
+            "https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/${SOURCE_HF_COMMIT}/data/dev_20251106-00000-of-00001.json?download=true" \
+            -o /tmp/qwen9b/source-lf.json
+          echo "${SOURCE_RAW_SHA256}  /tmp/qwen9b/source-lf.json" | sha256sum -c -
+          python - <<'PY'
+          import hashlib, os
+          from pathlib import Path
+          raw = Path('/tmp/qwen9b/source-lf.json').read_bytes()
+          assert b'\r\n' not in raw
+          historical = raw.replace(b'\n', b'\r\n')
+          Path('/tmp/qwen9b/source.json').write_bytes(historical)
+          assert hashlib.sha256(historical).hexdigest() == os.environ['SOURCE_SHA256']
+          PY
+
+      - name: Download BIRD databases
+        run: |
+          mkdir -p /tmp/bird
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
+          echo "${DB_ZIP_SHA256}  /tmp/bird/dev.zip" | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          DB_ZIP=$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ZIP"
+          mkdir -p /tmp/bird/databases
+          unzip -q "$DB_ZIP" -d /tmp/bird/databases
+          DB_ROOT=$(find /tmp/bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=/tmp/bird/databases; fi
+          test -d "$DB_ROOT"
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+
+      - name: Install Ollama
+        run: curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+
+      - name: Start Ollama and pull Qwen3.5 9B
+        run: |
+          ollama serve > /tmp/ollama.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 1
+          done
+          ollama pull "$MODEL"
+
+      - name: Repair only runtime-visible zero-row cases
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python experiments/zero_row_repair_frozen100.py \
+            --baseline "baseline/qwen9b-shard-${SHARD}.json" \
+            --source /tmp/qwen9b/source.json \
+            --database-root "$DB_ROOT" \
+            --model "$MODEL" \
+            --timeout 600 \
+            --max-rows 50000 \
+            --output "zero-row-shard-${SHARD}.json"
+
+      - name: Upload treatment shard
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zero-row-repair-shard-${{ matrix.shard }}
+          path: zero-row-shard-${{ matrix.shard }}.json
+          if-no-files-found: warn
+
+  aggregate:
+    needs: repair
+    if: ${{ always() && needs.repair.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download treatment shards
+        uses: actions/download-artifact@v4
+        with:
+          pattern: zero-row-repair-shard-*
+          path: shards
+          merge-multiple: true
+
+      - name: Aggregate frozen-100 treatment
+        run: |
+          python - <<'PY'
+          import glob, json
+          from pathlib import Path
+          paths = sorted(glob.glob('shards/zero-row-shard-*.json'))
+          assert len(paths) == 4, paths
+          payloads = [json.loads(Path(p).read_text(encoding='utf-8')) for p in paths]
+          assert sum(int(p['baseline_case_count']) for p in payloads) == 100
+          candidate_count = sum(int(p['candidate_count']) for p in payloads)
+          baseline_correct = sum(int(p['shard_metrics']['baseline_correct']) for p in payloads)
+          treatment_correct = sum(int(p['shard_metrics']['treatment_correct']) for p in payloads)
+          wrong_to_correct = sum(int(p['shard_metrics']['wrong_to_correct']) for p in payloads)
+          correct_to_wrong = sum(int(p['shard_metrics']['correct_to_wrong']) for p in payloads)
+          repairs = {}
+          for payload in payloads:
+              for case_id, row in payload['repairs'].items():
+                  assert case_id not in repairs
+                  repairs[case_id] = row
+          assert len(repairs) == candidate_count
+          result = {
+              'schema_version': 'zero-row-repair-frozen100/v1',
+              'status': 'complete',
+              'baseline_run': 37307108955,
+              'model': 'qwen3.5:9b-q4_K_M',
+              'sample_size': 100,
+              'candidate_count': candidate_count,
+              'baseline_correct': baseline_correct,
+              'treatment_correct': treatment_correct,
+              'baseline_ex': baseline_correct / 100,
+              'treatment_ex': treatment_correct / 100,
+              'wrong_to_correct': wrong_to_correct,
+              'correct_to_wrong': correct_to_wrong,
+              'promotion_gate': treatment_correct > baseline_correct and correct_to_wrong == 0,
+              'repairs': repairs,
+          }
+          Path('zero-row-repair-frozen100.json').write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding='utf-8')
+          print(json.dumps({k: v for k, v in result.items() if k != 'repairs'}, indent=2))
+          PY
+
+      - name: Upload aggregate
+        uses: actions/upload-artifact@v4
+        with:
+          name: zero-row-repair-frozen100
+          path: zero-row-repair-frozen100.json
