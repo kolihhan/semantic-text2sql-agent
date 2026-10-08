@@ -14,6 +14,7 @@ from .verifier import verify_sql_preflight
 
 GUARDED_TREATMENT_ID = "langgraph_preflight_plus_internal_cot_repair_v1"
 SEMANTIC_REVISION_TREATMENT_ID = "clause_guided_semantic_revision_v1"
+ZERO_RESULT_FILTER_REVISION_TREATMENT_ID = "zero_result_filter_revision_v1"
 _SEMANTIC_ISSUE_TYPES = {
     "NONE",
     "PROJECTION",
@@ -219,3 +220,69 @@ def run_guarded(
     if result is None:
         raise RuntimeError("Guarded graph completed without a result")
     return result
+
+
+def run_guarded_zero_result_revision(
+    *,
+    database: str | Path,
+    provider: ModelProvider,
+    question: str,
+    schema_context: str,
+    evidence: str | None = None,
+    initial_candidate: SQLCandidate | None = None,
+    max_repairs: int = 2,
+    max_rows: int = 100,
+) -> AgentResult:
+    """Retry only a concrete FILTER_VALUE mismatch after a successful zero-row query.
+
+    The normal Guarded path remains unchanged. A second semantic-review pass is
+    considered only when the first query executed successfully and returned no
+    rows. The revised query is accepted only when the reviewer identifies a
+    FILTER_VALUE change and the revision produces a non-empty, non-truncated
+    result; otherwise the original zero-row result is preserved.
+    """
+    original = run_guarded(
+        database=database,
+        provider=provider,
+        question=question,
+        schema_context=schema_context,
+        evidence=evidence,
+        initial_candidate=initial_candidate,
+        max_repairs=max_repairs,
+        max_rows=max_rows,
+    )
+    if original.status != "ok" or original.rows or original.truncated or original.candidate is None:
+        return original
+
+    reviewed = run_guarded(
+        database=database,
+        provider=provider,
+        question=question,
+        schema_context=schema_context,
+        evidence=evidence,
+        initial_candidate=original.candidate,
+        max_repairs=0,
+        max_rows=max_rows,
+        semantic_revision=True,
+    )
+    semantic = next((stage for stage in reviewed.stages if stage.name == "semantic_revision"), None)
+    if (
+        semantic is None
+        or semantic.summary != "FILTER_VALUE: changed=true"
+        or reviewed.status != "ok"
+        or not reviewed.rows
+        or reviewed.truncated
+        or reviewed.candidate is None
+    ):
+        return original
+
+    return AgentResult(
+        status="ok",
+        question=question,
+        candidate=reviewed.candidate,
+        verification=reviewed.verification,
+        rows=reviewed.rows,
+        columns=reviewed.columns,
+        truncated=False,
+        stages=(*original.stages, StageRecord("empty_result_revision", "accepted FILTER_VALUE")),
+    )
