@@ -1,0 +1,115 @@
+name: Qwen3.5 9B zero-row repair experiment
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - result-remediation/zero-row-repair
+    paths:
+      - "experiments/qwen9b_zero_row_repair.py"
+      - "tests/test_zero_row_repair.py"
+      - ".github/workflows/qwen9b-zero-row-repair.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_HF_COMMIT: 3c11fb193e5439b338e23677fa0aae11e8b85db9
+  SOURCE_RAW_SHA256: ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb
+  SOURCE_SHA256: 0310b7ca2dfb6247234e2073f93e7a75106ee41ba55231f75d06d2ef68efe2ec
+  DB_ZIP_SHA256: cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630
+  MODEL: qwen3.5:9b-q4_K_M
+  BASELINE_RUN_ID: "37307108955"
+
+jobs:
+  experiment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout remediation branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install project
+        run: python -m pip install -e ".[dev]"
+
+      - name: Run unit gate
+        run: python -m pytest -q tests/test_zero_row_repair.py
+
+      - name: Download frozen 9B baseline shards
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.BASELINE_RUN_ID }}
+          pattern: qwen9b-xiyan-style-shard-*
+          path: baseline-shards
+          merge-multiple: true
+
+      - name: Restore exact historical BIRD source
+        run: |
+          mkdir -p /tmp/qwen9b
+          curl -fL --retry 3 \
+            "https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/${SOURCE_HF_COMMIT}/data/dev_20251106-00000-of-00001.json?download=true" \
+            -o /tmp/qwen9b/source-lf.json
+          echo "${SOURCE_RAW_SHA256}  /tmp/qwen9b/source-lf.json" | sha256sum -c -
+          python - <<'PY'
+          import hashlib, os
+          from pathlib import Path
+          raw = Path('/tmp/qwen9b/source-lf.json').read_bytes()
+          historical = raw.replace(b'\n', b'\r\n')
+          Path('/tmp/qwen9b/source.json').write_bytes(historical)
+          actual = hashlib.sha256(historical).hexdigest()
+          assert actual == os.environ['SOURCE_SHA256'], actual
+          PY
+
+      - name: Download BIRD databases
+        run: |
+          mkdir -p /tmp/bird
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
+          echo "${DB_ZIP_SHA256}  /tmp/bird/dev.zip" | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          DB_ZIP=$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ZIP"
+          mkdir -p /tmp/bird/databases
+          unzip -q "$DB_ZIP" -d /tmp/bird/databases
+          DB_ROOT=$(find /tmp/bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=/tmp/bird/databases; fi
+          test -d "$DB_ROOT"
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+
+      - name: Install Ollama
+        run: curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+
+      - name: Start Ollama and pull exact model tag
+        run: |
+          ollama serve > /tmp/ollama.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 1
+          done
+          ollama pull "$MODEL"
+          ollama list
+
+      - name: Run zero-row conditional repair
+        run: |
+          python experiments/qwen9b_zero_row_repair.py \
+            --source /tmp/qwen9b/source.json \
+            --database-root "$DB_ROOT" \
+            --baseline-dir baseline-shards \
+            --model "$MODEL" \
+            --output qwen9b-zero-row-repair.json
+
+      - name: Upload experiment result
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qwen9b-zero-row-repair
+          path: qwen9b-zero-row-repair.json
+          if-no-files-found: warn
