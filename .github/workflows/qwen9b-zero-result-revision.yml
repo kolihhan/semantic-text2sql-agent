@@ -1,0 +1,165 @@
+name: Qwen3.5 9B zero-result filter revision
+
+on:
+  push:
+    branches:
+      - experiment/qwen9b-zero-result-repair
+    paths:
+      - "src/semantic_sql/inference.py"
+      - "experiments/qwen9b_zero_result_revision.py"
+      - "tests/test_zero_result_revision.py"
+      - ".github/workflows/qwen9b-zero-result-revision.yml"
+      - ".github/QWEN9B_ZERO_RESULT_TRIGGER"
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BASELINE_RUN_ID: "37307108955"
+  SOURCE_HF_COMMIT: 3c11fb193e5439b338e23677fa0aae11e8b85db9
+  SOURCE_RAW_SHA256: ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb
+  SOURCE_HISTORICAL_SHA256: 0310b7ca2dfb6247234e2073f93e7a75106ee41ba55231f75d06d2ef68efe2ec
+  DB_ZIP_SHA256: cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630
+  MODEL: qwen3.5:9b-q4_K_M
+
+jobs:
+  targeted-experiment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout experiment branch
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install project
+        run: python -m pip install -e ".[dev]"
+
+      - name: Unit and compile gate
+        run: |
+          python -m pytest -q tests/test_zero_result_revision.py tests/test_guarded_direct_preflight.py
+          python -m compileall -q src evaluation experiments/qwen9b_zero_result_revision.py tests
+
+      - name: Download exact old Qwen9B shard artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/baseline
+          for shard in 0 1 2 3; do
+            mkdir -p "/tmp/baseline/$shard"
+            gh run download "$BASELINE_RUN_ID" \
+              --repo "$GITHUB_REPOSITORY" \
+              --name "qwen9b-xiyan-style-shard-$shard" \
+              --dir "/tmp/baseline/$shard"
+            test -f "/tmp/baseline/$shard/qwen9b-shard-$shard.json"
+          done
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          paths = [Path(f"/tmp/baseline/{i}/qwen9b-shard-{i}.json") for i in range(4)]
+          payloads = [json.loads(p.read_text(encoding="utf-8")) for p in paths]
+          assert [len(p["cases"]) for p in payloads] == [25, 25, 25, 25]
+          assert len({c["case_id"] for p in payloads for c in p["cases"]}) == 100
+          digests = {p["model_digest"] for p in payloads}
+          assert len(digests) == 1
+          Path("/tmp/expected-model-digest.txt").write_text(next(iter(digests)), encoding="utf-8")
+          print("baseline cases=100 exact paired artifacts recovered")
+          PY
+
+      - name: Download pinned BIRD source
+        run: |
+          mkdir -p /tmp/bird
+          curl -fL --retry 3 \
+            "https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/${SOURCE_HF_COMMIT}/data/dev_20251106-00000-of-00001.json?download=true" \
+            -o /tmp/bird/dev-raw.json
+          echo "${SOURCE_RAW_SHA256}  /tmp/bird/dev-raw.json" | sha256sum -c -
+          python - <<'PY'
+          from pathlib import Path
+          raw = Path("/tmp/bird/dev-raw.json").read_bytes()
+          historical = raw.replace(b"\n", b"\r\n")
+          Path("/tmp/bird/dev-historical.json").write_bytes(historical)
+          PY
+          echo "${SOURCE_HISTORICAL_SHA256}  /tmp/bird/dev-historical.json" | sha256sum -c -
+
+      - name: Download exact historical databases
+        run: |
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
+          echo "${DB_ZIP_SHA256}  /tmp/bird/dev.zip" | sha256sum -c -
+          mkdir -p /tmp/bird/unpacked /tmp/bird/databases
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          DB_ZIP=$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ZIP"
+          unzip -q "$DB_ZIP" -d /tmp/bird/databases
+          DB_ROOT=$(find /tmp/bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=/tmp/bird/databases; fi
+          test -d "$DB_ROOT"
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+
+      - name: Install Ollama and verify exact model digest
+        run: |
+          curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          ollama serve > /tmp/ollama.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 1
+          done
+          ollama pull "$MODEL"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from urllib.request import urlopen
+          model = "qwen3.5:9b-q4_K_M"
+          with urlopen("http://127.0.0.1:11434/api/tags") as response:
+              rows = json.load(response)["models"]
+          actual = next(row["digest"] for row in rows if row.get("name") == model)
+          expected = Path("/tmp/expected-model-digest.txt").read_text(encoding="utf-8").strip()
+          assert actual == expected, (actual, expected)
+          print("model digest exact-match PASS", actual)
+          PY
+
+      - name: Run only runtime-selected zero-result cases
+        run: |
+          python experiments/qwen9b_zero_result_revision.py \
+            --source /tmp/bird/dev-historical.json \
+            --database-root "$DB_ROOT" \
+            --baseline \
+              /tmp/baseline/0/qwen9b-shard-0.json \
+              /tmp/baseline/1/qwen9b-shard-1.json \
+              /tmp/baseline/2/qwen9b-shard-2.json \
+              /tmp/baseline/3/qwen9b-shard-3.json \
+            --output zero-result-revision.json \
+            --model "$MODEL" \
+            --expected-selected 12 \
+            --timeout 600 \
+            --max-rows 50000
+
+      - name: Report hypothesis gate
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path("zero-result-revision.json").read_text(encoding="utf-8"))
+          gate = result["after_correct"] > result["before_correct"] and result["correct_to_wrong"] == 0
+          print(json.dumps({
+              "before_correct": result["before_correct"],
+              "after_correct": result["after_correct"],
+              "wrong_to_correct": result["wrong_to_correct"],
+              "correct_to_wrong": result["correct_to_wrong"],
+              "accepted_revisions": result["accepted_revisions"],
+              "model_calls": result["model_calls"],
+              "gate_met": gate,
+          }, indent=2))
+          PY
+
+      - name: Upload experiment result
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qwen9b-zero-result-filter-revision
+          path: zero-result-revision.json
+          if-no-files-found: warn
