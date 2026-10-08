@@ -1,0 +1,78 @@
+{
+  "source_run_id": 37307108955,
+  "selection": "guarded status=ok, execute rows=0, official_ex=false",
+  "cases": [
+    {
+      "case_id": "28",
+      "database_id": "california_schools",
+      "question": "Consider the average difference between K-12 enrollment and 15-17 enrollment of schools that are locally funded, list the names and DOC type of schools which has a difference above this average.",
+      "baseline_sql": "SELECT s.School, s.DOCType\nFROM frpm f\nJOIN schools s ON f.CDSCode = s.CDSCode\nWHERE s.FundingType = 'Locally Funded'\nAND (f.\"Enrollment (K-12)\" - f.\"Enrollment (Ages 5-17)\") > (\n    SELECT AVG(f2.\"Enrollment (K-12)\" - f2.\"Enrollment (Ages 5-17)\")\n    FROM frpm f2\n    JOIN schools s2 ON f2.CDSCode = s2.CDSCode\n    WHERE s2.FundingType = 'Locally Funded'\n);"
+    },
+    {
+      "case_id": "38",
+      "database_id": "california_schools",
+      "question": "What are the webpages for the Los Angeles County school that has between 2,000 and 3,000 test takers?",
+      "baseline_sql": "SELECT s.Website \nFROM schools s\nJOIN satscores sc ON s.CDSCode = sc.cds\nWHERE s.County = 'Los Angeles County'\n  AND sc.NumTstTakr BETWEEN 2000 AND 3000;"
+    },
+    {
+      "case_id": "300",
+      "database_id": "toxicology",
+      "question": "What atoms comprise TR186?",
+      "baseline_sql": "SELECT element FROM atom WHERE molecule_id = 186;"
+    },
+    {
+      "case_id": "312",
+      "database_id": "toxicology",
+      "question": "What is the carcinogenic label for bond TR001_2_4?",
+      "baseline_sql": "SELECT m.label \nFROM molecule m\nJOIN bond b ON m.molecule_id = b.molecule_id\nWHERE b.bond_type = 'TR001_2_4';"
+    },
+    {
+      "case_id": "455",
+      "database_id": "card_games",
+      "question": "Which of the cards that are a promotional painting have multiple faces on the same card? Please list their names.",
+      "baseline_sql": "SELECT name\nFROM cards\nWHERE isPromo = 1 AND side IS NOT NULL\nGROUP BY id\nHAVING COUNT(DISTINCT side) > 1;"
+    },
+    {
+      "case_id": "513",
+      "database_id": "card_games",
+      "question": "Among the sets whose expansion type is Commander, which set has the highest total number of cards including promotional and related supplemental products but excluding Alchemy modifications? Indicate the id of the set.",
+      "baseline_sql": "SELECT sets.id\nFROM sets\nWHERE sets.type = 'Commander'\nORDER BY COALESCE(sets.totalSetSize, 0) DESC\nLIMIT 1;"
+    },
+    {
+      "case_id": "586",
+      "database_id": "codebase_community",
+      "question": "Which user added a bounty amount of 50 to the post title mentioning variance?",
+      "baseline_sql": "SELECT u.DisplayName\nFROM users u\nJOIN posts p ON u.Id = p.OwnerUserId\nJOIN votes v ON p.Id = v.PostId AND u.Id = v.UserId\nWHERE v.BountyAmount = 50\nAND p.Title LIKE '%variance%';"
+    },
+    {
+      "case_id": "838",
+      "database_id": "superhero",
+      "question": "Provide the full name of the superhero named Alien.",
+      "baseline_sql": "SELECT s.full_name \nFROM superhero s\nJOIN publisher p ON s.publisher_id = p.id\nWHERE s.superhero_name = 'Alien' AND p.publisher_name = 'Marvel';"
+    },
+    {
+      "case_id": "891",
+      "database_id": "formula_1",
+      "question": "Name all drivers in the 2010 Singapore Grand Prix order by their position stands.",
+      "baseline_sql": "SELECT d.forename, d.surname, ds.position\nFROM drivers d\nJOIN driverStandings ds ON d.driverId = ds.driverId\nJOIN races r ON ds.raceId = r.raceId\nWHERE r.year = 2010 AND r.name = 'Singapore'\nORDER BY ds.position;"
+    },
+    {
+      "case_id": "1017",
+      "database_id": "formula_1",
+      "question": "Please list the location coordinates of the circuits whose lap record is 1:29.488.",
+      "baseline_sql": "SELECT lat, lng\nFROM circuits\nWHERE circuitId IN (\n    SELECT DISTINCT c.circuitId\n    FROM races r\n    JOIN results res ON r.raceId = res.raceId\n    JOIN circuits c ON r.circuitId = c.circuitId\n    WHERE LOWER(c.name) LIKE '%1:29.488%'\n       OR CAST(res.fastestLapTime AS TEXT) = '00:01:29.488'\n);"
+    },
+    {
+      "case_id": "1179",
+      "database_id": "thrombosis_prediction",
+      "question": "For the patient who was diagnosed with SLE on 1994/2/19, what was his/her anti-Cardiolipin antibody concentration status on 1993/11/12?",
+      "baseline_sql": "SELECT Examination.[aCL IgM] FROM Examination INNER JOIN Patient ON Examination.ID = Patient.ID WHERE Patient.Diagnosis = 'SLE' AND Patient.Description = '1994-02-19' AND Examination.[Examination Date] = '1993/11/12';"
+    },
+    {
+      "case_id": "1438",
+      "database_id": "student_club",
+      "question": "Please indicate the college of the person whose first name is Katy with the link to the major \"rec1N0upiVLy5esTO\".",
+      "baseline_sql": "SELECT major.college \nFROM member \nJOIN major ON member.link_to_major = major.major_id \nWHERE member.first_name = 'Katy' AND major.college = 'rec1N0upiVLy5esTO';"
+    }
+  ]
+}
