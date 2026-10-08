@@ -8,8 +8,9 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
-if str(SRC) not in sys.path:
-    sys.path.insert(0, str(SRC))
+for path in (ROOT, SRC):
+    if str(path) not in sys.path:
+        sys.path.insert(0, str(path))
 
 from evaluation.bird_loader import load_bird_json
 from evaluation.run_bird import _official_ex, _resolve_database
