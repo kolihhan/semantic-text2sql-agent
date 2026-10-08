@@ -10,7 +10,7 @@ def _case(*, rows: int, official_ex: bool = False):
     }
 
 
-def test_select_zero_row_candidates_only_targets_wrong_successful_empty_queries():
+def test_select_zero_row_candidates_is_gold_blind_and_targets_successful_empty_queries():
     from experiments.zero_row_repair_frozen100 import select_zero_row_candidates
 
     empty_wrong = _case(rows=0, official_ex=False)
@@ -20,10 +20,10 @@ def test_select_zero_row_candidates_only_targets_wrong_successful_empty_queries(
     failed["guarded"]["status"] = "execution_failed"
 
     selected = select_zero_row_candidates([empty_wrong, nonempty_wrong, empty_correct, failed])
-    assert selected == [empty_wrong]
+    assert selected == [empty_wrong, empty_correct]
 
 
-def test_aggregate_preserves_untouched_baseline_and_counts_only_real_transitions():
+def test_aggregate_preserves_untouched_baseline_and_counts_real_transitions():
     from experiments.zero_row_repair_frozen100 import aggregate_result
 
     baseline_cases = [
@@ -32,15 +32,15 @@ def test_aggregate_preserves_untouched_baseline_and_counts_only_real_transitions
         {"case_id": "c", "guarded": {"official_ex": False}},
     ]
     repaired = {
+        "a": {"official_ex": False},
         "b": {"official_ex": True},
-        "c": {"official_ex": False},
     }
 
     result = aggregate_result(baseline_cases, repaired)
     assert result == {
         "sample_size": 3,
         "baseline_correct": 1,
-        "treatment_correct": 2,
+        "treatment_correct": 1,
         "wrong_to_correct": 1,
-        "correct_to_wrong": 0,
+        "correct_to_wrong": 1,
     }
