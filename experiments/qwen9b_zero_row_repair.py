@@ -20,7 +20,7 @@ from semantic_sql.execution import ExecutionResult, SQLExecutionError, execute_r
 from semantic_sql.grounding import build_grounding_pack, build_value_index, heuristic_decomposition
 from semantic_sql.providers import OllamaProvider
 from semantic_sql.verifier import verify_sql_preflight
-from evaluation.run_bird import _ollama_model_digest, _resolve_database
+from run_bird import _ollama_model_digest, _resolve_database
 
 
 def should_attempt_repair(*, execution_success: bool, truncated: bool, row_count: int) -> bool:
