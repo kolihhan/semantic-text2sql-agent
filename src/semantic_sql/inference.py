@@ -14,6 +14,7 @@ from .verifier import verify_sql_preflight
 
 GUARDED_TREATMENT_ID = "langgraph_preflight_plus_internal_cot_repair_v1"
 SEMANTIC_REVISION_TREATMENT_ID = "clause_guided_semantic_revision_v1"
+ZERO_ROW_REPAIR_TREATMENT_ID = "zero_row_conditional_repair_v1"
 _SEMANTIC_ISSUE_TYPES = {
     "NONE",
     "PROJECTION",
@@ -32,6 +33,8 @@ class GuardedContext:
     max_repairs: int = 2
     max_rows: int = 100
     semantic_revision: bool = False
+    zero_row_repair: bool = False
+    zero_row_evidence: str | None = None
 
 
 class GuardedState(TypedDict, total=False):
@@ -41,6 +44,7 @@ class GuardedState(TypedDict, total=False):
     candidate: SQLCandidate | None
     verification: VerificationResult | None
     semantic_revised: bool
+    zero_row_repaired: bool
     stages: tuple[StageRecord, ...]
     result: AgentResult | None
 
@@ -139,6 +143,33 @@ def _semantic_revise(state: GuardedState, runtime) -> dict[str, Any]:
     }
 
 
+def _zero_row_repair(state: GuardedState, runtime) -> dict[str, Any]:
+    candidate = state["candidate"]
+    prompt = (
+        f"Question:\n{state['question']}\n\n"
+        f"Schema context:\n{state['schema_context']}\n\n"
+        f"SQL that executed successfully but returned zero rows:\n{candidate.sql}\n\n"
+        f"Bounded database evidence:\n{runtime.context.zero_row_evidence}\n\n"
+        "The query is syntactically valid but produced no rows. Check whether a filter literal, filter column, join relationship, "
+        "or unnecessarily restrictive condition conflicts with the database evidence. Change only what the evidence supports. "
+        "Preserve the user's requested projection, aggregation, ordering, and limits unless they are directly responsible for the empty result. "
+        "Return corrected SQL only."
+    )
+    response = runtime.context.provider.complete_text(
+        system=(
+            "Repair one read-only SQLite query after an empty-result diagnostic. Use only the supplied schema and bounded database evidence. "
+            "Return exactly one SELECT or CTE and no markdown or explanation."
+        ),
+        user=prompt,
+    )
+    repaired = SQLCandidate(sql=_strip_fence(response), attempt=candidate.attempt + 1)
+    return {
+        "candidate": repaired,
+        "zero_row_repaired": True,
+        "stages": _append_stage(state, "zero_row_repair", f"attempt={repaired.attempt}: {repaired.sql}"),
+    }
+
+
 def _execute(state: GuardedState, runtime) -> dict[str, Any]:
     candidate = state["candidate"]
     verification = state["verification"]
@@ -165,7 +196,21 @@ def _verify_route(state: GuardedState, runtime) -> str:
     return "refuse"
 
 
-def _build_guarded_graph(*, semantic_revision: bool = False):
+def _execute_route(state: GuardedState, runtime) -> str:
+    result = state.get("result")
+    if (
+        runtime.context.zero_row_repair
+        and runtime.context.zero_row_evidence
+        and not state.get("zero_row_repaired", False)
+        and result is not None
+        and result.status == "ok"
+        and len(result.rows) == 0
+    ):
+        return "zero_row_repair"
+    return "end"
+
+
+def _build_guarded_graph(*, semantic_revision: bool = False, zero_row_repair: bool = False):
     from langgraph.graph import END, START, StateGraph
 
     graph = StateGraph(GuardedState, context_schema=GuardedContext)
@@ -174,6 +219,8 @@ def _build_guarded_graph(*, semantic_revision: bool = False):
     graph.add_node("repair", _repair)
     if semantic_revision:
         graph.add_node("semantic_revision", _semantic_revise)
+    if zero_row_repair:
+        graph.add_node("zero_row_repair", _zero_row_repair)
     graph.add_node("execute", _execute)
     graph.add_node("refuse", _refuse)
     graph.add_edge(START, "generate")
@@ -185,7 +232,13 @@ def _build_guarded_graph(*, semantic_revision: bool = False):
     graph.add_edge("repair", "verify")
     if semantic_revision:
         graph.add_edge("semantic_revision", "verify")
-    graph.add_edge("execute", END)
+    if zero_row_repair:
+        graph.add_conditional_edges(
+            "execute", _execute_route, {"zero_row_repair": "zero_row_repair", "end": END}
+        )
+        graph.add_edge("zero_row_repair", "verify")
+    else:
+        graph.add_edge("execute", END)
     graph.add_edge("refuse", END)
     return graph.compile()
 
@@ -195,24 +248,31 @@ def run_guarded(
     schema_context: str, evidence: str | None = None,
     initial_candidate: SQLCandidate | None = None, max_repairs: int = 2,
     max_rows: int = 100, semantic_revision: bool = False,
+    zero_row_repair: bool = False, zero_row_evidence: str | None = None,
 ) -> AgentResult:
     database = Path(database)
-    output = _build_guarded_graph(semantic_revision=semantic_revision).invoke(
+    output = _build_guarded_graph(
+        semantic_revision=semantic_revision,
+        zero_row_repair=zero_row_repair,
+    ).invoke(
         {
             "question": question,
             "schema_context": schema_context,
             "evidence": evidence,
             "candidate": initial_candidate,
             "semantic_revised": False,
+            "zero_row_repaired": False,
             "stages": (),
         },
-        config={"recursion_limit": 2 * max(0, max_repairs) + 10},
+        config={"recursion_limit": 2 * max(0, max_repairs) + 14},
         context=GuardedContext(
             database=database,
             provider=provider,
             max_repairs=max_repairs,
             max_rows=max_rows,
             semantic_revision=semantic_revision,
+            zero_row_repair=zero_row_repair,
+            zero_row_evidence=zero_row_evidence,
         ),
     )
     result = output["result"] if isinstance(output, dict) else output.result
