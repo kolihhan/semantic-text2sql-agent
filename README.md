@@ -1,35 +1,6 @@
-<h1 align="center">Semantic Text-to-SQL</h1>
+# Semantic Text-to-SQL
 
-<p align="center">
-  <strong>Local NL → SQL with schema grounding, deterministic verification, bounded repair, and read-only execution.</strong>
-</p>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-111827?style=flat-square&logo=python" alt="Python" />
-  <img src="https://img.shields.io/badge/FastAPI-111827?style=flat-square&logo=fastapi" alt="FastAPI" />
-  <img src="https://img.shields.io/badge/Streamlit-111827?style=flat-square&logo=streamlit" alt="Streamlit" />
-  <img src="https://img.shields.io/badge/LangGraph-111827?style=flat-square" alt="LangGraph" />
-  <img src="https://img.shields.io/badge/SQLite-111827?style=flat-square&logo=sqlite" alt="SQLite" />
-</p>
-
-<p align="center">
-  <a href="#demo">Demo</a> ·
-  <a href="#measured-result">Measured result</a> ·
-  <a href="#semantic-revision-ablation">Semantic ablation</a> ·
-  <a href="#architecture">Architecture</a>
-</p>
-
-## At a glance
-
-| | |
-|---|---|
-| **Problem** | A generated SQL query can be safe, valid, and executable while still answering the wrong question. |
-| **What I built** | A local Text-to-SQL pipeline with schema grounding, deterministic preflight, bounded repair, read-only execution, and explicit failure traces. |
-| **Measured result** | The checked-in frozen 100-query BIRD DEV summary for `qwen3.5:9b-q4_K_M` reports guarded verification + repair improving BIRD EX-compatible match from **33% → 39%** and conservative execution success from **75% → 90%**. See the provenance note below. |
-| **Design focus** | Improve reliability with bounded, inspectable checks instead of adding open-ended agent loops. |
-
-> [!NOTE]
-> The core lesson behind this project is simple: **executable SQL is not necessarily correct SQL**.
+A local text-to-SQL system with schema grounding, deterministic verification, bounded repair, and read-only execution.
 
 ## Demo
 
@@ -38,12 +9,6 @@ run-demo.cmd
 ```
 
 The Streamlit demo puts the question, generated SQL, verification trace, execution result, and table output on one screen. The default **Demo (offline)** provider needs no Ollama or API key.
-
-<p align="center">
-  <img src="assets/demo-preview.svg" alt="Illustrated preview of the Semantic Text-to-SQL Streamlit demo" width="100%" />
-</p>
-
-> The image above is an illustrated preview of the existing Streamlit UI, not a benchmark screenshot.
 
 ```text
 Question
@@ -65,7 +30,7 @@ How many orders were placed in 2024?
 
 The built-in offline provider demonstrates the service flow only; benchmark claims below come from frozen local-model artifacts.
 
-## Measured result
+## Results
 
 The checked-in frozen paired summary covers **100 BIRD DEV queries** using local `qwen3.5:9b-q4_K_M` through Ollama:
 
