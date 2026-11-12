@@ -111,7 +111,7 @@ def test_max_probe_and_quote_budget_fail_closed(db):
 
 
 def test_annotated_mschema_is_monotonic_and_reproducible(db):
-    baseline="Database: db\\nTable: clients\\nTable: orders\\n..."
+    baseline="Database: db\nTable: clients\nTable: orders\n..."
     v1,meta1=enrich_mschema(
         base_mschema=baseline,database=db,selected_tables=["clients","orders","profiles"],
         question='How many orders are there for "Alice"?')
@@ -119,7 +119,7 @@ def test_annotated_mschema_is_monotonic_and_reproducible(db):
         base_mschema=baseline,database=db,selected_tables=["clients","orders","profiles"],
         question='How many orders are there for "Alice"?')
     assert v1==v2 and meta1==meta2
-    assert v1.startswith(baseline+"\\n")
+    assert v1.startswith(baseline+"\n")
     assert "declared many-to-1" in v1
     assert "declared 1-to-1" in v1
     assert "exact case-insensitive match" in v1
