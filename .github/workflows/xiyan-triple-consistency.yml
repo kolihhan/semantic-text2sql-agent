@@ -1,0 +1,118 @@
+name: XiYan triple SQL execution consensus (one new model candidate)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/xiyan-triple-consistency-20261112]
+    paths:
+      - .github/XIYAN_TRIPLE_TRIGGER
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  MODEL: hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M
+  BASELINE_RUN_ID: "37090833784"
+  MSCHEMA_RUN_ID: "43171987762"
+
+jobs:
+  treatment:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install project
+        run: python -m pip install -e ".[dev]"
+      - name: Install Ollama
+        run: curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+      - name: Pull exact XiYan 7B treatment model
+        run: |
+          set -euo pipefail
+          ollama serve > /tmp/ollama.log 2>&1 &
+          for i in {1..40}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 1
+          done
+          ollama pull "$MODEL"
+      - name: Restore exact frozen BIRD source and SQLite databases
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/bird
+          curl -fL --retry 4 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
+          echo "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  /tmp/bird/dev.zip" | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          DEV_JSON="$(find /tmp/bird/unpacked -type f -name dev.json ! -path '*/__MACOSX/*' | head -n1)"
+          DB_ZIP="$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)"
+          test -f "$DEV_JSON" && test -f "$DB_ZIP"
+          mkdir -p /tmp/bird/databases
+          unzip -q "$DB_ZIP" -d /tmp/bird/databases
+          DB_ROOT="$(find /tmp/bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)"
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=/tmp/bird/databases; fi
+          test -d "$DB_ROOT"
+          echo "DEV_JSON=$DEV_JSON" >> "$GITHUB_ENV"
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Download original XiYan lexical and M-Schema SQL (no reruns)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/original /tmp/mschema
+          gh run download "$BASELINE_RUN_ID" --repo "${{ github.repository }}" --name "xiyan-scv-shard-${{ matrix.shard }}" --dir /tmp/original
+          gh run download "$MSCHEMA_RUN_ID" --repo "${{ github.repository }}" --name "xiyan-mschema-shard-${{ matrix.shard }}" --dir /tmp/mschema
+          test -s "/tmp/original/xiyan-scv-shard-${{ matrix.shard }}.json"
+          test -s "/tmp/mschema/xiyan-mschema-shard-${{ matrix.shard }}.json"
+      - name: Generate independent third SQL and select by gold-blind execution agreement
+        run: |
+          python -m experiments.xiyan_triple_consistency \
+            --source "$DEV_JSON" \
+            --database-root "$DB_ROOT" \
+            --frozen runs/bird-paired-dev-v4/paired.json \
+            --lexical-baseline "/tmp/original/xiyan-scv-shard-${{ matrix.shard }}.json" \
+            --mschema-previous "/tmp/mschema/xiyan-mschema-shard-${{ matrix.shard }}.json" \
+            --model "$MODEL" \
+            --shard-index "${{ matrix.shard }}" \
+            --num-shards 4 \
+            --output "xiyan-triple-shard-${{ matrix.shard }}.json"
+      - name: Upload evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: xiyan-triple-shard-${{ matrix.shard }}
+          path: xiyan-triple-shard-${{ matrix.shard }}.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  aggregate:
+    needs: treatment
+    if: ${{ always() && needs.treatment.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: xiyan-triple-shard-*
+          path: shards
+          merge-multiple: true
+      - name: Score same frozen100; retain negative results
+        run: |
+          python -m experiments.xiyan_triple_consistency \
+            --inputs shards/xiyan-triple-shard-0.json shards/xiyan-triple-shard-1.json shards/xiyan-triple-shard-2.json shards/xiyan-triple-shard-3.json \
+            --min-correct 61 \
+            --output xiyan-triple-frozen100.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: xiyan-triple-frozen100
+          path: xiyan-triple-frozen100.json
+          if-no-files-found: error
+          retention-days: 30
