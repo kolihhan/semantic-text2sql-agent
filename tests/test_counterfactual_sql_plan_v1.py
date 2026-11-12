@@ -36,7 +36,7 @@ def test_count_distinct_and_not_exists_have_real_nonempty_counterexamples(tmp_pa
     with sqlite3.connect(db) as con:
         assert con.execute(rows[10]["reference_sql"]).fetchone()[0]==4
         assert con.execute(rows[5]["reference_sql"]).fetchall()==[("Fay",)]
-        assert con.execute(rows[6]["reference_sql"]).fetchall()==[("Ada",),("Fay",)]
+        assert con.execute(rows[6]["reference_sql"]).fetchall()==[("Ada",),("Eli",),("Fay",)]
         # Distinct prevents duplicated urgent label for item 3.
         sql=rows[10]["reference_sql"].replace("COUNT(DISTINCT a.id)","COUNT(*)")
         assert con.execute(sql).fetchone()[0]==5
