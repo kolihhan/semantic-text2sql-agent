@@ -1,0 +1,47 @@
+name: Semantic Colab Transformers v5 TrainingArguments real CPU preflight
+on:
+  push:
+    branches: [research/semantic-sft-colab-20261112]
+    paths:
+      - 'scripts/colab_semantic_sql_remote.py'
+      - 'experiments/semantic_sft_eval.py'
+      - 'notebooks/semantic_xiyan7b_qlora_colab.ipynb'
+      - '.github/workflows/semantic-colab-v5-args-preflight.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  args:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - name: Install same Transformers range as Colab
+        run: python -m pip install -q "transformers>=5.15,<6"
+      - name: Inspect actual v5 TrainingArguments call signature without GPU
+        run: |
+          python - <<'PY'
+          import ast, inspect, json, pathlib
+          import transformers
+          from transformers import TrainingArguments
+          declared=set(inspect.signature(TrainingArguments).parameters)
+          assert "warmup_steps" in declared
+          assert "warmup_ratio" not in declared
+          source=pathlib.Path("scripts/colab_semantic_sql_remote.py").read_text(encoding="utf-8")
+          tree=ast.parse(source)
+          calls=[node for node in ast.walk(tree) if isinstance(node,ast.Call) and isinstance(node.func,ast.Name) and node.func.id=="TrainingArguments"]
+          assert len(calls)==1
+          requested={keyword.arg for keyword in calls[0].keywords}
+          unexpected=sorted(requested-declared)
+          assert not unexpected,f"Unsupported arguments: {unexpected}"
+          assert "warmup_steps" in requested
+          print("REAL_TRANSFORMERS_V5_ARGS_PREFLIGHT",json.dumps({
+            "transformers_version":transformers.__version__,
+            "arguments_checked":len(requested),
+            "unexpected_keys":unexpected,
+            "scheduler":"fractional 0.05 warmup_steps",
+          },sort_keys=True))
+          PY
