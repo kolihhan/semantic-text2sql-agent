@@ -38,3 +38,4 @@ jobs:
           timeout 50 colab --auth=adc usage
           timeout 50 colab --auth=adc sessions
           echo COLAB_READ_ONLY_CHECK_AFTER_SQL_CANCEL_43209028119
+          echo QLORA_T4_POST_RESTART_READ_ONLY_CHECK_43216056732
