@@ -4,3 +4,5 @@ COMPARATOR=original-frozen-XiYan-58-of-100
 TREATMENT=M-Schema
 MIN_CORRECT=61
 NO_TRAINING=1
+RETRY=2
+FIX=python-module-imports
