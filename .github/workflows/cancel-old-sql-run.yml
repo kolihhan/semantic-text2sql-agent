@@ -1,0 +1,42 @@
+name: Cancel exact obsolete SQL Colab workflow 43209028119
+on:
+  push:
+    branches: [research/semantic-sft-colab-20261112]
+    paths: [.github/CANCEL_OLD_SQL_RUN_43209028119]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  cancel-only-old-sql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    env:
+      GH_TOKEN: ${{ github.token }}
+      OLD_RUN_ID: "43209028119"
+    steps:
+      - name: Verify run identity, cancel only old SQL Colab workload
+        shell: bash
+        run: |
+          set -euo pipefail
+          run="/repos/$GITHUB_REPOSITORY/actions/runs/$OLD_RUN_ID"
+          data="$(gh api "$run" --jq '[.id,.name,.status] | @tsv')"
+          IFS=$'\t' read -r id name status <<< "$data"
+          test "$id" = "43209028119"
+          test "$name" = "Colab GPU train XiYan-7B semantic QLoRA"
+          echo "OLD_SQL_RUN_VERIFIED id=$id status=$status"
+          if [ "$status" = "completed" ]; then
+            echo "OLD_SQL_RUN_ALREADY_COMPLETED"
+            exit 0
+          fi
+          gh run cancel "$OLD_RUN_ID" --repo "$GITHUB_REPOSITORY"
+          echo "OLD_SQL_RUN_CANCEL_REQUEST_SENT"
+          for i in {1..15}; do
+            state="$(gh api "$run" --jq '.status')"
+            echo "OLD_SQL_RUN_POLL attempt=$i state=$state"
+            if [ "$state" = "completed" ]; then
+              echo "OLD_SQL_RUN_TERMINATED"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "OLD_SQL_CANCEL_REQUEST_ACCEPTED_BUT_STILL_FINALIZING"
