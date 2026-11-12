@@ -51,12 +51,16 @@ def build_mschema(
 
     lines = [f"Database: {database_id}", "Dialect: SQLite"]
     sampled_columns = 0
+    primary_keys: dict[str, tuple[str, ...]] = {}
     with sqlite3.connect(catalog.database) as conn:
         for table in sorted(set(selected_tables)):
             lines.append(f"Table: {_q(table)}")
             info = conn.execute(f"PRAGMA table_info({_q(table)})").fetchall()
             if {str(row[1]) for row in info} != set(catalog.tables[table].columns):
                 raise ValueError("SQLite schema changed between catalog and M-Schema")
+            primary_keys[table] = tuple(
+                str(row[1]) for row in sorted(info, key=lambda r: r[5]) if row[5]
+            )
             for row in info:
                 col = str(row[1])
                 col_type = str(row[2] or "UNKNOWN").upper()
@@ -78,11 +82,26 @@ def build_mschema(
                         parts.append("Examples: [" + ", ".join(seen) + "]")
                         sampled_columns += 1
                 lines.append(", ".join(parts) + ")")
-    edges = [
-        (src, col, dst, dst_col)
-        for src, col, dst, dst_col in catalog.foreign_keys
-        if src in selected_tables and dst in selected_tables
-    ]
+    edges = []
+    for src, col, dst, dst_col in catalog.foreign_keys:
+        if src not in selected_tables or dst not in selected_tables:
+            continue
+        if not src or not col or not dst:
+            continue
+        if dst_col is None:
+            # SQLite permits REFERENCES target without an explicit column.
+            # The destination is its primary key only when it is unambiguous.
+            pk_columns = primary_keys.get(dst, ())
+            if len(pk_columns) != 1:
+                continue
+            dst_col = pk_columns[0]
+        if (
+            not isinstance(dst_col, str) or not dst_col
+            or col not in catalog.tables[src].columns
+            or dst_col not in catalog.tables[dst].columns
+        ):
+            continue
+        edges.append((src, col, dst, dst_col))
     if edges:
         lines.append("Foreign keys:")
         lines.extend(f"{_q(src)}.{_q(col)} = {_q(dst)}.{_q(dst_col)}" for src, col, dst, dst_col in edges)
