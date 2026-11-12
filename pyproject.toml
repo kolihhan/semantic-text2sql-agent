@@ -16,7 +16,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8,<10", "httpx>=0.27,<1"]
+dev = ["pytest>=8,<10", "httpx>=0.27,<1", "sqlglot>=30,<31"]
+semantic-train = ["sqlglot>=30,<31"]
 
 [project.scripts]
 semantic-sql = "semantic_sql.cli:main"
