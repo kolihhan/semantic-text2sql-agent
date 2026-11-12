@@ -24,4 +24,4 @@ def test_qwen9b_workflow_rejects_incomplete_or_invalid_shards():
     assert 'assert len(set(actual_ids)) == 100' in workflow
     assert 'assert len(digests) == 1' in workflow
     assert 'assert all(case.get("initial_sql_identical") is True for case in cases)' in workflow
-    assert "if-no-files-found: error" not in workflow or "aggregate" in workflow
+    assert "if: ${{ always() && needs.preflight.result == 'success' && needs.benchmark.result == 'success' }}" in workflow
