@@ -51,6 +51,7 @@ jobs:
           test "$(find "$DB_ROOT" -type f -name '*.sqlite' | wc -l)" -ge 20
           echo "SPIDER_JSON=$SPIDER_JSON" >> "$GITHUB_ENV"
           echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+          export SPIDER_JSON DB_ROOT
           python - <<'PY'
           import json,os
           with open(os.environ["SPIDER_JSON"],encoding="utf8") as f: rows=json.load(f)
