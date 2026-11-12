@@ -75,3 +75,38 @@ def test_mschema_workflow_reuses_exact_frozen_baseline():
     assert "--min-correct 61" in flow
     assert "XIYAN_MSCHEMA_TRIGGER" in flow
     assert "hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M" in flow
+
+
+def test_mschema_resolves_implicit_fk_to_single_primary_key(tmp_path):
+    """BIRD schemas may declare REFERENCES parent without a target column."""
+    db = tmp_path / "implicit.sqlite"
+    with sqlite3.connect(db) as connection:
+        connection.executescript("""
+        CREATE TABLE parent (id INTEGER PRIMARY KEY, label TEXT);
+        CREATE TABLE child (parent_id INTEGER REFERENCES parent, name TEXT);
+        INSERT INTO parent VALUES (1, 'alpha');
+        INSERT INTO child VALUES (1, 'beta');
+        """)
+    catalog = DatabaseCatalog.from_sqlite(db)
+    assert any(dst_col is None for _, _, _, dst_col in catalog.foreign_keys)
+    result = build_mschema(
+        catalog=catalog, database_id="implicit",
+        selected_tables=["parent", "child"], descriptions={},
+    )
+    assert '"child"."parent_id" = "parent"."id"' in result
+
+
+def test_mschema_drops_ambiguous_implicit_composite_fk_without_crash(tmp_path):
+    db = tmp_path / "composite.sqlite"
+    with sqlite3.connect(db) as connection:
+        connection.executescript("""
+        CREATE TABLE parent (a INTEGER, b INTEGER, PRIMARY KEY(a, b));
+        CREATE TABLE child (a INTEGER, b INTEGER, FOREIGN KEY(a, b) REFERENCES parent);
+        """)
+    catalog = DatabaseCatalog.from_sqlite(db)
+    result = build_mschema(
+        catalog=catalog, database_id="composite",
+        selected_tables=["parent", "child"], descriptions={},
+    )
+    assert "Table:" in result
+    assert "Foreign keys:" not in result
