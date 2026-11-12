@@ -89,7 +89,7 @@ def make_cases(db:Path,domain:int)->list[dict]:
         (f"How many distinct {i} carry an 'urgent' tag?",
          f"SELECT COUNT(DISTINCT b.id) FROM {i} b JOIN {t} g "
          "ON b.id=g.activity_id WHERE g.tag='urgent'"),
-        (f"Which {p} {to} {i} that Ada and Eli both {f}?",
+        (f"Which {p} {to} at least one {i} {f} by Ada and at least one {i} {f} by Eli?",
          f"SELECT a.name FROM {p} a JOIN {i} b ON a.id=b.{dst} "
          f"JOIN {p} c ON c.id=b.{src} WHERE c.name IN ('Ada','Eli') "
          "GROUP BY a.id HAVING COUNT(DISTINCT c.name)=2 ORDER BY a.name"),
