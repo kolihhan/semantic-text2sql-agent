@@ -39,7 +39,7 @@ def db(tmp_path):
               FOREIGN KEY(country,region)
                   REFERENCES country_region(country,region)
           );
-          CREATE UNIQUE INDEX partial_tag ON orders(label) WHERE label != '';
+          CREATE UNIQUE INDEX partial_tag ON orders(label) WHERE label = 'gift';
           INSERT INTO clients(id,name) VALUES (1,'Alice'),(2,'Bob');
           INSERT INTO orders(id,client_id,label) VALUES
             (10,1,'bought'),(11,1,'bought'),(12,2,'gift');
