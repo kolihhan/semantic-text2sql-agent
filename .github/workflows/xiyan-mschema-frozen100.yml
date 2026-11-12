@@ -73,7 +73,7 @@ jobs:
 
       - name: Run XiYan M-Schema treatment shard
         run: |
-          python experiments/xiyan_mschema_frozen100.py \
+          python -m experiments.xiyan_mschema_frozen100 \
             --source "$DEV_JSON" \
             --database-root "$DB_ROOT" \
             --frozen runs/bird-paired-dev-v4/paired.json \
@@ -106,7 +106,7 @@ jobs:
 
       - name: Compare M-Schema against frozen lexical 58
         run: |
-          python experiments/merge_xiyan_mschema.py \
+          python -m experiments.merge_xiyan_mschema \
             --inputs shards/xiyan-mschema-shard-0.json shards/xiyan-mschema-shard-1.json shards/xiyan-mschema-shard-2.json shards/xiyan-mschema-shard-3.json \
             --output xiyan-mschema-frozen100.json \
             --min-correct 61
