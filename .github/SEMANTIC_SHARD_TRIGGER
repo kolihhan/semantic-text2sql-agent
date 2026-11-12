@@ -1,0 +1,7 @@
+EXPERIMENT=semantic-audit-rerank-v1
+COHORT=independent-bird-dev-100-exclude-historical-frozen100
+SHARDS=4
+MODEL=XiYanSQL-QwenCoder-7B-2504-GGUF-Q4_K_M
+METRIC=paired-SQLite-execution-match
+GOLD_IN_PROMPT=false
+MIN_NET_GAIN=3
