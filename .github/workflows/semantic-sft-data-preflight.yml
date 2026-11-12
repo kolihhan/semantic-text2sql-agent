@@ -64,17 +64,22 @@ jobs:
           assert not set(audit["train_dbs"]).intersection(audit["excluded_dev_dbs"])
           train=[json.loads(x) for x in Path("/tmp/semantic-train.jsonl").read_text().splitlines() if x.strip()]
           tokenizer=AutoTokenizer.from_pretrained("XGenerationLab/XiYanSQL-QwenCoder-7B-2504",trust_remote_code=True)
-          sample=train[:min(200,len(train))]
-          lengths=[];overflow=0
+          sample=train
+          lengths=[];overflow={1536:0,2048:0,3072:0}
           for row in sample:
-              size=len(tokenizer.encode(row["prompt"],add_special_tokens=False))+len(tokenizer.encode(row["target_sql"]+(tokenizer.eos_token or ""),add_special_tokens=False))
+              prefix=tokenizer.encode(row["prompt"],add_special_tokens=False)
+              size=len(prefix)+len(tokenizer.encode(row["target_sql"]+(tokenizer.eos_token or ""),add_special_tokens=False))
               lengths.append(size)
-              if size>3072:overflow+=1
-              else:
+              for budget in overflow:
+                  if size>budget:overflow[budget]+=1
+              if size<=3072:
                   x=tokenize_semantic_pair(tokenizer,row,max_length=3072)
-                  assert all(y==-100 for y in x["labels"][:len(tokenizer.encode(row["prompt"],add_special_tokens=False))])
+                  assert all(y==-100 for y in x["labels"][:len(prefix)])
           report={k:v for k,v in audit.items() if k not in ("train_dbs","validation_dbs","excluded_dev_dbs")}
-          report.update({"sample_tokenization":len(sample),"sample_max_tokens":max(lengths),"sample_overflow_3072":overflow})
+          report.update({"sample_tokenization":len(sample),"sample_max_tokens":max(lengths),
+                         "overflow_1536":overflow[1536],"overflow_2048":overflow[2048],"overflow_3072":overflow[3072],
+                         "retained_1536":len(sample)-overflow[1536],"retained_2048":len(sample)-overflow[2048],
+                         "retained_3072":len(sample)-overflow[3072]})
           Path("/tmp/semantic-cpu-preflight.json").write_text(json.dumps(report,indent=2,sort_keys=True)+"\n")
           print("REAL_BIRD_SEMANTIC_DATA_PREFLIGHT",json.dumps(report,sort_keys=True))
           PY
