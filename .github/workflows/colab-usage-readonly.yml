@@ -1,0 +1,41 @@
+name: Colab active sessions read-only
+on:
+  workflow_dispatch:
+  push:
+    branches: [research/semantic-sft-colab-20261112]
+    paths: [.github/workflows/colab-usage-readonly.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      COLAB_ADC_JSON: ${{ secrets.COLAB_ADC_JSON }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.13'
+      - name: Authenticate privately
+        run: |
+          python - <<'PY'
+          import json,os,pathlib
+          raw=os.environ.get("COLAB_ADC_JSON","")
+          data=json.loads(raw)
+          if data.get("type")!="authorized_user":
+              raise ValueError("Unexpected ADC credential type")
+          path=pathlib.Path(os.environ["RUNNER_TEMP"])/"adc.json"
+          path.write_text(json.dumps(data))
+          path.chmod(0o600)
+          with open(os.environ["GITHUB_ENV"],"a") as f:
+              f.write("GOOGLE_APPLICATION_CREDENTIALS="+str(path)+"\n")
+          print("ADC_CREDENTIAL_AVAILABLE")
+          PY
+      - name: Check Google Colab runtime utilization and active sessions without allocation
+        run: |
+          python -m pip install --quiet 'google-colab-cli==0.8.0'
+          timeout 50 colab --auth=adc usage
+          timeout 50 colab --auth=adc sessions
+          echo COLAB_READ_ONLY_CHECK_AFTER_SQL_CANCEL_43209028119
+          echo QLORA_T4_POST_RESTART_READ_ONLY_CHECK_43216056732
