@@ -174,7 +174,7 @@ def main() -> None:
         output_dir=str(OUT/"checkpoints"),num_train_epochs=1.0,
         per_device_train_batch_size=1,per_device_eval_batch_size=1,
         gradient_accumulation_steps=8,learning_rate=5e-5,
-        lr_scheduler_type="cosine",warmup_ratio=0.05,weight_decay=0,
+        lr_scheduler_type="cosine",warmup_steps=0.05,weight_decay=0,
         logging_steps=25,eval_strategy="steps",eval_steps=100,
         save_strategy="steps",save_steps=100,save_total_limit=2,
         load_best_model_at_end=True,metric_for_best_model="eval_loss",
