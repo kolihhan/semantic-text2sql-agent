@@ -1,0 +1,115 @@
+name: XiYanSQL A0 vs A5 gold-blind counterfactual semantic planning
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/sql-semantic-plan-counterfactual-20261113]
+    paths: [.github/SQL_A5_FROZEN_START]
+
+permissions:
+  contents: read
+
+env:
+  MODEL: hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M
+
+jobs:
+  synthetic-paired:
+    strategy:
+      fail-fast: false
+      matrix:
+        domain: [0, 1, 2, 3]
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: Checkout exact, frozen A5 generation code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: 9790f3509d341ace61482e74a1705c87d30b1a39
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install testbed, SQL scorer and run CPU tests
+        run: |
+          set -euo pipefail
+          python -m pip install -e ".[dev]"
+          python -m pytest -q tests/test_counterfactual_sql_plan_v1.py \
+            tests/test_spider_grounding_shift.py tests/test_audit_spider_exec_strict.py
+      - name: Install CPU Ollama and EXACT prior XiYanSQL 7B quantization
+        run: |
+          set -euo pipefail
+          curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          ollama serve > /tmp/ollama-a5.log 2>&1 &
+          for i in {1..40}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 1
+          done
+          ollama pull "$MODEL"
+      - name: Generate both SQL candidates on novel domain before viewing gold labels
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m experiments.counterfactual_sql_plan_v1 \
+            --shard-index "${{ matrix.domain }}" \
+            --work-root "/tmp/a5-frozen-domain-${{ matrix.domain }}" \
+            --model "$MODEL" \
+            --output "a5-domain-${{ matrix.domain }}.json"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("a5-domain-${{ matrix.domain }}.json")
+          obj=json.loads(p.read_text())
+          assert obj["count"]==12
+          assert obj["gold_used_for_generation"] is False
+          assert all(c["gold_used_in_generation"] is False for c in obj["cases"])
+          print("A5_GOLD_BLIND_DOMAIN_READY",obj["domain"],obj["count"])
+          PY
+      - name: Save physically generated paired SQL, no hidden benchmarks
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: a5-counterfactual-domain-${{ matrix.domain }}
+          path: a5-domain-${{ matrix.domain }}.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  aggregate:
+    needs: synthetic-paired
+    if: ${{ always() && needs.synthetic-paired.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: 9790f3509d341ace61482e74a1705c87d30b1a39
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e ".[dev]"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: a5-counterfactual-domain-*
+          path: all-domains
+          merge-multiple: true
+      - name: Report paired strict BAG correctness and wrong-right crossovers
+        run: |
+          set -euo pipefail
+          python -m experiments.counterfactual_sql_plan_v1 \
+            --inputs all-domains/a5-domain-0.json all-domains/a5-domain-1.json \
+                     all-domains/a5-domain-2.json all-domains/a5-domain-3.json \
+            --output a5-counterfactual-aggregate48.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path("a5-counterfactual-aggregate48.json").read_text())
+          assert r["sample_size"]==48 and r["database_count"]==4
+          assert r["a5_bag_correct"]-r["a0_bag_correct"]==r["net_gain"]
+          print("A5_PAIRED_FINAL",json.dumps({
+            k:v for k,v in r.items() if k!="cases"
+          },sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: a5-counterfactual-paired48
+          path: a5-counterfactual-aggregate48.json
+          if-no-files-found: error
+          retention-days: 30
