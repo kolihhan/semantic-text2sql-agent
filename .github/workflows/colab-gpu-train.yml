@@ -1,0 +1,128 @@
+name: Colab GPU train XiYan-7B semantic QLoRA
+on:
+  workflow_dispatch:
+    inputs:
+      gpu:
+        description: Google Colab accelerator (subject to account entitlement)
+        required: true
+        type: choice
+        options: [L4, T4, A100]
+        default: L4
+  push:
+    branches: [research/semantic-sft-colab-20261112]
+    paths: [.github/COLAB_GPU_START]
+permissions:
+  contents: read
+concurrency:
+  group: colab-gpu-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  colab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    env:
+      COLAB_GPU: ${{ inputs.gpu || 'L4' }}
+      COLAB_TOKEN: ${{ secrets.COLAB_TOKEN }}
+      COLAB_CLI_TOKEN: ${{ secrets.COLAB_CLI_TOKEN }}
+      GOOGLE_COLAB_TOKEN: ${{ secrets.GOOGLE_COLAB_TOKEN }}
+      COLAB_ACCESS_TOKEN: ${{ secrets.COLAB_ACCESS_TOKEN }}
+      COLAB_ADC_JSON: ${{ secrets.COLAB_ADC_JSON }}
+      COLAB_OAUTH_JSON: ${{ secrets.COLAB_OAUTH_JSON }}
+      COLAB_AUTH_JSON: ${{ secrets.COLAB_AUTH_JSON }}
+      COLAB_CREDENTIALS_JSON: ${{ secrets.COLAB_CREDENTIALS_JSON }}
+      GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets.GOOGLE_APPLICATION_CREDENTIALS_JSON }}
+      GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
+      GOOGLE_COLAB_CREDENTIALS: ${{ secrets.GOOGLE_COLAB_CREDENTIALS }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+      - name: Authenticate Colab with existing GitHub Secret (never reveal credentials)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet 'google-auth>=2.20' 'requests>=2.31'
+          python - <<'PY'
+          import json,os,pathlib
+          import google.auth
+          from google.auth.transport.requests import Request
+          names=("COLAB_ADC_JSON","COLAB_OAUTH_JSON","COLAB_AUTH_JSON","COLAB_CREDENTIALS_JSON",
+                 "GOOGLE_APPLICATION_CREDENTIALS_JSON","GOOGLE_CREDENTIALS_JSON","GOOGLE_COLAB_CREDENTIALS",
+                 "COLAB_TOKEN","COLAB_CLI_TOKEN","GOOGLE_COLAB_TOKEN","COLAB_ACCESS_TOKEN")
+          credentials=None
+          for name in names:
+              raw=os.environ.get(name,"").strip()
+              if not raw: continue
+              try: doc=json.loads(raw)
+              except (ValueError,TypeError): continue
+              if not isinstance(doc,dict): continue
+              if doc.get("type")=="authorized_user" and all(doc.get(k) for k in ("client_id","client_secret","refresh_token")):
+                  credentials=doc
+                  break
+              if doc.get("type")=="service_account" and all(doc.get(k) for k in ("private_key","client_email")):
+                  credentials=doc
+                  break
+              if all(doc.get(k) for k in ("client_id","client_secret","refresh_token")):
+                  credentials={**doc,"type":"authorized_user"}
+                  break
+          if credentials is None:
+              raise RuntimeError("NO_ADC_COMPATIBLE_COLAB_SECRET: expected authorized_user or service_account JSON")
+          path=pathlib.Path(os.environ["RUNNER_TEMP"])/"colab-adc.json"
+          path.write_text(json.dumps(credentials),encoding="utf-8")
+          path.chmod(0o600)
+          scopes=["openid","https://www.googleapis.com/auth/userinfo.email",
+                  "https://www.googleapis.com/auth/cloud-platform",
+                  "https://www.googleapis.com/auth/colaboratory"]
+          try:
+              cred,_=google.auth.load_credentials_from_file(str(path),scopes=scopes)
+              cred.refresh(Request())
+              if not cred.valid: raise RuntimeError("refreshed credential invalid")
+          except Exception as exc:
+              lower=str(exc).lower()
+              category=next((word for word in ("invalid_grant","invalid_scope","unauthorized_client",
+                  "invalid_client","access_denied","insufficient_scope") if word in lower),"other")
+              print("COLAB_AUTH_REJECTED",json.dumps({"reason":category,
+                    "type":credentials.get("type"),"gpu_allocated":False}))
+              raise SystemExit(41)
+          with open(os.environ["GITHUB_ENV"],"a") as f:
+              f.write("GOOGLE_APPLICATION_CREDENTIALS="+str(path)+"\n")
+          print("COLAB_AUTH_SUCCEEDED_NO_GPU_YET")
+          PY
+      - name: Install official Google Colab CLI and verify API
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet 'google-colab-cli==0.8.0'
+          timeout 110 colab --auth=adc usage
+      - name: Allocate GPU, train fully, download verified model, release compute
+        shell: bash
+        run: |
+          set -euo pipefail
+          session="colab-${GITHUB_RUN_ID}"
+          cleanup() {
+            colab --auth=adc stop -s "$session" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          echo "Starting official Colab CLI GPU job; model=XiYan-7B semantic QLoRA; accelerator=$COLAB_GPU"
+          colab --auth=adc run -s "$session" --gpu "$COLAB_GPU" --keep --timeout 0 "scripts/colab_semantic_sql_remote.py"
+          mkdir -p exported
+          colab --auth=adc download -s "$session" "/content/semantic-sql-full-adapter.zip" "exported/semantic-sql-full-adapter.zip"
+          colab --auth=adc log -s "$session" -o "exported/colab-execution.ipynb"
+          test -s "exported/semantic-sql-full-adapter.zip"
+          python - <<'PY'
+          import hashlib,pathlib
+          files=list(pathlib.Path("exported").glob("*.zip"))
+          assert len(files)==1
+          print("COLAB_MODEL_ARTIFACT_VERIFIED",{"bytes":files[0].stat().st_size,
+                "sha256":hashlib.sha256(files[0].read_bytes()).hexdigest()})
+          PY
+      - name: Preserve model zip and reproducibility log
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: colab-model-semantic-sql
+          path: exported/
+          if-no-files-found: warn
+          retention-days: 30
