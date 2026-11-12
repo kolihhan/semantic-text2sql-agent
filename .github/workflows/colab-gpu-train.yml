@@ -106,10 +106,19 @@ jobs:
           }
           trap cleanup EXIT
           echo "Starting official Colab CLI GPU job; model=XiYan-7B semantic QLoRA; accelerator=$COLAB_GPU"
+          # Capture any verified adapter even if DEV evaluation fails after SFT.
+          # Keep the Colab VM alive until artifact recovery, then release via trap.
+          set +e
           colab --auth=adc run -s "$session" --gpu "$COLAB_GPU" --keep --timeout 0 "scripts/colab_semantic_sql_remote.py"
+          remote_rc=$?
+          set -e
           mkdir -p exported
-          colab --auth=adc download -s "$session" "/content/semantic-sql-full-adapter.zip" "exported/semantic-sql-full-adapter.zip"
-          colab --auth=adc log -s "$session" -o "exported/colab-execution.ipynb"
+          colab --auth=adc download -s "$session" "/content/semantic-sql-full-adapter.zip" "exported/semantic-sql-full-adapter.zip" || echo "No verified adapter available for recovery"
+          colab --auth=adc log -s "$session" -o "exported/colab-execution.ipynb" || true
+          if [ "$remote_rc" -ne 0 ]; then
+            echo "Colab training/evaluation returned nonzero exit code $remote_rc; any verified adapter is preserved"
+            exit "$remote_rc"
+          fi
           test -s "exported/semantic-sql-full-adapter.zip"
           python - <<'PY'
           import hashlib,pathlib
