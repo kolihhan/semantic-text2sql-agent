@@ -58,12 +58,14 @@ def score_readonly_pair(database:Path,predicted_sql:str,gold_sql:str,
                 "gold_has_order":_has_order(gold_sql)}
     pr=list(pred.rows)
     gl=list(gold.rows)
+    pred_ast=_sql_ast_normal(predicted_sql)
+    gold_ast=_sql_ast_normal(gold_sql)
     return {
         "execution_success":True,"truncated":False,
         "set_equal":set(pr)==set(gl),
         "bag_equal":Counter(pr)==Counter(gl),
         "ordered_equal":pr==gl,
-        "exact_ast_equal":_sql_ast_normal(predicted_sql)==_sql_ast_normal(gold_sql),
+        "exact_ast_equal":pred_ast is not None and gold_ast is not None and pred_ast==gold_ast,
         "both_empty":len(pr)==0 and len(gl)==0,
         "gold_has_order":_has_order(gold_sql),
         "pred_rows":len(pr),"gold_rows":len(gl),
