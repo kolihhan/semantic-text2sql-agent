@@ -1,0 +1,12 @@
+START=2026-11-12
+EXPERIMENT=semantic-A0-A1-A2-A3
+BIRD=DEV
+EXCLUDED_COHORTS=historical100,independent_semantic100
+NEW_COHORT=100-question-disjoint-from-previous200
+MODEL=XiYanSQL-7B-Q4_K_M
+SHARDS=4
+NO_LIVE_GOLD_ROUTING=true
+A1=passive
+A2=compiler-only
+A3=evidence-grounded-conditional-repair
+SOURCE_FROZEN=44e9cf51e1ec7bb8789e66ed1444e859ac4bd7cd

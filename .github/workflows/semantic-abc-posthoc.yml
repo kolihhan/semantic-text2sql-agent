@@ -1,0 +1,63 @@
+name: Analyze completed paired XiYan A0-A3 experiment without retuning
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/semantic-layer-a1-a2-a3-20261112]
+    paths: [.github/SEMANTIC_ABC_ANALYZE_TRIGGER]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 130
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+      - name: Install and verify paired diagnostic math
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m pytest -q tests/test_analyze_semantic_abc_ablation.py tests/test_semantic_layer_abc.py
+      - name: Require all four frozen source shards and 100-case aggregate
+        run: |
+          set -euo pipefail
+          complete=0
+          for attempt in {1..118}; do
+            status="$(curl -fsSL --retry 3 -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/kolihhan/semantic-text2sql-agent/actions/runs/43243969734" \
+              | python -c 'import sys,json; x=json.load(sys.stdin); print(x["status"], x["conclusion"])')"
+            echo "BIRD_A0_A3_SOURCE attempt=$attempt status=$status"
+            if [[ "$status" == completed\ success ]]; then complete=1; break; fi
+            if [[ "$status" == completed\ * ]]; then echo "Source not successful: $status"; exit 60; fi
+            sleep 60
+          done
+          test "$complete" = 1 || { echo "source run still incomplete"; exit 61; }
+      - name: Download frozen 100-case aggregate, not a regenerated baseline
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          run-id: 43243969734
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          name: semantic-abc-paired100
+          path: runs/abc
+      - name: Analyze real paired actions and execution outcomes per database
+        run: |
+          set -euo pipefail
+          python -m experiments.analyze_semantic_abc_ablation \
+            --input runs/abc/semantic-abc-paired100.json \
+            --output runs/abc/semantic-abc-exploratory-analysis.json
+      - name: Archive paired post-hoc report, not new generated candidates
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: semantic-abc-action-and-db-analysis
+          path: runs/abc/semantic-abc-exploratory-analysis.json
+          if-no-files-found: error
+          retention-days: 30
