@@ -24,7 +24,7 @@ jobs:
       - name: Checkout exact, frozen A5 generation code
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: 0dafc2599bed55a8fdd8392063012466a1845da7
+          ref: 9790f3509d341ace61482e74a1705c87d30b1a39
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.11"
@@ -80,7 +80,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: 0dafc2599bed55a8fdd8392063012466a1845da7
+          ref: 9790f3509d341ace61482e74a1705c87d30b1a39
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.11"
