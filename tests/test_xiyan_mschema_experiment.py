@@ -70,8 +70,8 @@ def test_mschema_workflow_reuses_exact_frozen_baseline():
     flow = Path(".github/workflows/xiyan-mschema-frozen100.yml").read_text()
     assert "gh run download 37090833784" in flow
     assert "xiyan-scv-shard-" in flow
-    assert "xiyan_mschema_frozen100.py" in flow
-    assert "merge_xiyan_mschema.py" in flow
+    assert "python -m experiments.xiyan_mschema_frozen100" in flow
+    assert "python -m experiments.merge_xiyan_mschema" in flow
     assert "--min-correct 61" in flow
     assert "XIYAN_MSCHEMA_TRIGGER" in flow
     assert "hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M" in flow
