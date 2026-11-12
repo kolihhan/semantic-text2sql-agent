@@ -37,3 +37,4 @@ jobs:
           python -m pip install --quiet 'google-colab-cli==0.8.0'
           timeout 50 colab --auth=adc usage
           timeout 50 colab --auth=adc sessions
+          echo COLAB_READ_ONLY_CHECK_AFTER_SQL_CANCEL_43209028119
