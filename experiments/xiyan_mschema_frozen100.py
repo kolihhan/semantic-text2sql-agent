@@ -74,7 +74,13 @@ def build_mschema(
                     "CHAR" in col_type or "TEXT" in col_type or col_type in ("VARCHAR", "NVARCHAR")
                 ):
                     seen: list[str] = []
-                    for value in catalog.sample_values(table, col, limit=sample_values):
+                    try:
+                        sampled_values = catalog.sample_values(table, col, limit=sample_values)
+                    except sqlite3.Error:
+                        # Some public schemas contain unusual identifiers or
+                        # inaccessible sample values; preserve schema metadata.
+                        sampled_values = ()
+                    for value in sampled_values:
                         example = _safe_example(value)
                         if example is not None and example not in seen:
                             seen.append(example)
