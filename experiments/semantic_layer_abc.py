@@ -375,3 +375,6 @@ def main() -> None:
                          count=args.count,model=args.model)
     args.output.parent.mkdir(parents=True,exist_ok=True)
     args.output.write_text(json.dumps(result,sort_keys=True,indent=2,ensure_ascii=False)+"\n")
+
+if __name__ == "__main__":
+    main()
