@@ -26,8 +26,12 @@ def test_balanced_100_spider_queries_from_20_distinct_databases():
     rerun=deepcopy(source)
     for row in rerun:row["query"]="CHANGED GOLD LABEL MUST NOT AFFECT SELECTION"
     assert frozen_selection(rerun)==cohort
+    nine_dbs=[
+        {"db_id":f"db{d}","question":f"Question {i}","query":"private gold"}
+        for d in range(9) for i in range(12)
+    ]
     with pytest.raises(ValueError,match=">=10"):
-        frozen_selection(source[:60])
+        frozen_selection(nine_dbs)
 
 
 def _shards():
