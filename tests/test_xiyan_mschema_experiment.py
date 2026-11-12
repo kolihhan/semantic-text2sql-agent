@@ -110,3 +110,33 @@ def test_mschema_drops_ambiguous_implicit_composite_fk_without_crash(tmp_path):
     )
     assert "Table:" in result
     assert "Foreign keys:" not in result
+
+
+def test_mschema_aggregate_counts_truncated_case_as_wrong_not_as_missing():
+    """Matches frozen score_query(): truncation is counted as incorrect."""
+    shards = []
+    for shard in range(4):
+        rows = []
+        for index in range(shard, 100, 4):
+            rows.append({
+                "case_id": str(index),
+                "baseline_ex": index < 58,
+                "mschema_ex": index < 61,
+                "baseline_execution_success": True,
+                "mschema_execution_success": True,
+                "baseline_truncated": index == 99,
+                "mschema_truncated": index == 98,
+                "generation_latency_s": 1.0,
+            })
+        shards.append({"schema": "xiyan-mschema-frozen100-v1", "model": "xiyan",
+                       "shard_index": shard, "num_shards": 4, "cases": rows})
+    result = aggregate(shards)
+    assert result["baseline_lexical_ex"] == 58
+    assert result["mschema_ex"] == 61
+    assert result["baseline_truncated"] == 1
+    assert result["mschema_truncated"] == 1
+    # Unsafe: a truncated result must never count toward correctness.
+    target = next(row for shard in shards for row in shard["cases"] if row["case_id"] == "98")
+    target["mschema_ex"] = True
+    with pytest.raises(ValueError, match="truncated"):
+        aggregate(shards)
