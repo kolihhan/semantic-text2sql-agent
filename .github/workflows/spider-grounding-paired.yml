@@ -25,7 +25,7 @@ jobs:
       - name: Checkout frozen, already-tested v2 grounding implementation
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ff7df9754f2ed7ff5f6eef45b831261a2a28ca7d
+          ref: c6eda574adda4001209d402519cc982e31d975f3
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.11"
@@ -93,7 +93,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ff7df9754f2ed7ff5f6eef45b831261a2a28ca7d
+          ref: c6eda574adda4001209d402519cc982e31d975f3
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
         with:
           python-version: "3.11"
