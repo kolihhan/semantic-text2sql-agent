@@ -226,7 +226,6 @@ jobs:
             --manifest "/tmp/qwen9b-shard-${SHARD}.json" \
             --model "$MODEL" \
             --timeout 600 \
-            --max-repairs 2 \
             --max-rows 50000 \
             --output "qwen9b-paired-shard-${SHARD}.json"
 
