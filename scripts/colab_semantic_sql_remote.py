@@ -17,7 +17,7 @@ import urllib.request
 import zipfile
 
 
-SOURCE_SHA = "1e1b5ef4c146348229e102c69318d20ff0a30d96"
+SOURCE_SHA = "244a301c9cfc4b31957cd5a650adb2007e1b5773"
 BRANCH = "research/semantic-sft-colab-20261112"
 MODEL = "XGenerationLab/XiYanSQL-QwenCoder-7B-2504"
 FILTERED_REV = "4068469807b255fcfc0816bdd520946fe460d256"
@@ -207,6 +207,20 @@ def main() -> None:
         "semantic_gain":"unmeasured",
     }),flush=True)
 
+    # Export the real adapter BEFORE trying DEV downloads or semantic evaluation.
+    # If evaluation fails, the CI runner can still retrieve this validated adapter.
+    if ARCHIVE.exists():
+        raise FileExistsError("refuse to overwrite model archive")
+    with zipfile.ZipFile(ARCHIVE,"w",compression=zipfile.ZIP_STORED) as z:
+        for path in sorted(OUT.iterdir()):
+            if path.is_file():
+                z.write(path,arcname=path.name)
+    print("COLAB_SQL_PRE_EVAL_ADAPTER_SAVED",json.dumps({
+        "path":str(ARCHIVE), "bytes":ARCHIVE.stat().st_size,
+        "sha256":hashlib.sha256(ARCHIVE.read_bytes()).hexdigest(),
+        "semantic_correctness":"unmeasured",
+    }),flush=True)
+
     # Release training model before loading independent evaluation workloads.
     del trainer,model,base,train_ds,val_ds
     gc.collect()
@@ -231,12 +245,11 @@ def main() -> None:
     (OUT/"semantic-execution-match.json").write_text(json.dumps(paired,indent=2,sort_keys=True)+"\n")
     print("COLAB_SEMANTIC_VERIFIED_RESULT",json.dumps(paired,sort_keys=True),flush=True)
 
-    if ARCHIVE.exists():
-        raise FileExistsError("refuse to overwrite model archive")
-    # Save only small audit files and final adapter, not bulky internal checkpoints.
-    with zipfile.ZipFile(ARCHIVE,"w",compression=zipfile.ZIP_STORED) as z:
+    # Append only evaluation outputs; keep the verified adapter untouched.
+    with zipfile.ZipFile(ARCHIVE,"a",compression=zipfile.ZIP_STORED) as z:
+        existing = set(z.namelist())
         for path in sorted(OUT.iterdir()):
-            if path.is_file():
+            if path.is_file() and path.name not in existing:
                 z.write(path,arcname=path.name)
     print("COLAB_SEMANTIC_ARTIFACT",json.dumps({
         "path":str(ARCHIVE),
