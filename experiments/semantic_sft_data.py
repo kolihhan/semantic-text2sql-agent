@@ -133,7 +133,7 @@ def prepare_semantic_sft_rows(
     max_schema_chars: int = 24000,
 ) -> tuple[list[dict], list[dict], dict]:
     """Deterministic database-disjoint split, fail closed on silent data attrition."""
-    if not 0 < validation_db_fraction < 0.5:
+    if not 0 < validation_db_fraction <= 0.5:
         raise ValueError("validation fraction must be between 0 and 0.5")
     schema_by_db = {}
     for schema in schema_rows:
