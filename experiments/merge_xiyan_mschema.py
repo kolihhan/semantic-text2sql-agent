@@ -20,8 +20,15 @@ def aggregate(shards: list[dict], *, min_correct: int = 61) -> dict:
     case_ids = [str(r["case_id"]) for r in rows]
     if len(rows) != 100 or len(set(case_ids)) != 100:
         raise ValueError("missing or duplicated frozen100 cases")
-    if any(r["baseline_truncated"] or r["mschema_truncated"] for r in rows):
-        raise ValueError("truncated SQL result: do not treat as a valid EX comparison")
+    # The frozen scorer marks a truncated execution as incorrect rather than
+    # dropping the case. Preserve that denominator and fail if a scored-true
+    # result was truncated. This matches score_query() used by both arms.
+    if any(
+        (r["baseline_truncated"] and r["baseline_ex"])
+        or (r["mschema_truncated"] and r["mschema_ex"])
+        for r in rows
+    ):
+        raise ValueError("a truncated SQL result was incorrectly scored as correct")
     rows.sort(key=lambda r: int(r["case_id"]))
     baseline = sum(bool(r["baseline_ex"]) for r in rows)
     candidate = sum(bool(r["mschema_ex"]) for r in rows)
@@ -41,6 +48,8 @@ def aggregate(shards: list[dict], *, min_correct: int = 61) -> dict:
         "mschema_ex": candidate,
         "wrong_to_correct": wrong_to_correct,
         "correct_to_wrong": correct_to_wrong,
+        "baseline_truncated": sum(bool(r["baseline_truncated"]) for r in rows),
+        "mschema_truncated": sum(bool(r["mschema_truncated"]) for r in rows),
         "net_gain": candidate - baseline,
         "mschema_execution_success": sum(r["mschema_execution_success"] for r in rows),
         "lexical_execution_success": sum(r["baseline_execution_success"] for r in rows),
