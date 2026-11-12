@@ -17,8 +17,8 @@ import urllib.request
 import zipfile
 
 
-SOURCE_SHA = "244a301c9cfc4b31957cd5a650adb2007e1b5773"
-BRANCH = "research/semantic-sft-colab-20261112"
+SOURCE_SHA = "a25262e1f5483a35ab27bf7a5c15f6fff5f5fc6e"
+BRANCH = "fix/semantic-sft-reserve-shard-holdout-20261112"
 MODEL = "XGenerationLab/XiYanSQL-QwenCoder-7B-2504"
 FILTERED_REV = "4068469807b255fcfc0816bdd520946fe460d256"
 SCHEMA_REV = "c4a98a1"
@@ -82,7 +82,7 @@ def main() -> None:
     from huggingface_hub import hf_hub_download
     from datasets import Dataset
     from experiments.semantic_sft_data import prepare_semantic_sft_rows,tokenize_semantic_pair
-    from experiments.semantic_sft_eval import run_inference,compare_paired_scores
+    from experiments.semantic_sft_eval import run_inference,compare_paired_scores,reserve_semantic_audit_holdout
     from transformers import (
         AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig,
         TrainingArguments, Trainer, EarlyStoppingCallback,
@@ -227,8 +227,19 @@ def main() -> None:
     torch.cuda.empty_cache()
     dev_rows,dev_schema,dbroot=download_bird_dev()
     frozen=json.loads((repo/"runs/bird-paired-dev-v4/paired.json").read_text())
-    excluded={str(x["case_id"]) for x in frozen["cases"]}
-    assert len(excluded)==100
+    explored={str(x["case_id"]) for x in frozen["cases"]}
+    assert len(explored)==100
+    reserved=reserve_semantic_audit_holdout(
+        dev_rows,historical_frozen_ids=explored,count=100,
+    )
+    assert len(reserved)==100 and not reserved.intersection(explored)
+    excluded=explored | reserved
+    assert len(excluded)==200
+    print("SEMANTIC_EVAL_COHORT_ISOLATION",json.dumps({
+        "historical_frozen_excluded":len(explored),
+        "other_independent_audit_reserved":len(reserved),
+        "total_excluded":len(excluded),
+    }),flush=True)
     base_out=OUT/"independent100-base.jsonl"
     tuned_out=OUT/"independent100-tuned.jsonl"
     base_result=run_inference(
