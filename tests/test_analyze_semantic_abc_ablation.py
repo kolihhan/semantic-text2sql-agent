@@ -42,7 +42,7 @@ def test_full_paired_exploratory_transitions_and_ablation_attribution():
     assert r["accepted_compiler_repair_count"]==1
     assert r["extra_model_calls"]==4
     assert r["database_count"]==2
-    assert "overlap" in " ".join(r["important_limitations"])
+    assert "share databases" in " ".join(r["important_limitations"])
 
 
 def test_mcnemar_is_symmetric_for_paired_wins_losses():
