@@ -136,6 +136,8 @@ def _literal_lock(question: str, before: str, after: str) -> bool:
 
 def _ast_clause(ast: exp.Expression, field: str) -> str:
     part = ast.args.get(field)
+    if isinstance(part, list):
+        return " ".join(x.sql(dialect="sqlite", normalize=True) for x in part)
     return part.sql(dialect="sqlite", normalize=True) if part is not None else ""
 
 
