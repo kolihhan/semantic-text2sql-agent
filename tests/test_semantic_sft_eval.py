@@ -1,5 +1,5 @@
 """Predeclared independent BIRD DEV evaluation excludes the explored frozen100."""
-from experiments.semantic_sft_eval import choose_eval_cases, compare_paired_scores
+from experiments.semantic_sft_eval import choose_eval_cases, compare_paired_scores, reserve_semantic_audit_holdout
 
 
 def make_cases():
@@ -41,3 +41,48 @@ def test_paired_comparison_rejects_missing_or_duplicate_identity():
         assert False
     except ValueError as exc:
         assert "case" in str(exc).lower()
+
+
+def test_sql_sft_never_scores_cases_reserved_by_independent_audit():
+    rows = make_cases()
+    prior = {str(i) for i in range(100)}
+    reserved = reserve_semantic_audit_holdout(rows, historical_frozen_ids=prior)
+    reversed_reserved = reserve_semantic_audit_holdout(
+        list(reversed(rows)), historical_frozen_ids=prior,
+    )
+    assert reserved == reversed_reserved
+    assert len(reserved) == 100
+    assert not reserved.intersection(prior)
+    sft = choose_eval_cases(
+        rows, frozen_ids=prior | reserved, mode="independent", count=40,
+    )
+    assert not {str(x["question_id"]) for x in sft}.intersection(prior | reserved)
+
+
+def test_semantic_audit_reservation_matches_other_shards_seed_contract():
+    from hashlib import sha256
+    rows = make_cases()
+    prior = {str(i) for i in range(100)}
+    # Mirror PR #14's published selector contract as an independent test oracle.
+    ranked = sorted(
+        (str(x["question_id"]) for x in rows if str(x["question_id"]) not in prior),
+        key=lambda cid: (
+            sha256(("semantic-sql-shards-independent-dev-v1:" + cid).encode()).hexdigest(),
+            cid,
+        ),
+    )
+    assert reserve_semantic_audit_holdout(
+        rows, historical_frozen_ids=prior,
+    ) == set(ranked[:100])
+
+
+def test_audit_reservation_rejects_invalid_population():
+    import pytest
+    with pytest.raises(ValueError, match="duplicated"):
+        reserve_semantic_audit_holdout(
+            [{"question_id": 1}, {"question_id": 1}], historical_frozen_ids=set(),
+        )
+    with pytest.raises(ValueError, match="insufficient"):
+        reserve_semantic_audit_holdout(
+            make_cases()[:99], historical_frozen_ids=set(), count=100,
+        )

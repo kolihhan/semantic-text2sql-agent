@@ -6,6 +6,33 @@ from pathlib import Path
 import re
 
 
+
+# Reserved by PR #14's independent CPU/Ollama semantic-audit experiment.
+# This selection must stay byte-for-byte algorithmically equivalent to
+# experiments/xiyan_semantic_shards.py::build_holdout_ids on that separate branch.
+SEMANTIC_SHARD_SEED = "semantic-sql-shards-independent-dev-v1"
+
+
+def reserve_semantic_audit_holdout(
+    dev: list[dict], *, historical_frozen_ids: set[str], count: int = 100,
+) -> set[str]:
+    """Reserve the other experiment's BIRD DEV cohort without reading gold SQL."""
+    ids = [str(row.get("question_id", row.get("case_id", ""))) for row in dev]
+    if not ids or not all(ids) or len(set(ids)) != len(ids):
+        raise ValueError("invalid or duplicated BIRD dev IDs")
+    eligible = [case_id for case_id in ids if case_id not in historical_frozen_ids]
+    if count < 1 or len(eligible) < count:
+        raise ValueError("insufficient independent semantic audit holdout")
+    ranked = sorted(
+        eligible,
+        key=lambda case_id: (
+            sha256((SEMANTIC_SHARD_SEED + ":" + case_id).encode()).hexdigest(),
+            case_id,
+        ),
+    )
+    return set(ranked[:count])
+
+
 def choose_eval_cases(dev: list[dict], *, frozen_ids: set[str], mode: str,
                       count: int = 100, seed: str = "semantic-sft-heldout-v1") -> list[dict]:
     if mode not in {"independent", "frozen"} or count < 1:
