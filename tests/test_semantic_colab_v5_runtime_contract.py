@@ -8,7 +8,9 @@ def test_hf_v5_training_uses_supported_scheduler_key():
     ast.parse(source)
     assert "warmup_ratio=" not in source
     assert "warmup_steps=0.05" in source
-    assert 'SOURCE_SHA = "244a301c9cfc4b31957cd5a650adb2007e1b5773"' in source
+    assert 'SOURCE_SHA = "a25262e1f5483a35ab27bf7a5c15f6fff5f5fc6e"' in source
+    assert 'BRANCH = "fix/semantic-sft-reserve-shard-holdout-20261112"' in source
+    assert "reserve_semantic_audit_holdout(" in source
 
 
 def test_adapter_saved_before_running_risky_dev_eval():
