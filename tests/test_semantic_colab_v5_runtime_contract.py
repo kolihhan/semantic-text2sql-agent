@@ -29,6 +29,6 @@ def test_workflow_recovers_adapter_on_remote_failure_before_gpu_stop():
 
 def test_preflight_constructs_hf_v5_training_args_without_gpu():
     content = Path(".github/workflows/semantic-colab-v5-args-preflight.yml").read_text()
-    assert "TrainingArguments(" in content
+    assert "declared=set(inspect.signature(TrainingArguments).parameters)" in content
     assert "warmup_steps=0.05" in content
     assert "inspect.signature(TrainingArguments)" in content
