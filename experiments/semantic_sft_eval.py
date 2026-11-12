@@ -103,4 +103,9 @@ def run_inference(
             print(f"SEMANTIC_EX {i}/{count} id={cid} correct={correct}",flush=True)
     summary={"count":len(scored),"correct":sum(x["correct"] for x in scored),"mode":"independent-dev-not-frozen100","adapter":bool(adapter_path)}
     (output.parent/(output.stem+"-summary.json")).write_text(json.dumps(summary,indent=2)+"\n")
+    # Release 7B NF4 weights before the paired base/tuned pass on a 16GB T4.
+    import gc
+    del model, base
+    gc.collect()
+    torch.cuda.empty_cache()
     return summary
