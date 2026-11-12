@@ -1,0 +1,56 @@
+name: XiYan M-Schema score existing 100 inference results (CPU only)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/xiyan-mschema-20261112]
+    paths: ['.github/workflows/xiyan-mschema-aggregate-existing.yml']
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verified-aggregate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout current merge/scoring implementation
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Download original 100 frozen inference results, NOT rerun XiYan
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          run-id: 43171987762
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          pattern: xiyan-mschema-shard-*
+          path: shards
+          merge-multiple: true
+      - name: Merge all 4 verified shards, retain truncated baseline failures
+        run: |
+          set -euo pipefail
+          python -m experiments.merge_xiyan_mschema \
+            --inputs shards/xiyan-mschema-shard-0.json shards/xiyan-mschema-shard-1.json shards/xiyan-mschema-shard-2.json shards/xiyan-mschema-shard-3.json \
+            --output xiyan-mschema-full-internal.json \
+            --min-correct 61
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          x = json.loads(Path("xiyan-mschema-full-internal.json").read_text(encoding="utf-8"))
+          assert x["sample_size"] == 100 and x["baseline_lexical_ex"] == 58
+          assert x["mschema_ex"] == x["baseline_lexical_ex"] + x["wrong_to_correct"] - x["correct_to_wrong"]
+          assert x["mschema_truncated"] == 0
+          assert all(not r["baseline_ex"] for r in x["cases"] if r["baseline_truncated"])
+          summary = {k:v for k,v in x.items() if k != "cases"}
+          summary["inference_source_run_id"] = "43171987762"
+          summary["interpretation"] = "61/100 preregistered gate; a positive 1-point difference does not establish generalization."
+          Path("xiyan-mschema-aggregate-only.json").write_text(json.dumps(summary, indent=2, sort_keys=True)+"\n", encoding="utf-8")
+          print("VERIFIED_AGGREGATE_ONLY", json.dumps(summary, sort_keys=True))
+          PY
+      - name: Upload metrics-only verified summary
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: xiyan-mschema-existing100-verified-summary
+          path: xiyan-mschema-aggregate-only.json
+          retention-days: 30
+          if-no-files-found: error
