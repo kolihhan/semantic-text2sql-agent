@@ -6,3 +6,5 @@ MIN_CORRECT=61
 NO_TRAINING=1
 RETRY=2
 FIX=python-module-imports
+RETRY=3
+FIX=implicit-fk-and-100-case-cpu-preflight
