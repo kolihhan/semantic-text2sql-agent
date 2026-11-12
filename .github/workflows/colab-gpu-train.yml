@@ -7,7 +7,7 @@ on:
         required: true
         type: choice
         options: [L4, T4, A100]
-        default: L4
+        default: T4
   push:
     branches: [research/semantic-sft-colab-20261112]
     paths: [.github/COLAB_GPU_START]
@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 355
     env:
-      COLAB_GPU: ${{ inputs.gpu || 'L4' }}
+      COLAB_GPU: ${{ inputs.gpu || 'T4' }}
       COLAB_TOKEN: ${{ secrets.COLAB_TOKEN }}
       COLAB_CLI_TOKEN: ${{ secrets.COLAB_CLI_TOKEN }}
       GOOGLE_COLAB_TOKEN: ${{ secrets.GOOGLE_COLAB_TOKEN }}
