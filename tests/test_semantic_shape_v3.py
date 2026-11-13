@@ -56,7 +56,7 @@ def test_count_grain_fix_changes_projections_only(database,question,original,exp
     ("How many events happened?","SELECT name FROM events ORDER BY id LIMIT 2","sql_aggregation_grain_unsafe"),
     ("How many events happened?","SELECT name,active FROM events","multiple_output_columns"),
     ("How many events happened?","SELECT MAX(id) FROM events","sql_aggregation_grain_unsafe"),
-    ("How many events happened?","SELECT LOWER(name) FROM events","sql_aggregation_grain_unsafe"),
+    ("How many events happened?","SELECT LOWER(name) FROM events","complex_or_nonrow_projection"),
 ])
 def test_count_grain_fail_closed(database,question,original,reason):
     d=evidence_gated_count_projection(database=database,question=question,sql=original)
