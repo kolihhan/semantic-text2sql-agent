@@ -2,3 +2,4 @@
 2026-11-13: paired60 rerun after accounting for existing literal40 aggregate's lack of model metadata; no changed selector or benchmarks.
 2026-11-13: optimized read-only v2 pilot: frozen labels for byte-identical unchanged SQL, execute only changed cases on physical BIRD databases; no new model calls.
 2026-11-13: rerun frozen60 after validated conservative INNER JOIN alias/FK-key counterexample support. Same baseline predictions, same cohort, no new model inference.
+2026-11-13: frozen60 rerun to measure generic explicit single-table missing-WHERE gate. Model/inputs/scorer unchanged; no gold at decision. Exploratory only.
