@@ -1,0 +1,2 @@
+2026-11-13: Run exactly one gold-blind Qwen9B semantic A/A vs grounded pilot. 440 prior questions excluded; no model training or default SQL change.
+Retry 1: correct archive SHA256 copied from existing successful BIRD runs. No source/model/selection changes.
