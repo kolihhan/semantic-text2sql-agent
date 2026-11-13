@@ -1,0 +1,3 @@
+2026-11-13: one-shot independent BIRD DEV100 FK bridge candidate generation.
+Must exclude previous 300 exposed question identities and report oracle headroom.
+Do not change default SQL generator.
