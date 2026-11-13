@@ -1,0 +1,200 @@
+name: Qwen9B semantic evidence controlled A/A BIRD20 (no training)
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/qwen9b-semantic-aa-controlled-20261113]
+    paths: [.github/SQL_SEMANTIC_AA_START]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: qwen9b-aa-paired20-frozen-20261113
+  cancel-in-progress: false
+
+env:
+  MODEL: qwen3.5:9b-q4_K_M
+  BIRD_SHA: cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60
+
+jobs:
+  preregister:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+      - name: Install project and run strict offline protocol tests
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m pytest -q tests/test_semantic_aa_probe.py tests/test_literal_grounding_paired.py tests/test_literal_evidence.py
+      - name: Download previously exposed BIRD cohorts (identity-only exclusion)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          run-id: 43211214560
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          name: xiyan-semantic-independent100
+          path: /tmp/previous/semantic
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          run-id: 43243969734
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          name: semantic-abc-paired100
+          path: /tmp/previous/abc
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          run-id: 43372535238
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          name: bird-bridge-paired100
+          path: /tmp/previous/bridge
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          run-id: 43412255812
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          name: qwen9b-literal-paired40-recovered
+          path: /tmp/previous/literal
+      - name: Download SHA256-pinned BIRD DEV and readonly SQLite databases
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/bird
+          curl -fL --retry 4 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
+          echo "$BIRD_SHA  /tmp/bird/dev.zip" | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          DEV_JSON="$(find /tmp/bird/unpacked -type f -name dev.json ! -path '*/__MACOSX/*' | head -n1)"
+          DB_ZIP="$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)"
+          test -s "$DEV_JSON" && test -s "$DB_ZIP"
+          mkdir -p /tmp/bird/databases
+          unzip -q "$DB_ZIP" -d /tmp/bird/databases
+          DB_ROOT="$(find /tmp/bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)"
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=/tmp/bird/databases; fi
+          test -d "$DB_ROOT"
+          echo "DEV_JSON=$DEV_JSON" >> "$GITHUB_ENV"
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Freeze 20 new question identities (no reference SQL during selection)
+        run: |
+          set -euo pipefail
+          python -m evaluation.semantic_aa_probe \
+            --source "$DEV_JSON" --database-root "$DB_ROOT" \
+            --exclude runs/bird-paired-dev-v4/paired.json \
+              /tmp/previous/semantic/xiyan-semantic-independent100.json \
+              /tmp/previous/abc/semantic-abc-paired100.json \
+              /tmp/previous/bridge/bird-bridge-paired100.json \
+              /tmp/previous/literal/qwen9b-literal-paired40.json \
+            --output semantic-aa-fresh20.json
+          python - <<'PY'
+          import json
+          d=json.load(open('semantic-aa-fresh20.json'))
+          assert d['excluded_count']==440 and d['labels_used'] is False
+          assert d['group_counts']=={'value_hit':10,'no_quoted_literal':10}
+          print('FROZEN_GOLD_BLIND_SEMANTIC_AA20',d['source_domains'])
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: qwen9b-semantic-aa-fresh20-manifest
+          path: semantic-aa-fresh20.json
+          retention-days: 30
+
+  paired:
+    needs: preregister
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+      - name: Install project
+        run: python -m pip install -e ".[dev]"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: qwen9b-semantic-aa-fresh20-manifest
+          path: /tmp/cohort
+      - name: Download same fixed BIRD database source
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/bird
+          curl -fL --retry 4 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
+          echo "$BIRD_SHA  /tmp/bird/dev.zip" | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          DEV_JSON="$(find /tmp/bird/unpacked -type f -name dev.json ! -path '*/__MACOSX/*' | head -n1)"
+          DB_ZIP="$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)"
+          mkdir -p /tmp/bird/databases
+          unzip -q "$DB_ZIP" -d /tmp/bird/databases
+          DB_ROOT="$(find /tmp/bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)"
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=/tmp/bird/databases; fi
+          test -s "$DEV_JSON" && test -d "$DB_ROOT"
+          echo "DEV_JSON=$DEV_JSON" >> "$GITHUB_ENV"
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Start Qwen9B local CPU model
+        run: |
+          set -euo pipefail
+          curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          ollama serve > /tmp/ollama.log 2>&1 &
+          for i in {1..40}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 1
+          done
+          ollama pull "$MODEL"
+      - name: Execute A/A identical baselines and grounded B on frozen cases
+        run: |
+          set -euo pipefail
+          python -m evaluation.semantic_aa_probe \
+            --source "$DEV_JSON" --database-root "$DB_ROOT" \
+            --manifest /tmp/cohort/semantic-aa-fresh20.json \
+            --shard "${{ matrix.shard }}" --model "$MODEL" \
+            --output "semantic-aa-shard-${{ matrix.shard }}.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: semantic-aa-shard-${{ matrix.shard }}
+          path: semantic-aa-shard-${{ matrix.shard }}.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  aggregate:
+    needs: paired
+    if: ${{ always() && needs.paired.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+      - name: Install project (avoid prior missing semantic_sql failure)
+        run: python -m pip install -e ".[dev]"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: semantic-aa-shard-*
+          merge-multiple: true
+          path: shards
+      - name: Aggregate ONLY frozen paired results and verify A/A variance
+        run: |
+          set -euo pipefail
+          for i in 0 1 2 3; do test -s "shards/semantic-aa-shard-$i.json"; done
+          python -m evaluation.semantic_aa_probe \
+            --inputs shards/semantic-aa-shard-0.json shards/semantic-aa-shard-1.json \
+                     shards/semantic-aa-shard-2.json shards/semantic-aa-shard-3.json \
+            --output semantic-aa-paired20.json
+          python - <<'PY'
+          import json
+          d=json.load(open('semantic-aa-paired20.json'))
+          assert d['count']==20 and d['promote'] is False
+          assert d['set']['overall']['stable_baseline_cases']<=20
+          print('FROZEN_SEMANTIC_AA_MEASURED',json.dumps(
+              {'set':d['set'], 'bag':d['bag']},sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: qwen9b-semantic-aa-paired20
+          path: semantic-aa-paired20.json
+          retention-days: 30
