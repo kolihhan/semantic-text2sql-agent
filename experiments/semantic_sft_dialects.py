@@ -43,7 +43,7 @@ def transfer_portable_sql(sql: str) -> str | None:
     ast=_single_ast(sql,"sqlite")
     if ast is None:
         return None
-    portable_func=(exp.Count,exp.Sum,exp.Avg,exp.Min,exp.Max,exp.Coalesce)
+    portable_func=(exp.Count,exp.Sum,exp.Avg,exp.Min,exp.Max,exp.Coalesce,exp.Exists)
     for node in ast.walk():
         if isinstance(node,exp.Func) and not isinstance(node,portable_func):
             return None
