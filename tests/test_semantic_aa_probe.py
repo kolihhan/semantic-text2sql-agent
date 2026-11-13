@@ -34,7 +34,7 @@ def test_exclusion_of_original_440_is_strict(tmp_path):
         "cases": [{"case_id": str(x)} for x in range(400, 440)]
     }))
     assert len(probe.excluded_440([*paths, recovered])) == 440
-    with pytest.raises(ValueError, match="exact frozen"):
+    with pytest.raises(ValueError, match="exclude original"):
         probe.excluded_440(paths)
     recovered.write_text(json.dumps({
         "sample_size": 40,
