@@ -1,1 +1,3 @@
 2026-11-13: real MySQL vs SQLite set-of-results equivalence smoke on matched synthetic databases. No BIRD DEV or user database.
+
+Re-run reproducible MySQL smoke with explicit rejected query diagnostics.
