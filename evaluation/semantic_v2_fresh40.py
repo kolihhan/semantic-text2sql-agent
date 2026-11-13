@@ -21,7 +21,7 @@ import re
 import urllib.request
 
 from evaluation.bird_loader import load_bird_json
-from evaluation.run_bird import _resolve_database
+from evaluation.run_bird import _resolve_database, _ollama_model_digest
 from evaluation.schema_context import select_schema_context
 from semantic_sql.catalog import DatabaseCatalog
 from semantic_sql.contracts import SQLCandidate
@@ -146,6 +146,9 @@ def score_shard(*, source:Path, database_root:Path, manifest_path:Path, shard:in
     picked=cfg["selected"][shard::8]
     if len(picked)!=5:
         raise ValueError("each shard must have 5 unique frozen questions")
+    digest=_ollama_model_digest("http://127.0.0.1:11434",model)
+    if digest!=MODEL_DIGEST:
+        raise ValueError("model digest drift; not the original pinned Qwen3.5-9B")
     provider=FixedModelProvider(model=model,timeout_s=900)
     db_cache={}
     frozen=[]
