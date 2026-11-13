@@ -1,1 +1,2 @@
 2026-11-13: no training/no new SQL generation. Compare frozen prediction vs gold AST signature only for failure analysis; not for candidate selection.
+Correct diagnostic CLI invocation; rerun without changing method or observations.
