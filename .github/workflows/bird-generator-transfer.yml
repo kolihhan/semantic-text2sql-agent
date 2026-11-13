@@ -1,0 +1,77 @@
+name: XiYan and Qwen on unseen project BIRD databases
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/xiyan-qwen-transfer-20261114]
+    paths: [.github/workflows/bird-generator-transfer.yml]
+permissions:
+  contents: read
+
+jobs:
+  paired:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_bird_generator_transfer.py
+      - name: Fetch frozen BIRD question sources
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 https://huggingface.co/datasets/Emulated-Inc/text-to-sql-with-evidence-training-pool/resolve/cd2c4ea321075aa53ce7dfe52deaaffa505d046a/raw/bird/train.json -o train.json
+          curl -fsSL --retry 4 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o dev.zip
+          echo "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  dev.zip" | sha256sum -c -
+          unzip -p dev.zip dev_20240627/dev.json > dev.json
+      - name: Load the two historical models and compare with one common prompt
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          OLLAMA_MAX_LOADED_MODELS=1 ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          ollama --version
+          ollama pull qwen3.5:9b-q4_K_M
+          ollama pull hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M
+          python -m evaluation.bird_generator_transfer --train train.json --dev dev.json \
+            --shard "$SHARD" --output "transfer-$SHARD.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: bird-generator-transfer-shard-${{ matrix.shard }}
+          path: transfer-${{ matrix.shard }}.json
+          if-no-files-found: error
+          retention-days: 30
+
+  aggregate:
+    needs: paired
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[dev]'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: bird-generator-transfer-shard-*
+          path: shards
+          merge-multiple: true
+      - run: |
+          python -m evaluation.bird_generator_transfer --inputs shards/transfer-*.json --output transfer-final.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: bird-generator-transfer-measured
+          path: transfer-final.json
+          if-no-files-found: error
+          retention-days: 30
