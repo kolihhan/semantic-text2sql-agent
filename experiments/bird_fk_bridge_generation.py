@@ -101,7 +101,7 @@ Original question:
 {question}
 Physical SQLite M-Schema and verified FK bridge paths:
 {physical_schema}
-User-provided evidence (not gold SQL):
+User-provided evidence (no reference answers):
 {evidence}
 Return one SQL SELECT statement ONLY; no explanation or markdown.
 SQL:"""
