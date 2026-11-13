@@ -18,6 +18,7 @@ class SemanticSQLService:
         max_rows: int = 100,
         semantic_revision: bool = False,
         semantic_v2: bool = False,
+        semantic_shape_v3: bool = False,
     ) -> None:
         self.database = Path(database)
         self.catalog = DatabaseCatalog.from_sqlite(self.database)
@@ -26,6 +27,7 @@ class SemanticSQLService:
         self.max_rows = max_rows
         self.semantic_revision = semantic_revision
         self.semantic_v2 = semantic_v2
+        self.semantic_shape_v3 = semantic_shape_v3
 
     def ask(
         self,
@@ -45,4 +47,5 @@ class SemanticSQLService:
             max_rows=self.max_rows,
             semantic_revision=self.semantic_revision,
             semantic_v2=self.semantic_v2,
+            semantic_shape_v3=self.semantic_shape_v3,
         )

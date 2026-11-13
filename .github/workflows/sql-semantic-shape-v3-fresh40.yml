@@ -1,0 +1,221 @@
+name: Qwen9B original Guarded vs Count/grain Semantic v3 (500 excluded BIRD40)
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/semantic-v3-count-grain-20261113]
+    paths: [.github/SEMANTIC_V3_FRESH40_START]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: semantic-shape-v3-fresh40-20261113
+  cancel-in-progress: false
+env:
+  MODEL: qwen3.5:9b-q4_K_M
+  BIRD_SHA: cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630
+
+jobs:
+  preregister:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+      - name: Verify new paired protocol and original service without a model
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m pytest -q tests/test_semantic_shape_v3_fresh40.py tests/test_semantic_shape_v3.py tests/test_semantic_v2_omitted_filter.py
+      - name: Freeze four previous 100-question BIRD cohorts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          run-id: 43211214560
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          name: xiyan-semantic-independent100
+          path: /tmp/previous/semantic
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          run-id: 43243969734
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          name: semantic-abc-paired100
+          path: /tmp/previous/abc
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          run-id: 43372535238
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          name: bird-bridge-paired100
+          path: /tmp/previous/bridge
+      - name: Exclude prior literal40 and semantic A/A20 identities
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          run-id: 43412255812
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          name: qwen9b-literal-paired40-recovered
+          path: /tmp/previous/literal
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          run-id: 43415738839
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          name: qwen9b-semantic-aa-paired20
+          path: /tmp/previous/aa
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          run-id: 43440041923
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          name: sql-semantic-v2-fresh40-manifest
+          path: /tmp/previous/fresh40
+      - name: Fetch SHA256-pinned public BIRD questions (no model/gold during selection)
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/bird
+          curl --http1.1 -fL --retry 5 --retry-all-errors --retry-delay 2 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
+          echo "$BIRD_SHA  /tmp/bird/dev.zip" | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          DEV_JSON="$(find /tmp/bird/unpacked -type f -name dev.json ! -path '*/__MACOSX/*' | head -n1)"
+          test -s "$DEV_JSON"
+          echo "DEV_JSON=$DEV_JSON" >> "$GITHUB_ENV"
+      - name: Select exactly 40 new, question-disjoint, database-diverse cases
+        run: |
+          set -euo pipefail
+          python -m evaluation.semantic_shape_v3_fresh40 \
+            --source "$DEV_JSON" \
+            --exclude runs/bird-paired-dev-v4/paired.json \
+              /tmp/previous/semantic/xiyan-semantic-independent100.json \
+              /tmp/previous/abc/semantic-abc-paired100.json \
+              /tmp/previous/bridge/bird-bridge-paired100.json \
+              /tmp/previous/literal/qwen9b-literal-paired40.json \
+              /tmp/previous/aa/semantic-aa-paired20.json \
+              /tmp/previous/fresh40/fresh40-manifest.json \
+            --output fresh40-manifest.json
+          python - <<'PY'
+          import json
+          m=json.load(open("fresh40-manifest.json"))
+          assert len(m["selected"])==40
+          assert m["excluded_identity_count"]==500
+          assert m["group_counts"]=={"count_intent":20,"control":20}
+          assert m["gold_used_in_selection"] is False
+          print("FROZEN_FRESH40_COHORT",m["source_database_count"])
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sql-semantic-v3-fresh40-manifest
+          path: fresh40-manifest.json
+          retention-days: 30
+          if-no-files-found: error
+
+  paired:
+    needs: preregister
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+      - name: Install original guarded runtime and semantic-v3 (SQLGlot AST)
+        run: python -m pip install -e ".[dev]"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: sql-semantic-v3-fresh40-manifest
+          path: /tmp/cohort
+      - name: Fetch exact public BIRD SQLite databases
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/bird
+          curl --http1.1 -fL --retry 5 --retry-all-errors --retry-delay 2 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
+          echo "$BIRD_SHA  /tmp/bird/dev.zip" | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          DEV_JSON="$(find /tmp/bird/unpacked -type f -name dev.json ! -path '*/__MACOSX/*' | head -n1)"
+          DB_ZIP="$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)"
+          test -s "$DEV_JSON" && test -s "$DB_ZIP"
+          mkdir -p /tmp/bird/databases
+          unzip -q "$DB_ZIP" -d /tmp/bird/databases
+          DB_ROOT="$(find /tmp/bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)"
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=/tmp/bird/databases; fi
+          test -d "$DB_ROOT"
+          echo "DEV_JSON=$DEV_JSON" >> "$GITHUB_ENV"
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Install Ollama and SHA-verify original Qwen3.5-9B identity
+        run: |
+          set -euo pipefail
+          curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          ollama serve > /tmp/ollama.log 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 1
+          done
+          ollama pull "$MODEL"
+          python - <<'PY'
+          from evaluation.run_bird import _ollama_model_digest
+          assert _ollama_model_digest("http://127.0.0.1:11434","qwen3.5:9b-q4_K_M") == "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90"
+          print("PINNED_QWEN9B_MODEL_CONFIRMED")
+          PY
+      - name: Original guarded inference once; deterministic semantic v2 on same SQL
+        run: |
+          set -euo pipefail
+          python -m evaluation.semantic_shape_v3_fresh40 \
+            --source "$DEV_JSON" --database-root "$DB_ROOT" \
+            --manifest /tmp/cohort/fresh40-manifest.json \
+            --shard "${{ matrix.shard }}" \
+            --output "fresh40-shard-${{ matrix.shard }}.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: sql-semantic-v3-fresh40-shard-${{ matrix.shard }}
+          path: fresh40-shard-${{ matrix.shard }}.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  aggregate:
+    needs: paired
+    if: ${{ always() && needs.paired.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e ".[dev]"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: sql-semantic-v3-fresh40-shard-*
+          merge-multiple: true
+          path: shards
+      - name: Aggregate 8 matching original/v2 frozen paired shards
+        run: |
+          set -euo pipefail
+          for n in {0..7}; do test -s "shards/fresh40-shard-$n.json"; done
+          python -m evaluation.semantic_shape_v3_fresh40 \
+            --inputs shards/fresh40-shard-0.json shards/fresh40-shard-1.json \
+                     shards/fresh40-shard-2.json shards/fresh40-shard-3.json \
+                     shards/fresh40-shard-4.json shards/fresh40-shard-5.json \
+                     shards/fresh40-shard-6.json shards/fresh40-shard-7.json \
+            --output semantic-v3-fresh40-final.json
+          python - <<'PY'
+          import json
+          r=json.load(open("semantic-v3-fresh40-final.json"))
+          assert r["schema"]=="sql-semantic-v3-new40-aggregate/v1"
+          assert r["overall"]["count"]==40
+          assert r["paired_shared_baseline_generation"] is True
+          assert r["promote"] is False
+          print("SEMANTIC_V3_FRESH40_RESULT",json.dumps(
+              {k:v for k,v in r.items() if k!="cases"},sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: semantic-v3-fresh40-measured
+          path: semantic-v3-fresh40-final.json
+          if-no-files-found: error
+          retention-days: 30

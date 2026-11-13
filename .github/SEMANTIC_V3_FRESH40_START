@@ -1,0 +1,2 @@
+2026-11-13. Freeze 40 independent BIRD DEV questions excluding 500 prior sampled IDs; 20 count-intent, 20 controls. Paired original Qwen3.5-9B guarded vs deterministic count/grain v3. CPU only, no retraining or original-default changes. Judge only on paired EX and regressions.
+Retry #2: fix test filename in preregistration; historical frozen cohort unchanged.

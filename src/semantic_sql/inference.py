@@ -33,6 +33,7 @@ class GuardedContext:
     max_rows: int = 100
     semantic_revision: bool = False
     semantic_v2: bool = False
+    semantic_shape_v3: bool = False
 
 
 class GuardedState(TypedDict, total=False):
@@ -43,6 +44,7 @@ class GuardedState(TypedDict, total=False):
     verification: VerificationResult | None
     semantic_revised: bool
     semantic_v2_checked: bool
+    semantic_shape_v3_checked: bool
     stages: tuple[StageRecord, ...]
     result: AgentResult | None
 
@@ -163,6 +165,26 @@ def _semantic_v2(state: GuardedState, runtime) -> dict[str, Any]:
     }
 
 
+def _semantic_shape_v3(state: GuardedState, runtime) -> dict[str, Any]:
+    from .semantic_shape_v3 import evidence_gated_count_projection
+
+    previous = state["candidate"]
+    decision = evidence_gated_count_projection(
+        database=runtime.context.database,
+        question=state["question"],
+        sql=previous.sql,
+    )
+    accepted = SQLCandidate(sql=decision.sql, attempt=previous.attempt) if decision.changed else previous
+    return {
+        "candidate": accepted,
+        "semantic_shape_v3_checked": True,
+        "stages": _append_stage(
+            state, "semantic_shape_v3",
+            f"{decision.reason}: changed={str(decision.changed).lower()}",
+        ),
+    }
+
+
 def _execute(state: GuardedState, runtime) -> dict[str, Any]:
     candidate = state["candidate"]
     verification = state["verification"]
@@ -183,6 +205,8 @@ def _verify_route(state: GuardedState, runtime) -> str:
     if state["verification"].ok:
         if runtime.context.semantic_v2 and not state.get("semantic_v2_checked", False):
             return "semantic_v2"
+        if runtime.context.semantic_shape_v3 and not state.get("semantic_shape_v3_checked", False):
+            return "semantic_shape_v3"
         if runtime.context.semantic_revision and not state.get("semantic_revised", False):
             return "semantic_revision"
         return "execute"
@@ -191,9 +215,10 @@ def _verify_route(state: GuardedState, runtime) -> str:
     return "refuse"
 
 
-def _build_guarded_graph(*, semantic_revision: bool = False, semantic_v2: bool = False):
-    if semantic_revision and semantic_v2:
-        raise ValueError("old LLM semantic revision and evidence-gated v2 cannot run together")
+def _build_guarded_graph(*, semantic_revision: bool = False, semantic_v2: bool = False,
+                         semantic_shape_v3: bool = False):
+    if sum((semantic_revision, semantic_v2, semantic_shape_v3)) > 1:
+        raise ValueError("cannot run together: choose only one experimental semantic layer")
     from langgraph.graph import END, START, StateGraph
 
     graph = StateGraph(GuardedState, context_schema=GuardedContext)
@@ -204,6 +229,8 @@ def _build_guarded_graph(*, semantic_revision: bool = False, semantic_v2: bool =
         graph.add_node("semantic_revision", _semantic_revise)
     if semantic_v2:
         graph.add_node("semantic_v2", _semantic_v2)
+    if semantic_shape_v3:
+        graph.add_node("semantic_shape_v3", _semantic_shape_v3)
     graph.add_node("execute", _execute)
     graph.add_node("refuse", _refuse)
     graph.add_edge(START, "generate")
@@ -213,12 +240,16 @@ def _build_guarded_graph(*, semantic_revision: bool = False, semantic_v2: bool =
         routes["semantic_revision"] = "semantic_revision"
     if semantic_v2:
         routes["semantic_v2"] = "semantic_v2"
+    if semantic_shape_v3:
+        routes["semantic_shape_v3"] = "semantic_shape_v3"
     graph.add_conditional_edges("verify", _verify_route, routes)
     graph.add_edge("repair", "verify")
     if semantic_revision:
         graph.add_edge("semantic_revision", "verify")
     if semantic_v2:
         graph.add_edge("semantic_v2", "verify")
+    if semantic_shape_v3:
+        graph.add_edge("semantic_shape_v3", "verify")
     graph.add_edge("execute", END)
     graph.add_edge("refuse", END)
     return graph.compile()
@@ -230,9 +261,13 @@ def run_guarded(
     initial_candidate: SQLCandidate | None = None, max_repairs: int = 2,
     max_rows: int = 100, semantic_revision: bool = False,
     semantic_v2: bool = False,
+    semantic_shape_v3: bool = False,
 ) -> AgentResult:
     database = Path(database)
-    output = _build_guarded_graph(semantic_revision=semantic_revision, semantic_v2=semantic_v2).invoke(
+    output = _build_guarded_graph(
+        semantic_revision=semantic_revision, semantic_v2=semantic_v2,
+        semantic_shape_v3=semantic_shape_v3,
+    ).invoke(
         {
             "question": question,
             "schema_context": schema_context,
@@ -240,6 +275,7 @@ def run_guarded(
             "candidate": initial_candidate,
             "semantic_revised": False,
             "semantic_v2_checked": False,
+            "semantic_shape_v3_checked": False,
             "stages": (),
         },
         config={"recursion_limit": 2 * max(0, max_repairs) + 10},
@@ -250,6 +286,7 @@ def run_guarded(
             max_rows=max_rows,
             semantic_revision=semantic_revision,
             semantic_v2=semantic_v2,
+            semantic_shape_v3=semantic_shape_v3,
         ),
     )
     result = output["result"] if isinstance(output, dict) else output.result
