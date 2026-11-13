@@ -3,3 +3,5 @@
 Re-run reproducible MySQL smoke with explicit rejected query diagnostics.
 
 Include correlated SQL-standard NOT EXISTS in portable AST whitelist and retest real engine.
+
+Final real-MySQL bounded smoke: fail-closed unsupported EXISTS, preserve LEFT JOIN COUNT behavior.
