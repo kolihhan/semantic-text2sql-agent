@@ -36,7 +36,6 @@ def freeze_inputs(literal40: dict, aa20: dict) -> list[dict]:
         or literal40.get("sample_size") != 40
         or aa20.get("schema") != "qwen9b-semantic-aa-aggregate/v1"
         or aa20.get("count") != 20
-        or literal40.get("model") != "qwen3.5:9b-q4_K_M"
         or aa20.get("model") != "qwen3.5:9b-q4_K_M"):
         raise ValueError("wrong frozen original Qwen9B generation sources")
     out = []
