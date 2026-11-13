@@ -72,10 +72,9 @@ def test_same_question_across_training_databases_is_not_hidden_leakage():
         build_dialect_training_rows(train,train)
 
 
-def test_portable_correlated_not_exists_is_retained():
+def test_unverified_correlated_not_exists_fails_closed():
     sql = ("SELECT u.name FROM users AS u WHERE NOT EXISTS "
            "(SELECT 1 FROM orders AS o WHERE o.user_id=u.id AND o.status='paid') "
            "ORDER BY u.name")
     converted = transfer_portable_sql(sql)
-    assert converted is not None
-    assert "NOT EXISTS" in converted.upper()
+    assert converted is None
