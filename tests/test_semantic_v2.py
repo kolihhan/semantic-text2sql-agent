@@ -26,6 +26,11 @@ def database(tmp_path: Path) -> Path:
             "INSERT INTO events (id, name, city) VALUES (?, ?, ?)",
             [(1, "October Meeting", "KL"), (2, "November Meeting", "SG")],
         )
+        con.execute("CREATE TABLE attendance (event_id INTEGER, person TEXT)")
+        con.executemany(
+            "INSERT INTO attendance (event_id, person) VALUES (?, ?)",
+            [(1, "Alice"), (2, "Bob")],
+        )
     return path
 
 
@@ -86,7 +91,7 @@ def test_synthetic_counterexample_can_distinguish_same_count_on_real_db(database
      "no_single_equality_filter"),
     ('List event "October Meeting".',
      "SELECT e.id FROM events AS e JOIN events e2 ON e.id=e2.id WHERE e.name='November Meeting'",
-     "join_cte_or_nested_query"),
+     "ambiguous_or_self_join"),
     ('List event "October Meeting".',
      "SELECT id FROM events WHERE name IN ('November Meeting')",
      "no_single_equality_filter"),
@@ -141,3 +146,40 @@ def test_no_join_or_gold_labels_used_in_counterexample(database: Path):
         "revised_sql_passes_readonly_preflight",
     )
     assert dec.reason == "single_literal_question_and_physical_value_evidence"
+
+
+def test_physically_verified_simple_inner_join_can_fix_target_value(database: Path):
+    original = (
+        "SELECT a.person FROM attendance AS a "
+        "JOIN events AS e ON a.event_id = e.id "
+        "WHERE e.name = 'November Meeting'"
+    )
+    result = run_guarded(
+        database=database, provider=NoCallsProvider(),
+        question='Who attended "October Meeting"?',
+        schema_context="events(id, name, city), attendance(event_id, person)",
+        initial_candidate=SQLCandidate(original),
+        semantic_v2=True, max_repairs=0,
+    )
+    assert result.status == "ok"
+    assert result.rows == (("Alice",),)
+    assert result.candidate is not None
+    assert result.candidate.sql.count("October Meeting") == 1
+    assert "changed=true" in result.stages[2].summary
+
+
+def test_join_evidence_must_have_explicit_keys_and_valid_aliases(database: Path):
+    bad_sqls = (
+        "SELECT a.person FROM attendance a LEFT JOIN events e "
+        "ON a.event_id=e.id WHERE e.name='November Meeting'",
+        "SELECT a.person FROM attendance a CROSS JOIN events e "
+        "WHERE e.name='November Meeting'",
+        "SELECT a.person FROM attendance a JOIN events e "
+        "ON a.event_id=e.unknown_column WHERE e.name='November Meeting'",
+    )
+    for sql in bad_sqls:
+        choice = evidence_gated_literal_revision(
+            database=database, question='Who attended "October Meeting"?', sql=sql
+        )
+        assert choice.changed is False
+        assert choice.sql == sql
