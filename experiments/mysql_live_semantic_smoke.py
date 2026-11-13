@@ -21,7 +21,7 @@ FIXTURES = [
 PORTABLE_QUERIES = (
     "SELECT COUNT(DISTINCT u.id) FROM users AS u JOIN orders AS o ON u.id=o.user_id WHERE o.status='paid'",
     "SELECT u.country, SUM(o.amount) AS total FROM users AS u JOIN orders AS o ON u.id=o.user_id WHERE o.status='paid' GROUP BY u.country ORDER BY total DESC, u.country",
-    "SELECT u.name FROM users AS u WHERE NOT EXISTS (SELECT 1 FROM orders AS o WHERE o.user_id=u.id AND o.status='paid') ORDER BY u.name",
+    "SELECT u.name, COUNT(o.id) AS n FROM users AS u LEFT JOIN orders AS o ON o.user_id=u.id GROUP BY u.name ORDER BY u.name",
     "SELECT COUNT(*) FROM orders WHERE amount >= 20",
     "SELECT u.country, MAX(o.amount) FROM users AS u JOIN orders AS o ON o.user_id=u.id GROUP BY u.country ORDER BY u.country",
 )
