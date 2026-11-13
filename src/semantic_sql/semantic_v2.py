@@ -16,7 +16,7 @@ from pathlib import Path
 import re
 import sqlite3
 
-from .catalog import DatabaseCatalog
+from .execution import _open_readonly_connection
 from .verifier import verify_sql_preflight
 
 
@@ -41,6 +41,41 @@ def _quoted_request(question: str) -> str | None:
 
 def _quote_identifier(identifier: str) -> str:
     return '"' + identifier.replace('"', '""') + '"'
+
+
+def _physical_value_readonly(database: str | Path, table: str, column: str, value: str):
+    """Physical-column validation via SQLite mode=ro, never a writable connection."""
+    try:
+        con, _ = _open_readonly_connection(database)
+    except (sqlite3.Error, OSError):
+        return None, (), None, "physical_database_unavailable"
+    try:
+        names = [r[0] for r in con.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+        )]
+        matched_table = next((t for t in names if t.lower() == table.lower()), None)
+        if matched_table is None:
+            return None, (), None, "table_not_in_physical_catalog"
+        cols = tuple(r[1] for r in con.execute(
+            f"PRAGMA table_info({_quote_identifier(matched_table)})"
+        ))
+        matched_col = next((c for c in cols if c.lower() == column.lower()), None)
+        if matched_col is None:
+            return None, (), None, "column_not_in_physical_catalog"
+        quoted_col = _quote_identifier(matched_col)
+        row = con.execute(
+            f"SELECT {quoted_col} FROM {_quote_identifier(matched_table)} "
+            f"WHERE CAST({quoted_col} AS TEXT) = ? COLLATE NOCASE LIMIT 1",
+            (value,),
+        ).fetchone()
+        actual = row[0] if row is not None else None
+        if not isinstance(actual, str) or actual.casefold() != value.casefold():
+            return None, (), None, "question_value_not_verified_in_same_column"
+        return matched_table, cols, actual, "verified"
+    except sqlite3.Error:
+        return None, (), None, "physical_evidence_query_failed"
+    finally:
+        con.close()
 
 
 def _counterexample(
@@ -131,17 +166,12 @@ def evidence_gated_literal_revision(
         if not isinstance(expression, (exp.Column, exp.Star, exp.Count)):
             return keep("unsupported_projection")
 
-    catalog = DatabaseCatalog.from_sqlite(database)
-    matched_table = next((t for t in catalog.tables if t.lower() == table_ast.name.lower()), None)
-    if matched_table is None:
-        return keep("table_not_in_physical_catalog")
-    physical_columns = catalog.tables[matched_table].columns
-    matched_col = next((c for c in physical_columns if c.lower() == field.name.lower()), None)
-    if matched_col is None:
-        return keep("column_not_in_physical_catalog")
-    actual = catalog.find_value(matched_table, matched_col, value)
-    if not isinstance(actual, str) or actual.casefold() != value.casefold():
-        return keep("question_value_not_verified_in_same_column")
+    matched_table, physical_columns, actual, evidence_status = _physical_value_readonly(
+        database, table_ast.name, field.name, value
+    )
+    if evidence_status != "verified":
+        return keep(evidence_status)
+    matched_col = next(c for c in physical_columns if c.lower() == field.name.lower())
 
     candidate_tree = parsed.copy()
     cand_where = candidate_tree.args["where"].this
