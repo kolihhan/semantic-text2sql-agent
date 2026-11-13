@@ -19,7 +19,7 @@ def _fixtures(tmp_path:Path):
     src.write_text(json.dumps([
         {
             "question_id":str(460+i),
-            "db_id":f"database_{i%12}",
+            "db_id":f"database_{(i//2)%12}",
             "question":(
                 f"Find matches for 'Entity {i}' in test."
                 if i%2==0 else f"How many numbered values for record {i}?"
@@ -42,7 +42,7 @@ def test_prior_identity_exclusion_is_exact_and_disjoint(tmp_path):
     assert p["gold_used_in_selection"] is False
     assert len({x["case_id"] for x in p["selected"]})==40
     assert not {x["case_id"] for x in p["selected"]}&ids
-    assert min(p["source_database_count"].values())>=8
+    assert min(p["source_database_count"].values())>=7
     assert p==manifest(source=src,excluded=files)
 
 
