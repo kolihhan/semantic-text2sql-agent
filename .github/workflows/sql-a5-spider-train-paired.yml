@@ -1,0 +1,147 @@
+name: XiYanSQL A5 independent 100 Spider TRAIN schema-shift paired check
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/sql-a5-spider-train-schema-shift-20261113]
+    paths: [.github/SQL_A5_SPIDER_TRAIN_START]
+
+permissions:
+  contents: read
+
+env:
+  MODEL: hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M
+  SPIDER_SHA256: 00636695dabed6b5f4b8328a16b13e069a2f16591d5efcce57660669c85b121b
+
+jobs:
+  paired-inference:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: Checkout immutable A5 schema-shift protocol
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: 7d0ce4d45bbfb3365a1ae0ccbbd52419e965901f
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Verify source isolation, correct paired math and gold-blind generation
+        run: |
+          set -euo pipefail
+          python -m pip install -e ".[dev]"
+          python -m pytest -q tests/test_confirm_plan_spider_train.py \
+            tests/test_counterfactual_sql_plan_v1.py \
+            tests/test_audit_spider_exec_strict.py
+      - name: Get identical checksum-pinned Spider archive containing both splits and SQLite
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/spider
+          curl -fL --retry 4 --retry-delay 5 \
+            https://huggingface.co/datasets/HAL-9001/spider-databases/resolve/main/spider_data.zip \
+            -o /tmp/spider/source.zip
+          echo "$SPIDER_SHA256  /tmp/spider/source.zip" | sha256sum -c -
+          unzip -q /tmp/spider/source.zip -d /tmp/spider/unpacked
+          TRAIN_JSON="$(find /tmp/spider/unpacked -type f -name train_spider.json ! -path '*/__MACOSX/*' | head -n1)"
+          DEV_JSON="$(find /tmp/spider/unpacked -type f -name dev.json ! -path '*/__MACOSX/*' | head -n1)"
+          test -n "$TRAIN_JSON" && test -n "$DEV_JSON"
+          DB_ROOT="$(dirname "$TRAIN_JSON")/database"
+          test -d "$DB_ROOT"
+          export TRAIN_JSON DEV_JSON DB_ROOT
+          python - <<'PY'
+          import json,os
+          from experiments.confirm_plan_spider_train import select_cases
+          train=json.load(open(os.environ["TRAIN_JSON"]))
+          dev=json.load(open(os.environ["DEV_JSON"]))
+          chosen=select_cases(train,dev)
+          assert len(chosen)==100
+          assert len({x["database_id"] for x in chosen})==100
+          print("A5_SCHEMA_SHIFT_COHORT_LOCKED",{"train":len(train),"dev":len(dev),
+              "100_different_db":len({x["database_id"] for x in chosen})})
+          PY
+          echo "TRAIN_JSON=$TRAIN_JSON" >> "$GITHUB_ENV"
+          echo "DEV_JSON=$DEV_JSON" >> "$GITHUB_ENV"
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Install CPU Ollama and unchanged XiYanSQL-7B
+        run: |
+          set -euo pipefail
+          curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          ollama serve > /tmp/ollama-a5-shift.log 2>&1 &
+          for attempt in {1..40}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 1
+          done
+          ollama pull "$MODEL"
+      - name: Generate frozen A0 and A5 SQL before reading the reference queries
+        run: |
+          set -euo pipefail
+          python -m experiments.confirm_plan_spider_train \
+            --source "$TRAIN_JSON" \
+            --dev "$DEV_JSON" \
+            --database-root "$DB_ROOT" \
+            --shard-index "${{ matrix.shard }}" \
+            --model "$MODEL" \
+            --output "spider-train-a5-shard-${{ matrix.shard }}.json"
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          p=json.loads(Path("spider-train-a5-shard-${{ matrix.shard }}.json").read_text())
+          assert p["requested"]==25
+          assert len(p["cases"])+len(p["unscorable"])==25
+          assert all(r["labels_seen_before_model_calls"] is False for r in p["cases"])
+          print("A5_DATABASE_SHIFT_SHARD_READY",p["shard"],p["scored"])
+          PY
+      - name: Upload source-shift real paired candidates and scores
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: spider-train-a5-shard-${{ matrix.shard }}
+          path: spider-train-a5-shard-${{ matrix.shard }}.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  aggregate:
+    needs: paired-inference
+    if: ${{ always() && needs.paired-inference.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: 7d0ce4d45bbfb3365a1ae0ccbbd52419e965901f
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e ".[dev]"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: spider-train-a5-shard-*
+          path: shards
+          merge-multiple: true
+      - name: Paired 100 different database strict bag accuracy and regressions
+        run: |
+          set -euo pipefail
+          python -m experiments.confirm_plan_spider_train \
+            --inputs shards/spider-train-a5-shard-0.json \
+                     shards/spider-train-a5-shard-1.json \
+                     shards/spider-train-a5-shard-2.json \
+                     shards/spider-train-a5-shard-3.json \
+            --output spider-train-a5-paired100.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          a=json.loads(Path("spider-train-a5-paired100.json").read_text())
+          assert a["requested"]==100 and a["sample_size"]>=90
+          assert a["a5_bag_correct"]-a["a0_bag_correct"]==a["net_gain"]
+          print("A5_SPIDER_TRAIN_CONFIRM",json.dumps({k:v for k,v in a.items()
+             if k!="cases"},sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: a5-spider-train-100-databases-paired
+          path: spider-train-a5-paired100.json
+          if-no-files-found: error
+          retention-days: 30
