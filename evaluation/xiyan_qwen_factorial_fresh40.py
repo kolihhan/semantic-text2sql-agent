@@ -375,7 +375,7 @@ def main() -> None:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True) + "\n", encoding="utf-8")
     print("XIYAN_QWEN_2X2_STAGE", json.dumps({
-        k: v for k, v in result.items() if k not in ("selected", "cases"),
+        k: v for k, v in result.items() if k not in ("selected", "cases")
     }, sort_keys=True), flush=True)
 
 
