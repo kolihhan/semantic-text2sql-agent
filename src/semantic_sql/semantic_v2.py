@@ -78,22 +78,63 @@ def _physical_value_readonly(database: str | Path, table: str, column: str, valu
         con.close()
 
 
+def _physical_columns_readonly(database: str | Path, table: str) -> tuple[str, tuple[str, ...]] | None:
+    """Read physical column metadata without ever opening a writable DB handle."""
+    try:
+        con, _ = _open_readonly_connection(database)
+    except (sqlite3.Error, OSError):
+        return None
+    try:
+        names = [row[0] for row in con.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+        )]
+        name = next((name for name in names if name.lower() == table.lower()), None)
+        if name is None:
+            return None
+        cols = tuple(row[1] for row in con.execute(
+            f"PRAGMA table_info({_quote_identifier(name)})"
+        ))
+        return (name, cols) if cols else None
+    except sqlite3.Error:
+        return None
+    finally:
+        con.close()
+
+
 def _counterexample(
     original_sql: str, proposed_sql: str, *,
-    table: str, columns: tuple[str, ...], column: str, requested: str,
+    tables: tuple[tuple[str, tuple[str, ...]], ...],
+    target_table: str, column: str, requested: str,
 ) -> bool:
-    """Use synthetic in-memory data; a difference alone is not a correctness proof."""
-    if len(columns) > 200 or len({c.lower() for c in columns}) != len(columns):
+    """Compare SELECT results on in-memory one-row-per-table fixtures.
+
+    JOIN equality keys use synthetic value '1'; the requested column is
+    guaranteed not to be a join key by the caller. This is a behavioral
+    counterexample, not a proof that the resulting query is fully correct.
+    """
+    if len(tables) not in (1, 2, 3):
+        return False
+    if any(len(cols) > 200 or len({c.lower() for c in cols}) != len(cols)
+           for _, cols in tables):
         return False
     con = sqlite3.connect(":memory:")
     try:
-        quoted_table = _quote_identifier(table)
-        fields = ", ".join(_quote_identifier(c) + " TEXT" for c in columns)
-        con.execute(f"CREATE TABLE {quoted_table} ({fields})")
-        values = [requested if c.lower() == column.lower() else "1" for c in columns]
-        cols = ", ".join(_quote_identifier(c) for c in columns)
-        placeholders = ", ".join("?" for _ in values)
-        con.execute(f"INSERT INTO {quoted_table} ({cols}) VALUES ({placeholders})", values)
+        for table, cols in tables:
+            quoted_table = _quote_identifier(table)
+            fields = ", ".join(_quote_identifier(c) + " TEXT" for c in cols)
+            con.execute(f"CREATE TABLE {quoted_table} ({fields})")
+        for table, cols in tables:
+            values = [
+                requested if table.lower() == target_table.lower()
+                    and c.lower() == column.lower() else "1"
+                for c in cols
+            ]
+            quoted_cols = ", ".join(_quote_identifier(c) for c in cols)
+            placeholders = ", ".join("?" for _ in values)
+            con.execute(
+                f"INSERT INTO {_quote_identifier(table)} ({quoted_cols}) VALUES ({placeholders})",
+                values,
+            )
         con.execute("PRAGMA query_only = ON")
         before = con.execute(original_sql).fetchmany(3)
         after = con.execute(proposed_sql).fetchmany(3)
@@ -125,17 +166,42 @@ def evidence_gated_literal_revision(
         return keep("unparseable_sql")
     if not isinstance(parsed, exp.Select):
         return keep("non_simple_select")
-    if (parsed.args.get("joins") or parsed.args.get("with_")
-        or parsed.find(exp.Subquery) or parsed.find(exp.Union)
-        or parsed.find(exp.CTE)):
+    if (parsed.args.get("with_") or parsed.find(exp.Subquery)
+        or parsed.find(exp.Union) or parsed.find(exp.CTE)):
         return keep("join_cte_or_nested_query")
 
     source = parsed.args.get("from_")
     table_ast = source.this if source is not None else None
     if not isinstance(table_ast, exp.Table):
         return keep("not_one_physical_table")
-    if table_ast.args.get("db") or table_ast.args.get("catalog"):
+    joins = parsed.args.get("joins") or []
+    if len(joins) > 2:
+        return keep("complex_or_unsafe_join")
+    table_exprs = [table_ast]
+    join_keys: set[tuple[str, str]] = set()
+    for join in joins:
+        joined = join.this
+        on = join.args.get("on")
+        if (not isinstance(joined, exp.Table)
+            or join.args.get("side")
+            or join.args.get("kind") not in (None, "", "INNER")
+            or not isinstance(on, exp.EQ)
+            or not isinstance(on.this, exp.Column)
+            or not isinstance(on.expression, exp.Column)):
+            return keep("complex_or_unsafe_join")
+        if not on.this.table or not on.expression.table:
+            return keep("complex_or_unsafe_join")
+        join_keys.add((on.this.table.lower(), on.this.name.lower()))
+        join_keys.add((on.expression.table.lower(), on.expression.name.lower()))
+        table_exprs.append(joined)
+    if any(t.args.get("db") or t.args.get("catalog") for t in table_exprs):
         return keep("qualified_database")
+    aliases = {t.alias_or_name.lower(): t.name for t in table_exprs}
+    if (len(aliases) != len(table_exprs)
+        or len({t.name.lower() for t in table_exprs}) != len(table_exprs)):
+        return keep("ambiguous_or_self_join")
+    if any(a not in aliases for a, _ in join_keys):
+        return keep("unknown_join_alias")
     where = parsed.args.get("where")
     predicate = where.this if where is not None else None
     if not isinstance(predicate, exp.EQ):
@@ -151,8 +217,15 @@ def evidence_gated_literal_revision(
 
     if len([node for node in parsed.find_all(exp.Literal) if node.is_string]) != 1:
         return keep("multiple_sql_string_literals")
-    if field.is_star or (field.table and field.table.lower() != table_ast.alias_or_name.lower()):
+    if field.is_star:
         return keep("ambiguous_column")
+    if len(aliases) > 1 and not field.table:
+        return keep("ambiguous_join_filter_column")
+    target_alias = (field.table or table_ast.alias_or_name).lower()
+    if target_alias not in aliases:
+        return keep("ambiguous_column")
+    if (target_alias, field.name.lower()) in join_keys:
+        return keep("target_is_join_key")
     if old_literal.this.casefold() == value.casefold():
         return keep("entity_already_matches_question")
 
@@ -167,11 +240,28 @@ def evidence_gated_literal_revision(
             return keep("unsupported_projection")
 
     matched_table, physical_columns, actual, evidence_status = _physical_value_readonly(
-        database, table_ast.name, field.name, value
+        database, aliases[target_alias], field.name, value
     )
     if evidence_status != "verified":
         return keep(evidence_status)
     matched_col = next(c for c in physical_columns if c.lower() == field.name.lower())
+    physical_tables = []
+    for alias, raw_table in aliases.items():
+        if alias == target_alias:
+            physical_tables.append((matched_table, physical_columns))
+        else:
+            found = _physical_columns_readonly(database, raw_table)
+            if found is None:
+                return keep("joined_table_not_in_physical_catalog")
+            physical_tables.append(found)
+    # Join equality keys must refer to physically declared columns in their
+    # associated base tables, never generated aliases or guessed fields.
+    physical_by_alias = {
+        alias: cols for alias, (_, cols) in zip(aliases, physical_tables)
+    }
+    if any(c not in {name.lower() for name in physical_by_alias[a]}
+           for a, c in join_keys):
+        return keep("join_key_not_in_physical_catalog")
 
     candidate_tree = parsed.copy()
     cand_where = candidate_tree.args["where"].this
@@ -184,8 +274,8 @@ def evidence_gated_literal_revision(
     if not verify_sql_preflight(database, proposed_sql).ok:
         return keep("revised_preflight_failed")
     if not _counterexample(
-        sql, proposed_sql, table=matched_table,
-        columns=physical_columns, column=matched_col, requested=actual,
+        sql, proposed_sql, tables=tuple(physical_tables),
+        target_table=matched_table, column=matched_col, requested=actual,
     ):
         return keep("synthetic_counterexample_not_discriminating")
     return SemanticV2Decision(
