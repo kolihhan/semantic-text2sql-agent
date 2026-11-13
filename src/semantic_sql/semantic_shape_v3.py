@@ -57,11 +57,16 @@ def _unit_explicitly_matches(question: str, table: str) -> bool:
         variants.add(" ".join([*words[:-1], words[-1][:-1]]).casefold())
     else:
         variants.add(" ".join([*words[:-1], words[-1]+"s"]).casefold())
-    stem=re.sub(r"[^a-z0-9]+"," ", question.casefold())
-    # Only look in the early count-unit span, not in other explanations.
-    early=stem[:130]
-    return any(re.search(r"(?<!\w)"+re.escape(v)+r"(?!\w)",early)
-               for v in variants if len(v)>=3)
+    intent=_COUNT_INTENT.match(question)
+    if not intent:
+        return False
+    rest=re.sub(r"[^a-z0-9]+"," ",question[intent.end():].casefold()).strip()
+    # Restrict to the count unit immediately following the quantifier.
+    # "How many people attended events?" does NOT request event row count.
+    return any(
+        bool(re.match(r"^(?:[a-z]+ )?"+re.escape(v)+r"(?:\s|$)",rest))
+        for v in variants if len(v)>=3
+    )
 
 
 def _witness(original: str, proposed: str,
@@ -105,8 +110,11 @@ def evidence_gated_count_projection(*,database:str|Path,question:str,sql:str
     try:
         import sqlglot
         from sqlglot import exp
+    except ImportError:
+        return keep("sql_ast_unavailable")
+    try:
         parsed=sqlglot.parse_one(sql,read="sqlite")
-    except (ImportError,ValueError,TypeError,sqlglot.errors.ParseError):
+    except (ValueError,TypeError,sqlglot.errors.ParseError):
         return keep("sql_ast_unavailable")
     if not isinstance(parsed,exp.Select):
         return keep("not_simple_select")
