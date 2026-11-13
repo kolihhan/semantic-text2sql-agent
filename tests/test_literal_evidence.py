@@ -77,5 +77,5 @@ def test_optin_reaches_generator_and_repair_but_default_preserved(tmp_path):
 
 def test_quoted_literal_budget(tmp_path):
     catalog = DatabaseCatalog.from_sqlite(db_fixture(tmp_path))
-    assert len(quoted_literals(' "a" "b" "c" "d" "e" ')) == 4
+    assert len(quoted_literals(' "aa" "bb" "cc" "dd" "ee" ')) == 4
     assert exact_literal_evidence(catalog, '"October Meeting"', max_vm_steps_per_probe=1) == ()
