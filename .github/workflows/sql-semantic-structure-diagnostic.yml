@@ -61,7 +61,6 @@ jobs:
             --literal40 /tmp/frozen40/qwen9b-literal-paired40.json \
             --aa20 /tmp/frozen20/semantic-aa-paired20.json \
             --source "$DEV_JSON" \
-            --database-root "$DB_ROOT" \
             --output semantic-structure-diagnostic60.json
           python - <<'PY'
           import json
@@ -78,6 +77,6 @@ jobs:
         if: always()
         with:
           name: qwen9b-semantic-structure-diagnostic60
-          path: semantic-v2-frozen60.json
+          path: semantic-structure-diagnostic60.json
           if-no-files-found: warn
           retention-days: 30
