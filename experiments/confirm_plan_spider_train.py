@@ -36,8 +36,11 @@ def select_cases(train:list[dict],dev:list[dict],*,seed:str=SEED)->list[dict]:
     if not isinstance(train,list) or not isinstance(dev,list):
         raise ValueError("Spider train/dev must be JSON arrays")
     dev_dbs={str(x["db_id"]) for x in dev}
-    candidates=[x for x in train if str(x.get("db_id") or "") not in dev_dbs]
-    selection=frozen_selection(candidates,count=100,seed=seed)
+    # Keep original row indices aligned to reference SQL: do not filter and then
+    # accidentally resolve rows against a differently indexed source list.
+    if any(str(x.get("db_id") or "") in dev_dbs for x in train):
+        raise ValueError("Spider train/dev database overlap: cannot claim schema shift")
+    selection=frozen_selection(train,count=100,seed=seed)
     db_ids=[row["database_id"] for row in selection]
     if len(set(db_ids))!=100 or set(db_ids)&dev_dbs:
         raise ValueError("not exactly 100 independent training schemas outside prior DEV")
@@ -138,7 +141,6 @@ def aggregate(shards:list[dict])->dict:
     bad=[r for shard in shards for r in shard["unscorable"]]
     if len(rows)+len(bad)!=100 or len(rows)<90:
         raise ValueError("insufficient valid paired reference SQL for 100-case cohort")
-    dbs=[r["database_id"] for r in rows]+[r["case_id"] for r in bad]
     if len({r["database_id"] for r in rows})!=len(rows):
         raise ValueError("duplicate database identities in scored sample")
     a0=sum(r["strict"]["a0"]["bag_equal"] for r in rows)
