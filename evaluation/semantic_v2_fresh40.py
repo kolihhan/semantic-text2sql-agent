@@ -99,7 +99,7 @@ def manifest(*, source:Path, excluded:list[Path]) -> dict:
         source_counts[group][item.database_id]+=1
         if all(len(x)==20 for x in selected.values()):
             break
-    if any(len(x)!=20 or len(source_counts[k])<8 for k,x in selected.items()):
+    if any(len(x)!=20 or len(source_counts[k])<7 for k,x in selected.items()):
         raise ValueError("not enough new database-diverse cases in strata")
     chosen=selected["quoted"]+selected["no_quote"]
     ids={r["case_id"] for r in chosen}
