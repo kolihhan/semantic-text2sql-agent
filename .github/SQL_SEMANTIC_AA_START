@@ -1,0 +1,1 @@
+2026-11-13: Run exactly one gold-blind Qwen9B semantic A/A vs grounded pilot. 440 prior questions excluded; no model training or default SQL change.
