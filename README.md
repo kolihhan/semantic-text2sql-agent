@@ -69,13 +69,14 @@ The default guarded Qwen 9B system remains unchanged. The old LLM-only
 so the new evidence-gated `semantic_v2=True` is a **separate** opt-in path.
 
 First implemented capability: correcting **one mismatched quoted string value**
-in a simple one-table SQL equality predicate. The layer requires all of:
+in a simple one-table query or a bounded INNER JOIN (up to two joins) with explicit, physically declared join-column references. The layer requires all of:
 
 1. Exactly one unambiguous, explicitly quoted entity in the original question.
 2. That exact entity exists in the **same physical SQLite table/column** that
    the SQL currently filters using a different string value.
-3. The proposal changes exactly that SQLGlot AST literal (no join/aggregate/
-   projection/ordering rewrites).
+3. The proposal changes exactly that SQLGlot AST literal. For supported
+   INNER JOINs, explicit aliases and ON equality keys must resolve to
+   physically declared columns; no join/aggregate/projection/ordering rewrites.
 4. A synthetic **in-memory** SQLite counterexample shows differing SQL outputs,
    and the normal read-only compile preflight passes.
 
@@ -101,8 +102,9 @@ result = service.ask('Find the event "October Meeting"')
 See `tests/test_semantic_v2.py` for guardrails and
 `evaluation/semantic_v2_frozen_pilot.py` for frozen original-Qwen9B
 baseline-vs-v2 validation. **Do not promote based on focused tests alone**.
-This first release is deliberately narrow: complex joins, grouping/grain,
-unquoted synonyms, and ranking semantics are audit-only/unsupported.
+This first release is deliberately narrow: outer/complex joins, CTEs,
+subqueries, grouping/grain, unquoted synonyms, and ranking semantics are
+unsupported for automatic revision.
 The baseline 39% claim is unchanged until an independently verified gain.
 
 
