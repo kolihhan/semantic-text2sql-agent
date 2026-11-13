@@ -1,0 +1,1 @@
+2026-11-13: Run immutable BIRD100 contract selection only; no SQL model inference, training or production change.
