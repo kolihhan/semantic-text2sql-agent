@@ -70,3 +70,12 @@ def test_same_question_across_training_databases_is_not_hidden_leakage():
     train=[_row("a",i,"SELECT amount FROM orders") for i in range(10)]
     with pytest.raises(ValueError,match="overlap"):
         build_dialect_training_rows(train,train)
+
+
+def test_portable_correlated_not_exists_is_retained():
+    sql = ("SELECT u.name FROM users AS u WHERE NOT EXISTS "
+           "(SELECT 1 FROM orders AS o WHERE o.user_id=u.id AND o.status='paid') "
+           "ORDER BY u.name")
+    converted = transfer_portable_sql(sql)
+    assert converted is not None
+    assert "NOT EXISTS" in converted.upper()
