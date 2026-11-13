@@ -40,13 +40,13 @@ jobs:
           run-id: 43372535238
           repository: kolihhan/semantic-text2sql-agent
           github-token: ${{ github.token }}
-          name: bird-coder-diversity-paired100
+          name: bird-bridge-paired100
           path: /tmp/previous
       - name: Strip old gold-linked metrics and unrelated candidate before model generation
         run: |
           set -euo pipefail
           python -m experiments.bird_diverse_backbone \
-            --baseline-source /tmp/previous/bird-coder-diversity-paired100.json \
+            --baseline-source /tmp/previous/bird-bridge-paired100.json \
             --blind-output /tmp/xiyan-blind-only.json
           python - <<'PY'
           import json
@@ -130,7 +130,8 @@ jobs:
           import json
           p=json.load(open('bird-coder-diversity-paired100.json'))
           assert p['count']==100
-          assert p['xiyan_correct']==64\n          assert p['automatic_selector_ran'] is False
+          assert p['xiyan_correct']==64
+          assert p['automatic_selector_ran'] is False
           assert len({c['case_id'] for c in p['cases']}) == 100
           print('BIRD_DIVERSE_BACKBONE', json.dumps({k:v for k,v in p.items() if k!='cases'},sort_keys=True))
           PY
