@@ -204,6 +204,13 @@ def evidence_gated_literal_revision(
         return keep("unknown_join_alias")
     where = parsed.args.get("where")
     predicate = where.this if where is not None else None
+    if where is None and not joins:
+        # A missing filter is a different semantic failure from a wrong value.
+        # Only the evidence-gated independent single-table path may propose one.
+        return _evidence_gated_missing_filter(
+            database=database, question=question, original_sql=sql,
+            parsed=parsed, quoted_value=value,
+        )
     if not isinstance(predicate, exp.EQ):
         return keep("no_single_equality_filter")
 
@@ -287,6 +294,139 @@ def evidence_gated_literal_revision(
             "physical_column_contains_requested_value",
             "single_ast_equality_literal_changed",
             "synthetic_in_memory_counterexample_discriminates_outputs",
+            "revised_sql_passes_readonly_preflight",
+        ),
+    )
+
+
+def _evidence_gated_missing_filter(
+    *, database: str | Path, question: str, original_sql: str, parsed, quoted_value: str,
+) -> SemanticV2Decision:
+    """Conservative missing WHERE candidate on one real table (no LLM, no gold).
+
+    The user must request a named/quoted entity using an explicit predicate-
+    like phrase. That value must exist as an exact match in exactly ONE
+    physical text column; no other question value or SQL predicate may exist.
+    A two-row synthetic database confirms the appended WHERE changes behavior.
+    """
+    import sqlglot
+    from sqlglot import exp
+
+    def keep(reason: str) -> SemanticV2Decision:
+        return SemanticV2Decision(sql=original_sql, changed=False, reason=reason)
+
+    # Quotations alone can denote examples, not filtering requests.
+    explicit_filter = re.search(
+        r"\b(?:for|of|in|at|named|called|with|whose|where|regarding|"
+        r"about|from|labeled|labelled|containing|matching)\b"
+        r"[^'\"\\x60]{0,55}['\"\\x60]",
+        question, flags=re.I,
+    )
+    if not explicit_filter:
+        return keep("quoted_entity_not_explicit_filter")
+    if (parsed.args.get("joins") or parsed.args.get("with_") or
+        any(parsed.args.get(k) is not None for k in
+            ("group","having","order","limit","offset","distinct","qualify")) or
+        parsed.find(exp.Union) or parsed.find(exp.Subquery) or
+        parsed.find(exp.Window) or parsed.find(exp.Anonymous) or
+        parsed.find(exp.CTE)):
+        return keep("omitted_filter_complex_query")
+    if any(x.is_string for x in parsed.find_all(exp.Literal)):
+        return keep("omitted_filter_sql_already_has_string_literals")
+    for selection in parsed.expressions:
+        item = selection.this if isinstance(selection, exp.Alias) else selection
+        if not isinstance(item, (exp.Column, exp.Star, exp.Count)):
+            return keep("omitted_filter_unsupported_projection")
+        if isinstance(item, exp.Count) and item.find(exp.Distinct):
+            return keep("omitted_filter_distinct_aggregate")
+
+    source=parsed.args.get("from_")
+    table=source.this if source is not None else None
+    if not isinstance(table, exp.Table) or table.args.get("db") or table.args.get("catalog"):
+        return keep("omitted_filter_not_one_physical_table")
+    found=_physical_columns_readonly(database,table.name)
+    if found is None:
+        return keep("omitted_filter_table_not_in_catalog")
+    physical_table, columns=found
+    if len(columns)>24:
+        return keep("omitted_filter_too_many_columns")
+    try:
+        con,_=_open_readonly_connection(database)
+    except (sqlite3.Error,OSError):
+        return keep("omitted_filter_database_unavailable")
+    matches=[]
+    try:
+        # A bounded instruction budget avoids unbounded scans on large BIRD DBs.
+        calls=[0]
+        def progress():
+            calls[0]+=1
+            return int(calls[0]>1000)
+        con.set_progress_handler(progress,1000)
+        metadata=con.execute(f"PRAGMA table_info({_quote_identifier(physical_table)})").fetchall()
+        eligible=[
+            col for _,col,kind,*_ in metadata
+            if col in columns and any(token in str(kind).upper()
+                                      for token in ("TEXT","CHAR","CLOB","VARCHAR"))
+        ]
+        if len(eligible)>16:
+            return keep("omitted_filter_too_many_text_columns")
+        for col in eligible:
+            # Exact equality with ASCII-insensitive matching, not LIKE.
+            row=con.execute(
+                f"SELECT {_quote_identifier(col)} FROM {_quote_identifier(physical_table)} "
+                f"WHERE {_quote_identifier(col)} = ? COLLATE NOCASE LIMIT 1",
+                (quoted_value,),
+            ).fetchone()
+            if row is not None and isinstance(row[0],str) and row[0].casefold()==quoted_value.casefold():
+                matches.append((col,row[0]))
+    except sqlite3.Error:
+        return keep("omitted_filter_value_lookup_failed_or_too_large")
+    finally:
+        con.close()
+    if len(matches)!=1:
+        return keep("omitted_filter_no_unique_physical_column")
+    col,actual=matches[0]
+    qualifier=table.alias_or_name if table.alias else None
+    alternate=parsed.copy()
+    alternate.set("where",exp.Where(this=exp.EQ(
+        this=exp.column(col,table=qualifier),
+        expression=exp.Literal.string(actual),
+    )))
+    proposed=alternate.sql(dialect="sqlite")
+    if not verify_sql_preflight(database,proposed).ok:
+        return keep("omitted_filter_revised_sql_failed_preflight")
+
+    # A contrast row is needed: without it, SELECT without WHERE and SELECT
+    # with WHERE would agree on a one-row fixture and prove nothing.
+    if len(quoted_value)>80 or actual=="__semantic_v2_decoy__":
+        return keep("omitted_filter_counterexample_unsupported")
+    in_memory=sqlite3.connect(":memory:")
+    try:
+        fields=", ".join(_quote_identifier(c)+" TEXT" for c in columns)
+        in_memory.execute(f"CREATE TABLE {_quote_identifier(physical_table)} ({fields})")
+        names=", ".join(_quote_identifier(c) for c in columns)
+        params=", ".join("?" for _ in columns)
+        for entity in (actual,"__semantic_v2_decoy__"):
+            row=[entity if c==col else str(i+1) for i,c in enumerate(columns)]
+            in_memory.execute(
+                f"INSERT INTO {_quote_identifier(physical_table)} ({names}) VALUES ({params})",row)
+        in_memory.execute("PRAGMA query_only = ON")
+        before=in_memory.execute(original_sql).fetchmany(4)
+        after=in_memory.execute(proposed).fetchmany(4)
+        if before==after:
+            return keep("omitted_filter_counterexample_not_discriminating")
+    except sqlite3.Error:
+        return keep("omitted_filter_counterexample_invalid")
+    finally:
+        in_memory.close()
+    return SemanticV2Decision(
+        sql=proposed, changed=True,
+        reason="missing_where_explicit_entity_and_single_column_evidence",
+        evidence=(
+            "one_explicitly_filtering_quoted_entity",
+            "only_one_physical_text_column_matches",
+            "only_where_clause_appended",
+            "two_row_in_memory_counterexample_discriminates",
             "revised_sql_passes_readonly_preflight",
         ),
     )
