@@ -45,7 +45,7 @@ def assert_mysql_matches_sqlite(mysql_connection):
         for original in PORTABLE_QUERIES:
             mysql_sql=transfer_portable_sql(original)
             if mysql_sql is None:
-                raise ValueError("supported portable query rejected")
+                raise ValueError(f"supported portable query rejected: {original}")
             sqlite_rows=sq.execute(original).fetchall()
             cur.execute(mysql_sql)
             mysql_rows=cur.fetchall()
