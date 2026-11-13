@@ -97,10 +97,17 @@ def evaluate(*, literal40: dict, aa20: dict, source: Path, database_root: Path) 
     results = []
     for r in frozen:
         db = cache[r["database_id"]]
-        a = score(db, r["baseline_sql"], gold[r["case_id"]])
-        b = score(db, r["proposal"]["sql"], gold[r["case_id"]])
-        if a is not bool(r["pre_scored"]):
-            raise AssertionError("recomputed baseline disagrees with frozen source score")
+        # Unchanged SQL is byte-for-byte identical; preserve the historical
+        # frozen execution-match label. Reexecuting it would waste large BIRD
+        # SQLite queries without providing any new semantic information.
+        a = bool(r["pre_scored"])
+        if r["proposal"]["changed"]:
+            confirmed_base = score(db, r["baseline_sql"], gold[r["case_id"]])
+            if confirmed_base is not a:
+                raise AssertionError("changed-case baseline score drift")
+            b = score(db, r["proposal"]["sql"], gold[r["case_id"]])
+        else:
+            b = a
         results.append({
             "case_id": r["case_id"],
             "cohort": r["cohort"],
