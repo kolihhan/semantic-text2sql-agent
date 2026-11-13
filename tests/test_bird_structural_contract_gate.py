@@ -81,7 +81,7 @@ def test_uses_frozen_gold_only_after_all_deterministic_decisions():
 
 
 def test_corrupt_or_incomplete_evidence_rejected():
-    with pytest.raises(ValueError,match="missing original"):
+    with pytest.raises(ValueError,match="original question required"):
         requirements("")
     paired=_fake_paired()
     paired["cases"][0]["case_id"]=paired["cases"][1]["case_id"]
