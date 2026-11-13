@@ -1,0 +1,104 @@
+name: SQL pattern SFT data — BIRD TRAIN-only SQLite/MySQL, DB-disjoint
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/sql-sft-mysql-semantic-patterns-20261113]
+    paths: [.github/SEMANTIC_SQL_MYSQL_SFT_START]
+permissions:
+  contents: read
+jobs:
+  validate-dataset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install SQL source and XiYan tokenizer dependencies
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m pip install 'huggingface_hub>=1.0' 'transformers>=5.15,<6' 'jinja2>=3.1'
+      - name: Test semantic SQL dialect invariants on isolated schemas and queries
+        run: python -m pytest -q tests/test_semantic_sft_dialects.py
+      - name: Download BIRD filtered TRAIN plus schema-only train/dev split at immutable revisions
+        run: |
+          python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          import shutil
+          required=[
+              ("birdsql/bird23-train-filtered","data/train-00000-of-00001.jsonl","4068469807b255fcfc0816bdd520946fe460d256","/tmp/filtered.jsonl"),
+              ("Deema/BIRD-SQL","train_tables.json","c4a98a1","/tmp/train_tables.json"),
+              ("Deema/BIRD-SQL","dev_tables.json","c4a98a1","/tmp/dev_tables.json"),
+          ]
+          for repo,file,revision,dest in required:
+              shutil.copyfile(hf_hub_download(repo,filename=file,revision=revision,repo_type="dataset"),dest)
+              print("PINNED_BIRD_TRAIN",repo,file,revision)
+          PY
+      - name: Reconstruct database-disjoint original semantic SFT training and validation sets
+        run: |
+          python -m experiments.semantic_sft_data \
+            --filtered-train /tmp/filtered.jsonl \
+            --tables /tmp/train_tables.json \
+            --dev-tables /tmp/dev_tables.json \
+            --train-output runs/bird-sft-sqlite-train.jsonl \
+            --validation-output runs/bird-sft-sqlite-val.jsonl \
+            --report runs/bird-sft-sqlite-report.json \
+            --min-train 5000 --min-val 500
+      - name: Single dialect per TRAIN question, SQLGlot roundtrip and source-DB isolation
+        run: |
+          set -euo pipefail
+          python -m experiments.semantic_sft_dialects \
+            --train runs/bird-sft-sqlite-train.jsonl \
+            --validation runs/bird-sft-sqlite-val.jsonl \
+            --output runs/sql-pattern-mysql-train.jsonl \
+            --heldout runs/sql-pattern-mysql-val.jsonl \
+            --report runs/sql-pattern-mysql-report.json
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          from transformers import AutoTokenizer
+          from experiments.semantic_sft_data import tokenize_semantic_pair
+          p=json.loads(Path("runs/sql-pattern-mysql-report.json").read_text())
+          assert p["train_dbs"]>=2 and p["validation_dbs"]>=1
+          assert p["train_val_database_overlap"]==0
+          assert p["train_duplicate_question_exposure"]==0
+          assert p["questions_train"]>=5000
+          assert p["questions_validation"]>=500
+          assert p["mysql_syntax_transfers"]>=500
+          model="XGenerationLab/XiYanSQL-QwenCoder-7B-2504"
+          tok=AutoTokenizer.from_pretrained(model,trust_remote_code=True)
+          lengths={}
+          for label,path in (("train",Path("runs/sql-pattern-mysql-train.jsonl")),
+                             ("validation",Path("runs/sql-pattern-mysql-val.jsonl"))):
+              n=0
+              lengths[label]={"fit_1536":0,"fit_2048":0,"skipped_1536":0}
+              for line in path.read_text().splitlines():
+                  r=json.loads(line)
+                  n+=1
+                  for budget in (1536,2048):
+                      try:
+                          a=tokenize_semantic_pair(tok,r,max_length=budget)
+                          assert any(y!=-100 for y in a["labels"])
+                          lengths[label]["fit_"+str(budget)]+=1
+                      except ValueError as exc:
+                          if "too_long" not in str(exc): raise
+                          if budget==1536: lengths[label]["skipped_1536"]+=1
+              assert n==p["questions_"+label]
+          p["full_context_tokenizer"]=model
+          p["token_budget_audit"]=lengths
+          Path("runs/sql-pattern-mysql-report.json").write_text(json.dumps(p,indent=2,sort_keys=True)+"\n")
+          print("BIRD_PATTERN_TRANSFER_AUDIT",json.dumps(p,sort_keys=True))
+          PY
+      - name: Export leak-free BIRD TRAIN source and database-heldout validation, no trained weights
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: bird-semantic-pattern-sft-sqlite-mysql-database-shift
+          path: |
+            runs/sql-pattern-mysql-train.jsonl
+            runs/sql-pattern-mysql-val.jsonl
+            runs/sql-pattern-mysql-report.json
+          if-no-files-found: warn
+          retention-days: 30
