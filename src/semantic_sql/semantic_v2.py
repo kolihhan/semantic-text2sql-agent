@@ -319,7 +319,7 @@ def _evidence_gated_missing_filter(
     explicit_filter = re.search(
         r"\b(?:for|of|in|at|named|called|with|whose|where|regarding|"
         r"about|from|labeled|labelled|containing|matching)\b"
-        r"[^'\"\\x60]{0,55}['\"\\x60]",
+        r"[^\x27\x22\x60]{0,55}[\x27\x22\x60]",
         question, flags=re.I,
     )
     if not explicit_filter:
