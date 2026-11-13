@@ -15,7 +15,7 @@ concurrency:
 
 env:
   MODEL: qwen3.5:9b-q4_K_M
-  BIRD_SHA: cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60
+  BIRD_SHA: cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630
 
 jobs:
   preregister:
