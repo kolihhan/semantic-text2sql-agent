@@ -89,3 +89,14 @@ def test_original_default_service_unchanged_after_missing_filter_extension(db):
     )
     assert result.rows==((1,),(2,))
     assert [s.name for s in result.stages]==["sql","verify","execute"]
+
+def test_filter_context_with_digits_does_not_break_quote_detection(db):
+    sql="SELECT id FROM events"
+    result=evidence_gated_literal_revision(
+        database=db,
+        question='List IDs for a 60-person event called "October Meeting".',
+        sql=sql,
+    )
+    assert result.changed is True
+    assert "WHERE" in result.sql
+    assert "October Meeting" in result.sql
