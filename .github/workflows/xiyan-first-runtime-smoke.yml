@@ -73,6 +73,30 @@ jobs:
               print("XIYAN_FIRST_LIVE", json.dumps(record), flush=True)
               assert record["status"] == "ok" and record["verification"] and not record["truncated"]
               outputs.append(record)
+          class DeliberatelyBrokenSQL:
+              def complete_text(self, *, system, user):
+                  return "SELECT fabricated_column FROM orders"
+          forced = XiYanFirstSQLService(
+              Path("demo/demo.db"),
+              xiyan_provider=DeliberatelyBrokenSQL(),
+              fallback_provider=OllamaProvider(model=MODEL_IDS["qwen"], **kwargs),
+              max_rows=100, fallback_repairs=2,
+          )
+          before = time.perf_counter()
+          recovered = forced.ask("How many orders are there?")
+          recovery = {
+              "case": "live_guarded_fallback_injection",
+              "route": recovered.stages[0].summary,
+              "status": recovered.status,
+              "verification": recovered.verification.ok,
+              "truncated": recovered.truncated,
+              "latency_s": round(time.perf_counter() - before, 3),
+              "stage_names": [stage.name for stage in recovered.stages],
+          }
+          print("XIYAN_FIRST_LIVE", json.dumps(recovery), flush=True)
+          assert recovery["status"] == "ok" and recovery["verification"]
+          assert recovery["route"] == "qwen_fallback:verification_failed"
+          outputs.append(recovery)
           Path("xiyan-first-runtime-smoke.json").write_text(json.dumps({
               "scope": "live CPU smoke on demo DB only, not BIRD or semantic accuracy",
               "results": outputs,
