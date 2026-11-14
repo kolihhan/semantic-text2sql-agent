@@ -50,7 +50,7 @@ def _shard(i: int):
             },
         })
     return {
-        "shard": i, "protocol": "qwen-schema-tokenizer-paired40-v1",
+        "shard": i, "protocol": "qwen-schema-tokenizer-paired16-v1",
         "cohort_sha256": "one-cohort", "model_digest": MODEL_DIGEST,
         "cases": cases,
     }
