@@ -92,7 +92,7 @@ def build_manifest(source: Path, root: Path, frozen_reference: Path) -> dict:
         observed_changed += int(delta)
         observed_control += int(not delta)
         kind = "changed" if delta else "control"
-        if len(chosen[kind]) >= GROUP_SIZE or db_counts[kind][dbid] >= 2:
+        if len(chosen[kind]) >= GROUP_SIZE or db_counts[kind][dbid] >= 4:
             if all(len(a) == GROUP_SIZE for a in chosen.values()):
                 break
             continue
