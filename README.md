@@ -61,6 +61,53 @@ A later frozen-100 experiment tested a conservative one-pass semantic reviewer o
 
 The semantic layer produced **no positive EX rescue and one regression**, so it is kept as an experiment rather than part of the headline/default path. This is the main reason the project stays with the simpler guarded pipeline.
 
+
+### Experimental Semantic Layer v2 (opt-in; no training)
+
+The default guarded Qwen 9B system remains unchanged. The old LLM-only
+`semantic_revision=True` regressed 39% → 38% on the frozen100 cohort,
+so the new evidence-gated `semantic_v2=True` is a **separate** opt-in path.
+
+First implemented capability: correcting **one mismatched quoted string value**
+in a simple one-table query or a bounded INNER JOIN (up to two joins) with explicit, physically declared join-column references. The layer requires all of:
+
+1. Exactly one unambiguous, explicitly quoted entity in the original question.
+2. That exact entity exists in the **same physical SQLite table/column** that
+   the SQL currently filters using a different string value.
+3. The proposal changes exactly that SQLGlot AST literal. For supported
+   INNER JOINs, explicit aliases and ON equality keys must resolve to
+   physically declared columns; no join/aggregate/projection/ordering rewrites.
+4. A synthetic **in-memory** SQLite counterexample shows differing SQL outputs,
+   and the normal read-only compile preflight passes.
+
+Otherwise the original guarded SQL executes unchanged. The counterexample
+demonstrates changed behavior, **not** semantic correctness: matching the
+request requires stronger independent evidence. No model calls, no training,
+no writes to the real database, no gold SQL available to the selector.
+The experimental semantic v2 node is incompatible with the previous
+`semantic_revision` option to prevent stacking two unproven interventions.
+
+```bash
+python -m pip install -e ".[semantic-v2]"
+```
+
+```python
+service = SemanticSQLService(
+    "my.db", provider=provider, max_repairs=2, semantic_v2=True,
+)
+result = service.ask('Find the event "October Meeting"')
+# inspect the semantic_v2 stage to see whether and why a change was accepted
+```
+
+See `tests/test_semantic_v2.py` for guardrails and
+`evaluation/semantic_v2_frozen_pilot.py` for frozen original-Qwen9B
+baseline-vs-v2 validation. **Do not promote based on focused tests alone**.
+This first release is deliberately narrow: outer/complex joins, CTEs,
+subqueries, grouping/grain, unquoted synonyms, and ranking semantics are
+unsupported for automatic revision.
+The baseline 39% claim is unchanged until an independently verified gain.
+
+
 ### Separate XiYan grounding ablation
 
 A separate frozen-100 experiment tested **Decomposed Grounded Schema Linking (DGSL v1)** with XiYanSQL 7B and a project-local set-equality execution scorer. This is a **different model and scorer** from the Qwen3.5 table above, so the numbers are not directly interchangeable.
