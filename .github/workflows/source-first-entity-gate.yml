@@ -1,5 +1,5 @@
 name: Source-first exact entity grounding BIRD quote cohort CPU-only
-# Record attainable sample size and per-database cap before drawing any conclusion.
+# Source gate excludes apostrophe possessives and numeric IDs; reports attainable sample.
 on:
   workflow_dispatch:
   push:
