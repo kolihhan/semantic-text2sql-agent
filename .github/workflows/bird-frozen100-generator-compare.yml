@@ -33,7 +33,7 @@ jobs:
         run: |
           set -euo pipefail
           curl -fsSL --retry 4 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o dev.zip
-          echo "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60  dev.zip" | sha256sum -c -
+          echo "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  dev.zip" | sha256sum -c -
           mkdir -p bird/unpacked bird/databases
           unzip -q dev.zip -d bird/unpacked
           DB_ZIP=$(find bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
