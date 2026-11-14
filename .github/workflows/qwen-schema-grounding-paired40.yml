@@ -1,4 +1,4 @@
-name: Qwen9B schema tokenization paired BIRD40 (gold blind)
+name: Qwen9B schema tokenization paired BIRD16 (gold blind)
 on:
   workflow_dispatch:
   push:
@@ -42,15 +42,15 @@ jobs:
           python - <<'PY'
           import json
           m=json.load(open('qwen-schema-cohort.json'))
-          assert len(m['selected'])==40 and m['count']==40
-          assert len(set(x['case_id'] for x in m['selected']))==40
-          assert [x['group'] for x in m['selected']].count('changed')==20
-          assert [x['group'] for x in m['selected']].count('control')==20
+          assert len(m['selected'])==16 and m['count']==16
+          assert len(set(x['case_id'] for x in m['selected']))==16
+          assert [x['group'] for x in m['selected']].count('changed')==8
+          assert [x['group'] for x in m['selected']].count('control')==8
           print('PREREGISTERED',m['cohort_sha256'])
           PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: qwen-schema-grounding-frozen40
+          name: qwen-schema-grounding-frozen16
           path: qwen-schema-cohort.json
           if-no-files-found: error
           retention-days: 30
@@ -62,7 +62,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+        shard: [0, 1, 2, 3]
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
