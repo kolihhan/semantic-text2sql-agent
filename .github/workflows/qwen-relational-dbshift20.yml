@@ -1,0 +1,96 @@
+name: Qwen9B declared relational evidence, 10 unseen database pairs
+# DDL-only universal relational metadata; no BIRD-specific semantic rules.
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/qwen-relational-contract-shift20-20261115]
+    paths: [.github/workflows/qwen-relational-dbshift20.yml]
+permissions:
+  contents: read
+
+jobs:
+  source-and-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_relational_contract.py tests/test_qwen_relational_shift20.py
+
+  paired:
+    needs: source-and-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[dev]'
+      - name: Fetch checksum-pinned BIRD train and dev; selection never uses SQL gold
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 'https://huggingface.co/datasets/Emulated-Inc/text-to-sql-with-evidence-training-pool/resolve/cd2c4ea321075aa53ce7dfe52deaaffa505d046a/raw/bird/train.json' -o train.json
+          echo 'cd5884489dffd7c76d73509b396bd919fbe8b486efbc4ba2f48f89460de7d69f  train.json' | sha256sum -c -
+          curl -fsSL --retry 4 'https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip' -o dev.zip
+          echo 'cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  dev.zip' | sha256sum -c -
+          unzip -p dev.zip dev_20240627/dev.json > dev.json
+          echo '630272f2b1c44d8cef2c3b246f623355cf0bbc1e832c81061df895530dfc2f06  dev.json' | sha256sum -c -
+      - name: Initialize original pinned Qwen3.5-9B Ollama checkpoint
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 'https://ollama.com/download/ollama-linux-amd64.tar.zst' | sudo tar --zstd -x -C /usr
+          OLLAMA_MAX_LOADED_MODELS=1 ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          ollama pull qwen3.5:9b-q4_K_M
+      - name: Paired Qwen-only original vs verified DDL metadata with same guards
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python -m evaluation.qwen_relational_shift20 \
+            --train train.json --dev dev.json --shard "$SHARD" \
+            --output "qwen-relational-$SHARD.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qwen-relational-dbshift20-shard-${{ matrix.shard }}
+          path: qwen-relational-${{ matrix.shard }}.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  aggregate:
+    needs: paired
+    if: ${{ always() && needs.paired.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[dev]'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: qwen-relational-dbshift20-shard-*
+          path: shards
+          merge-multiple: true
+      - run: |
+          python -m evaluation.qwen_relational_shift20 \
+            --inputs shards/qwen-relational-*.json \
+            --output qwen-relational-dbshift20-summary.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen-relational-dbshift20-final
+          path: qwen-relational-dbshift20-summary.json
+          if-no-files-found: error
+          retention-days: 30
