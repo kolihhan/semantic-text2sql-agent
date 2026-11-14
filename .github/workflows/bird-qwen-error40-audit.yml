@@ -1,0 +1,42 @@
+name: Qwen rank40 error audit (question and gold retrieval only, no model)
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/qwen-rank-intent-new40-20261114]
+    paths: [.github/workflows/bird-qwen-error40-audit.yml]
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[dev]'
+      - name: Load checksum-pinned public BIRD TRAIN questions only
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 https://huggingface.co/datasets/Emulated-Inc/text-to-sql-with-evidence-training-pool/resolve/cd2c4ea321075aa53ce7dfe52deaaffa505d046a/raw/bird/train.json -o train.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from evaluation.bird_generator_transfer import load_checked, TRAIN_SHA
+          source=load_checked(Path('train.json'),TRAIN_SHA)
+          ids=[261,296,317,346,353,925,935,945,956,4303,4312,4369,4430,4792,4803,4892,4922,4937,5021,5160,5176,5179,5211,5227,5356,5441,5497,5807,5810,5841,5881,5889,5916,5959,5978,6009,6013,6033,6544,6616]
+          assert len(ids)==40 and len(set(ids))==40 and max(ids)<len(source)
+          cases=[{'case_id':i,'database_id':source[i]['db_id'],'question':source[i]['question'],'evidence':source[i].get('evidence') or '', 'gold_sql':source[i]['SQL']} for i in ids]
+          wrong={935,945,4303,4312,4369,5160,5227,5959,6544,6616}
+          out={'purpose':'retrospective error diagnosis only; no model generation, no tuning, no holdout gain','source_train_sha256':TRAIN_SHA,'cases':cases,'prior_qwen_wrong_case_ids':sorted(wrong)}
+          assert len(wrong)==10 and wrong.issubset(ids)
+          Path('qwen-rank40-posthoc-question-audit.json').write_text(json.dumps(out,indent=2,ensure_ascii=False)+'\n')
+          print('QWEN_ERROR40_QUESTIONS_LOADED',len(cases),'prior_misses',len(wrong),flush=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen-rank40-posthoc-question-audit
+          path: qwen-rank40-posthoc-question-audit.json
+          if-no-files-found: error
+          retention-days: 30
