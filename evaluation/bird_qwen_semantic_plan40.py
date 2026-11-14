@@ -101,7 +101,7 @@ def run_shard(train_path: Path, dev_path: Path, shard: int, work: Path) -> dict:
             "case_id": case["case_id"],
             "db": case["database_id"],
             "plan_valid": plan is not None,
-            "changed_sql": baseline.candidate != revised.candidate,
+            "changed_sql": (baseline.candidate.sql if baseline.candidate else "") != (revised.candidate.sql if revised.candidate else ""),
             "latency_s": round(perf_counter() - start, 3),
             "arms": {},
         }
