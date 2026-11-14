@@ -1,5 +1,5 @@
 name: Qwen9B rank intent paired new BIRD Train40
-# Qwen only; new BIRD TRAIN questions and databases never seen in prior DEV / Train40; neutral A/A controls
+# Qwen only; reuse identical pinned seeded generation backend from prior Qwen pilot\n# New BIRD TRAIN questions and databases outside earlier DEV / Train40; neutral A/A controls
 on:
   workflow_dispatch:
   push:
