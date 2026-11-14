@@ -24,11 +24,10 @@ from evaluation.bird_generator_transfer import (
 )
 from evaluation.run_bird import _ollama_model_digest
 from evaluation.schema_context import select_schema_context
-from evaluation.xiyan_qwen_factorial_fresh40 import QWEN_DIGEST, MODEL_IDS, SOURCE_SHA256
+from evaluation.xiyan_qwen_factorial_fresh40 import QWEN_DIGEST, MODEL_IDS, SOURCE_SHA256, generate
 from semantic_sql.catalog import DatabaseCatalog
 from semantic_sql.execution import execute_readonly
 from semantic_sql.inference import run_guarded
-from semantic_sql.providers import OllamaProvider
 
 SHARDS = 10
 PER_GROUP = 20
@@ -125,9 +124,11 @@ def inference_shard(*, source_train: Path, source_dev: Path,
             raise ValueError("BIRD database bytes not matched to frozen source")
         path.write_bytes(data)
         dbs[dbid] = (path, DatabaseCatalog.from_sqlite(path))
-    provider = OllamaProvider(
-        model=model, timeout_s=900, temperature=0, seed=42, num_predict=1024
-    )
+    class PinnedQwen:
+        def complete_text(self, *, system: str, user: str) -> str:
+            return generate(model=model, system=system, user=user)
+
+    provider = PinnedQwen()
     records = []
     for row in selected:
         db, catalog = dbs[row["database_id"]]
