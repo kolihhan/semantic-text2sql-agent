@@ -49,7 +49,7 @@ def to_mschema_like(
             lines.extend([f"# Table: {table}", "["])
             fields = []
             for _, name, dbtype, _nullable, _default, pk in columns:
-                coltype = (str(dbtype or "TEXT").split("(", 1)[0] or "TEXT").upper()
+                coltype = (str(dbtype or "UNKNOWN").split("(", 1)[0] or "UNKNOWN").upper()
                 desc = descriptions.get((table, name), "")
                 chunks = [f"{name}:{coltype}"]
                 if desc:
@@ -59,7 +59,11 @@ def to_mschema_like(
                 if with_examples and example_budget > 0 and (
                     _tokens(name) | _tokens(desc)
                 ) & question_tokens:
-                    samples = catalog.sample_values(table, name, limit=2)
+                    identifier = name.replace('"', '""')
+                    samples = [row[0] for row in con.execute(
+                        f'SELECT DISTINCT "{identifier}" FROM "{escaped}" '
+                        f'WHERE "{identifier}" IS NOT NULL LIMIT 2'
+                    )]
                     usable = [" ".join(str(v).split()) for v in samples if v is not None]
                     usable = [v for v in usable if v and len(v) <= 50][:2]
                     if usable:
