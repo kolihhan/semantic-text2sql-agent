@@ -146,13 +146,21 @@ def transfer(schema: list[dict], physical: list[dict], frozen100: Path,
         db=cache[row["database_id"]][0]
         try:
             gold=execute_readonly(db,raw_case["SQL"],max_rows=50_000)
-            original=execute_readonly(db,row["sql"],max_rows=50_000)
-            if gold.truncated or original.truncated:
-                raise ValueError("reference/baseline query truncated")
+            if gold.truncated:
+                raise ValueError("reference query truncated")
         except (SQLExecutionError,ValueError) as exc:
-            raise ValueError("original physically scored Qwen case drift "+row["case_id"]) from exc
-        original_ex=set(original.rows)==set(gold.rows)
-        original_bag=Counter(original.rows)==Counter(gold.rows)
+            raise ValueError("gold reference invalid in originally scorable case "+row["case_id"]) from exc
+        # The frozen Guarded cohort explicitly includes verification_failed SQL.
+        # Its original EX is false; requiring this invalid baseline to execute
+        # would silently drop failure cases, biasing the transfer denominator.
+        try:
+            original=execute_readonly(db,row["sql"],max_rows=50_000)
+            if original.truncated:
+                original=None
+        except (SQLExecutionError,ValueError):
+            original=None
+        original_ex=bool(original is not None and set(original.rows)==set(gold.rows))
+        original_bag=bool(original is not None and Counter(original.rows)==Counter(gold.rows))
         if original_ex!=row["original_archived_ex"] or original_bag!=row["original_archived_bag"]:
             raise ValueError("old Qwen score drift "+row["case_id"])
         new_ex,new_bag=original_ex,original_bag
