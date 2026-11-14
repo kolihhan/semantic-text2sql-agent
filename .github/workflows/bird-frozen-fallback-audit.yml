@@ -1,0 +1,43 @@
+name: Audit gold-blind SQL fallback on completed frozen DEV100
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/xiyan-qwen-guarded-frozen100-20261114]
+    paths: [.github/workflows/bird-frozen-fallback-audit.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Test gold-blind fallback and ten-shard completeness gates
+        run: |
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_bird_frozen_fallback_analysis.py
+      - name: Restore exactly the prior successful DEV100 inference artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          run-id: 43550578654
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          pattern: frozen100-generator-shard-*
+          path: shards
+          merge-multiple: true
+      - name: Recompute only label-blind fallbacks, no model inference
+        run: |
+          set -euo pipefail
+          python -m evaluation.bird_frozen_fallback_analysis \
+            --inputs shards/frozen100-*.json \
+            --output frozen100-fallback-summary.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: frozen100-fallback-measured
+          path: frozen100-fallback-summary.json
+          if-no-files-found: error
+          retention-days: 30
