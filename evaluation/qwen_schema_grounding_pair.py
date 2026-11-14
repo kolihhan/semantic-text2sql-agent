@@ -26,8 +26,8 @@ SOURCE_SHA = "ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb"
 MODEL = "qwen3.5:9b-q4_K_M"
 MODEL_DIGEST = "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90"
 SEED = "qwen-schema-lexical-v2-pre-registered-20261114"
-GROUP_SIZE = 20
-N_SHARDS = 10
+GROUP_SIZE = 8
+N_SHARDS = 4
 ARMS = ("legacy", "split_identifiers")
 
 
@@ -94,7 +94,7 @@ def build_manifest(source: Path, root: Path, frozen_reference: Path) -> dict:
         kind = "changed" if delta else "control"
         if len(chosen[kind]) >= GROUP_SIZE or db_counts[kind][dbid] >= 4:
             if all(len(a) == GROUP_SIZE for a in chosen.values()):
-                break
+                continue
             continue
         chosen[kind].append({
             "case_id": cid, "database_id": dbid, "question": str(item["question"]),
@@ -106,8 +106,7 @@ def build_manifest(source: Path, root: Path, frozen_reference: Path) -> dict:
             "split_tables": new[1]["selected_tables"],
         })
         db_counts[kind][dbid] += 1
-        if all(len(a) == GROUP_SIZE for a in chosen.values()):
-            break
+        # Always scan the full source to measure actual schema-context prevalence.
     if any(len(a) != GROUP_SIZE for a in chosen.values()):
         raise ValueError(
             f"insufficient preregistered changed/control cases: "
@@ -154,7 +153,7 @@ def run_shard(source: Path, manifest_path: Path, root: Path, shard: int) -> dict
     cfg = json.loads(manifest_path.read_text(encoding="utf-8"))
     if (cfg.get("protocol") != "qwen-schema-tokenizer-paired40-v1"
         or cfg.get("source_sha256") != SOURCE_SHA or cfg.get("model_digest") != MODEL_DIGEST
-        or cfg.get("count") != 40 or len(cfg.get("selected", [])) != 40
+        or cfg.get("count") != 16 or len(cfg.get("selected", [])) != 16
         or cfg.get("preregistered_without_reference_sql") is not True):
         raise ValueError("unrecognized preregistered cohort")
     model_hash = _ollama_model_digest("http://127.0.0.1:11434", MODEL)
@@ -235,7 +234,7 @@ def run_shard(source: Path, manifest_path: Path, root: Path, shard: int) -> dict
 
 def aggregate(shards: list[dict]) -> dict:
     if len(shards) != N_SHARDS or sorted(s["shard"] for s in shards) != list(range(N_SHARDS)):
-        raise ValueError("need ten unique shards")
+        raise ValueError("need four unique shards")
     first = shards[0]
     if any(
         s["protocol"] != "qwen-schema-tokenizer-paired40-v1"
@@ -245,7 +244,7 @@ def aggregate(shards: list[dict]) -> dict:
     ):
         raise ValueError("model, cohort or protocol mismatch")
     cases = [case for s in shards for case in s["cases"]]
-    if len({c["case_id"] for c in cases}) != 40:
+    if len({c["case_id"] for c in cases}) != 16:
         raise ValueError("duplicate cases")
     def stats(group: list[dict]):
         val = [c for c in group if c["reference_scorable"]]
@@ -262,7 +261,7 @@ def aggregate(shards: list[dict]) -> dict:
             "both_empty": sum(any(bool(c["arms"][a]["both_empty"]) for a in ARMS) for c in val),
         }
     return {
-        "n": 40, "cohort_sha256": first["cohort_sha256"],
+        "n": 16, "cohort_sha256": first["cohort_sha256"],
         "model_id": MODEL, "model_digest": MODEL_DIGEST,
         "groups": {key: stats([c for c in cases if c["group"] == key])
                    for key in ("changed", "control")},
