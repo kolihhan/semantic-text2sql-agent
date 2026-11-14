@@ -72,7 +72,7 @@ def verified_db_facts(
             if src not in selected or target not in selected:
                 continue
             target_unique = keys.get(target) == (tc,)
-            note = ("many-to-one only if the child FK is nonunique"
+            note = ("at most one parent per child; not a proven 1:1"
                     if target_unique else "not a proven 1:1 or many-to-one relation")
             fk_count += 1
             lines.append(f"Declared FK {src}.{sc} -> {target}.{tc}; {note}")
