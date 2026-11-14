@@ -1,4 +1,5 @@
-name: Source-first exact entity grounding BIRD DEV40 CPU-only
+name: Source-first exact entity grounding BIRD quote cohort CPU-only
+# Record attainable sample size and per-database cap before drawing any conclusion.
 on:
   workflow_dispatch:
   push:
