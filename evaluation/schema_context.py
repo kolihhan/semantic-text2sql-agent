@@ -4,6 +4,7 @@ import csv
 from pathlib import Path
 import re
 from hashlib import sha256
+from typing import Callable
 
 from semantic_sql.catalog import DatabaseCatalog
 
@@ -42,24 +43,33 @@ _STOPWORDS = {
 
 
 def _tokens(value: str) -> set[str]:
-    words = re.findall(r"[a-z0-9]+", re.sub(r"([a-z])([A-Z])", r"\1 \2", value.casefold()))
+    # Split compound physical SQL identifiers BEFORE casefold, preserving acronym boundaries.
+    # Casefold-first turns PayFrequency into payfrequency and loses both useful terms.
+    identifier = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", value)
+    identifier = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", identifier)
+    # Preserve old whole-identifier matches as well; splitting must not erase
+    # questions that explicitly spell a physical column name as one token.
+    words = re.findall(r"[a-z0-9]+", identifier.casefold())
+    words += re.findall(r"[a-z0-9]+", value.casefold())
     return {word.rstrip("s") for word in words if word not in _STOPWORDS and len(word.rstrip("s")) > 1}
 
 
 def select_schema_context(
     catalog: DatabaseCatalog, database_root: Path, db_id: str, question: str,
+    *, tokenizer: Callable[[str], set[str]] | None = None,
 ) -> tuple[str, dict[str, object]]:
-    """Select a compact lexical schema context; fall back closed to the full schema."""
-    query_tokens = _tokens(question)
+    """Select compact lexical schema context; explicit tokenizer enables matched ablations."""
+    tokenize = _tokens if tokenizer is None else tokenizer
+    query_tokens = tokenize(question)
     descriptions = _description_rows(database_root, db_id)
     by_column = {(table, column): description for table, column, description in descriptions}
     scores: dict[str, int] = {}
     matched: dict[str, list[str]] = {}
     for table, info in catalog.tables.items():
-        table_tokens = _tokens(table)
-        column_tokens = set().union(*(_tokens(column) for column in info.columns)) if info.columns else set()
+        table_tokens = tokenize(table)
+        column_tokens = set().union(*(tokenize(column) for column in info.columns)) if info.columns else set()
         description_tokens = set().union(*(
-            _tokens(description) for (desc_table, column), description in by_column.items() if desc_table == table
+            tokenize(description) for (desc_table, column), description in by_column.items() if desc_table == table
         )) if info.columns else set()
         hits = sorted(query_tokens & (table_tokens | column_tokens | description_tokens))
         if hits:
@@ -89,7 +99,7 @@ def select_schema_context(
         schema_lines.extend(f"- {table}.{column}: {description}" for table, column, description in selected_descriptions)
     context = "\n".join(("Physical SQLite schema:", *schema_lines))
     diagnostics = {
-        "selector": "deterministic_lexical_v1",
+        "selector": "deterministic_lexical_v2" if tokenizer is None else "controlled_comparator",
         "fallback_full_schema": uncertain,
         "query_tokens": sorted(query_tokens),
         "selected_tables": sorted(selected),
