@@ -6,9 +6,9 @@ from semantic_sql.catalog import DatabaseCatalog, TableInfo
 
 
 def test_compound_column_identifiers_split_before_casefold():
-    assert {"pay", "frequency"} <= _tokens("PayFrequency")
+    assert {"pay", "frequency", "payfrequency"} <= _tokens("PayFrequency")
     assert {"start", "date"} <= _tokens("StartDate")
-    assert {"student", "id"} <= _tokens("StudentID")
+    assert {"student", "id", "studentid"} <= _tokens("StudentID")
     assert {"http", "response", "code"} <= _tokens("HTTPResponseCode")
 
 
