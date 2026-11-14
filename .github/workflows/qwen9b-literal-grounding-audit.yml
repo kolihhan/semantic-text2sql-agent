@@ -1,0 +1,67 @@
+name: Qwen9B frozen100 SQL-conditioned physical literal diagnostic (CPU)
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/qwen9b-literal-grounding-audit-20261114]
+    paths: [.github/workflows/qwen9b-literal-grounding-audit.yml]
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  qwen_literal_gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Run source-conditioned value parser and SQLite safety tests
+        run: |
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_qwen_literal_grounding_audit.py
+      - name: Download original 100 pinned Qwen3.5-9B SQL predictions (no new inference)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          run-id: 37307108955
+          github-token: ${{ github.token }}
+          pattern: qwen9b-xiyan-style-shard-*
+          path: frozen-qwen
+          merge-multiple: true
+      - name: Validate exactly four historical inference artifact shards
+        run: |
+          python - <<'PY'
+          import glob,json
+          paths=glob.glob('frozen-qwen/qwen9b-shard-*.json')
+          assert len(paths)==4,paths
+          rows=[r for p in paths for r in json.load(open(p))['cases']]
+          assert len(rows)==100 and len(set(r['case_id'] for r in rows))==100
+          print('QWEN_FROZEN100_PROVENANCE',len(rows))
+          PY
+      - name: Fetch pinned physical BIRD DEV databases
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 'https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip' -o dev.zip
+          echo 'cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  dev.zip' | sha256sum -c -
+          mkdir -p bird/unpacked bird/databases
+          unzip -q dev.zip -d bird/unpacked
+          DB_ZIP=$(find bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ZIP"
+          unzip -q "$DB_ZIP" -d bird/databases
+          DB_ROOT=$(find bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=bird/databases; fi
+          echo "DB_ROOT=$PWD/$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Audit Qwen9B SQL predicates with physical values, without any gold or model
+        run: |
+          python -m evaluation.qwen_literal_grounding_audit \
+            --inputs frozen-qwen/qwen9b-shard-*.json \
+            --database-root "$DB_ROOT" \
+            --output qwen9b-literal-grounding-audit100.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qwen9b-sql-literal-audit100
+          path: qwen9b-literal-grounding-audit100.json
+          if-no-files-found: warn
+          retention-days: 30
