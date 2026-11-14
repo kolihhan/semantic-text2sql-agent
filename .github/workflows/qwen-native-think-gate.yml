@@ -1,0 +1,42 @@
+name: Qwen9B native thinking runtime capability gate
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/qwen9b-native-think-gate-20261114]
+    paths: [.github/workflows/qwen-native-think-gate.yml]
+permissions:
+  contents: read
+
+jobs:
+  qwen_thinking:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Verify unmodified model and prompt parity contract
+        run: |
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_qwen_native_think_gate.py
+      - name: Install one pinned Qwen9B on Ollama CPU
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          OLLAMA_MAX_LOADED_MODELS=1 ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          ollama pull qwen3.5:9b-q4_K_M
+      - name: Test real no-think vs native-think Qwen inference without storing private CoT
+        run: |
+          python -m evaluation.qwen_native_think_gate --output qwen-native-think-gate.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qwen9b-native-think-runtime
+          path: qwen-native-think-gate.json
+          if-no-files-found: warn
+          retention-days: 30
