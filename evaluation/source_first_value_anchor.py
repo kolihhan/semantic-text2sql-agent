@@ -37,9 +37,14 @@ def _quoted_ident(name: str) -> str:
 
 
 def _literals(question: str) -> tuple[str, ...]:
-    pairs = re.findall(r'"([^"\n]{3,96})"|\'([^\'\n]{3,96})\'', question)
-    return tuple(dict.fromkeys(x.strip() for pair in pairs for x in pair if x.strip()))[:2]
-
+    # Single quotes must be independent quotation marks, not apostrophes
+    # within possessives such as "driver's". Numeric IDs are not entity names.
+    pairs = re.findall(
+        r'"([^"\n]{3,96})"|(?<![A-Za-z0-9])\'([^\'\n]{3,96})\'(?![A-Za-z0-9])',
+        question,
+    )
+    values = (x.strip() for pair in pairs for x in pair if x.strip())
+    return tuple(dict.fromkeys(x for x in values if not x.isdigit()))[:2]
 
 def observed_value_anchors(
     database: str | Path,
