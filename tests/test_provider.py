@@ -35,3 +35,42 @@ def test_demo_provider_generates_the_offline_showcase_query():
     )
     assert "SUM(orders.total_amount)" in sql
     assert "customers.country_code = 'CZE'" in sql
+
+
+def test_ollama_explicit_seed_temperature_and_token_limit(monkeypatch):
+    seen = {}
+
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *args): return None
+        def read(self): return json.dumps({"message": {"content": "SELECT 2"}}).encode()
+
+    def fake_urlopen(request, timeout):
+        seen["body"] = json.loads(request.data)
+        return Response()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    provider = OllamaProvider(
+        model="test", temperature=0, seed=42, num_predict=1024,
+    )
+    assert provider.complete_text(system="", user="q") == "SELECT 2"
+    assert seen["body"]["options"] == {
+        "temperature": 0, "seed": 42, "num_predict": 1024,
+    }
+
+
+def test_ollama_default_sampling_options_remain_absent(monkeypatch):
+    seen = {}
+
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *args): return None
+        def read(self): return json.dumps({"message": {"content": "SELECT 3"}}).encode()
+
+    def fake_urlopen(request, timeout):
+        seen["body"] = json.loads(request.data)
+        return Response()
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_urlopen)
+    OllamaProvider().complete_text(system="", user="q")
+    assert "options" not in seen["body"]
