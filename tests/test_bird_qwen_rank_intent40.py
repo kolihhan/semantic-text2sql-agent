@@ -40,3 +40,17 @@ def test_rank_aggregate_rejects_partial_or_changed():
     cases[0]["rows"][0]["case_id"] = 10
     with pytest.raises(ValueError, match="unique"):
         aggregate(cases)
+
+
+def test_invalid_gold_is_unscorable_not_a_model_regression():
+    rows = [shard(i) for i in range(10)]
+    bad = rows[0]["rows"][0]
+    bad["reference_scorable"] = False
+    bad["reference_error_type"] = "SQLExecutionError"
+    bad["arms"]["original"]["ex"] = None
+    bad["arms"]["rank_contract"]["ex"] = None
+    result = aggregate(rows)
+    assert result["groups"]["rank"]["reference_scorable"] == 19
+    assert result["groups"]["rank"]["reference_unscorable"] == 1
+    assert result["groups"]["rank"]["reference_error_types"] == {"SQLExecutionError": 1}
+    assert result["groups"]["all"]["reference_scorable"] == 39
