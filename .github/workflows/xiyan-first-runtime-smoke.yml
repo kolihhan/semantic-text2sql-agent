@@ -1,0 +1,86 @@
+name: Live XiYan-first plus guarded fallback smoke
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/xiyan-first-runtime-fallback-20261114]
+    paths: [.github/workflows/xiyan-first-runtime-smoke.yml]
+permissions:
+  contents: read
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Install and verify focused new route
+        run: |
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_xiyan_first.py tests/test_provider.py
+      - name: Install CPU Ollama and pin both benchmark model digests
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          OLLAMA_MAX_LOADED_MODELS=1 ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          ollama pull qwen3.5:9b-q4_K_M
+          ollama pull hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M
+          python - <<'PY'
+          from evaluation.run_bird import _ollama_model_digest
+          from evaluation.xiyan_qwen_factorial_fresh40 import QWEN_DIGEST, MODEL_IDS
+          from evaluation.bird_generator_transfer import XIYAN_DIGEST
+          for key, digest in (("qwen", QWEN_DIGEST), ("xiyan", XIYAN_DIGEST)):
+              actual = _ollama_model_digest("http://127.0.0.1:11434", MODEL_IDS[key])
+              assert actual == digest, f"{key} digest drift: {actual}"
+          PY
+      - name: Execute real XiYan-first fallback service on offline demo DB
+        run: |
+          python - <<'PY'
+          import json, time
+          from pathlib import Path
+          from semantic_sql.providers import OllamaProvider
+          from semantic_sql.xiyan_first import XiYanFirstSQLService
+          from evaluation.xiyan_qwen_factorial_fresh40 import MODEL_IDS
+
+          kwargs = {"timeout_s": 900, "temperature": 0, "seed": 42, "num_predict": 1024}
+          service = XiYanFirstSQLService(
+              Path("demo/demo.db"),
+              xiyan_provider=OllamaProvider(model=MODEL_IDS["xiyan"], **kwargs),
+              fallback_provider=OllamaProvider(model=MODEL_IDS["qwen"], **kwargs),
+              max_rows=100, fallback_repairs=2,
+          )
+          cases = [
+              "How many orders are there?",
+              "Which customer spent the most?",
+              "Show total sales from Czech Republic in 2024",
+          ]
+          outputs = []
+          for i, question in enumerate(cases):
+              before = time.perf_counter()
+              result = service.ask(question)
+              record = {
+                  "case": i, "route": result.stages[0].summary,
+                  "status": result.status, "verification": result.verification.ok,
+                  "truncated": result.truncated, "latency_s": round(time.perf_counter() - before, 3),
+                  "stage_names": [stage.name for stage in result.stages],
+              }
+              print("XIYAN_FIRST_LIVE", json.dumps(record), flush=True)
+              assert record["status"] == "ok" and record["verification"] and not record["truncated"]
+              outputs.append(record)
+          Path("xiyan-first-runtime-smoke.json").write_text(json.dumps({
+              "scope": "live CPU smoke on demo DB only, not BIRD or semantic accuracy",
+              "results": outputs,
+          }, indent=2) + "\n")
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: xiyan-first-live-smoke
+          path: xiyan-first-runtime-smoke.json
+          retention-days: 30
+          if-no-files-found: error
