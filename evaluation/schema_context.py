@@ -42,7 +42,11 @@ _STOPWORDS = {
 
 
 def _tokens(value: str) -> set[str]:
-    words = re.findall(r"[a-z0-9]+", re.sub(r"([a-z])([A-Z])", r"\1 \2", value.casefold()))
+    # Split compound physical SQL identifiers BEFORE casefold, preserving acronym boundaries.
+    # Casefold-first turns PayFrequency into payfrequency and loses both useful terms.
+    identifier = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1 \2", value)
+    identifier = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", identifier)
+    words = re.findall(r"[a-z0-9]+", identifier.casefold())
     return {word.rstrip("s") for word in words if word not in _STOPWORDS and len(word.rstrip("s")) > 1}
 
 
