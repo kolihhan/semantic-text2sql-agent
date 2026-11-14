@@ -93,8 +93,6 @@ def build_manifest(source: Path, root: Path, frozen_reference: Path) -> dict:
         observed_control += int(not delta)
         kind = "changed" if delta else "control"
         if len(chosen[kind]) >= GROUP_SIZE or db_counts[kind][dbid] >= 4:
-            if all(len(a) == GROUP_SIZE for a in chosen.values()):
-                continue
             continue
         chosen[kind].append({
             "case_id": cid, "database_id": dbid, "question": str(item["question"]),
@@ -116,14 +114,14 @@ def build_manifest(source: Path, root: Path, frozen_reference: Path) -> dict:
     identity = [(r["case_id"], r["database_id"], r["group"]) for r in selected]
     cohort_hash = sha256(json.dumps(identity, separators=(",", ":")).encode()).hexdigest()
     return {
-        "protocol": "qwen-schema-tokenizer-paired40-v1",
+        "protocol": "qwen-schema-tokenizer-paired16-v1",
         "source_sha256": SOURCE_SHA,
         "excluded_frozen100": 100, "selection_seed": SEED,
         "count": len(selected), "cohort_sha256": cohort_hash,
         "model_id": MODEL, "model_digest": MODEL_DIGEST,
         "preregistered_without_reference_sql": True,
         "selected": selected,
-        "observed_before_stop": {"changed": observed_changed, "control": observed_control},
+        "observed_full_source": {"changed": observed_changed, "control": observed_control},
         "limits": "Public BIRD DEV; question-disjoint from prior frozen100 only. "
                   "May overlap other prior experiments and model pretraining.",
     }
@@ -151,7 +149,7 @@ def run_shard(source: Path, manifest_path: Path, root: Path, shard: int) -> dict
         raise ValueError("shard out of range")
     rows = checked_source(source)
     cfg = json.loads(manifest_path.read_text(encoding="utf-8"))
-    if (cfg.get("protocol") != "qwen-schema-tokenizer-paired40-v1"
+    if (cfg.get("protocol") != "qwen-schema-tokenizer-paired16-v1"
         or cfg.get("source_sha256") != SOURCE_SHA or cfg.get("model_digest") != MODEL_DIGEST
         or cfg.get("count") != 16 or len(cfg.get("selected", [])) != 16
         or cfg.get("preregistered_without_reference_sql") is not True):
@@ -237,7 +235,7 @@ def aggregate(shards: list[dict]) -> dict:
         raise ValueError("need four unique shards")
     first = shards[0]
     if any(
-        s["protocol"] != "qwen-schema-tokenizer-paired40-v1"
+        s["protocol"] != "qwen-schema-tokenizer-paired16-v1"
         or s["cohort_sha256"] != first["cohort_sha256"]
         or s["model_digest"] != MODEL_DIGEST
         or len(s["cases"]) != 4 for s in shards
