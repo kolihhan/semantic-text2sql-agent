@@ -1,0 +1,66 @@
+name: Qwen9B frozen-rule casefold transfer40 (CPU-only, no new model)
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/qwen9b-casefold-transfer40-20261115]
+    paths: [.github/workflows/qwen9b-casefold-transfer40.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_qwen_casefold_counterfactual.py tests/test_qwen_literal_grounding_audit.py tests/test_qwen_casefold_transfer40.py
+      - name: Download previously frozen original Qwen schema16 outputs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          run-id: 43599655458
+          github-token: ${{ github.token }}
+          pattern: qwen-schema-grounding-shard-*
+          path: qwen-schema
+          merge-multiple: true
+      - name: Download previously frozen original Qwen physical24 outputs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          run-id: 43603021383
+          github-token: ${{ github.token }}
+          pattern: qwen-physical-evidence-shard-*
+          path: qwen-physical
+          merge-multiple: true
+      - name: Verify authentic pinned BIRD 2025 questions and SQLite bytes
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 'https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true' -o dev.json
+          echo 'ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb  dev.json' | sha256sum -c -
+          curl -fsSL --retry 4 'https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip' -o dev.zip
+          echo 'cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  dev.zip' | sha256sum -c -
+          mkdir -p bird/unpacked bird/databases
+          unzip -q dev.zip -d bird/unpacked
+          DB_ZIP=$(find bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ZIP"
+          unzip -q "$DB_ZIP" -d bird/databases
+          DB_ROOT=$(find bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=bird/databases; fi
+          echo "DB_ROOT=$PWD/$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Freeze old Qwen SQL-only rule and score ALL 40 distinct cases, zero model calls
+        run: |
+          python -m evaluation.qwen_casefold_transfer40 \
+            --schema qwen-schema/qwen-schema-shard-*.json \
+            --physical qwen-physical/qwen-physical-shard-*.json \
+            --source dev.json --database-root "$DB_ROOT" \
+            --output qwen-casefold-transfer40.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qwen9b-casefold-transfer40-measured
+          path: qwen-casefold-transfer40.json
+          if-no-files-found: warn
+          retention-days: 30
