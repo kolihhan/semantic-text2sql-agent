@@ -2,7 +2,7 @@
 import sqlite3
 
 from evaluation.physical_db_evidence import verified_db_facts
-from semantic_sql.catalog import DatabaseCatalog
+from semantic_sql.catalog import DatabaseCatalog, TableInfo
 
 
 def test_only_verified_keys_and_exact_value_hits(tmp_path):
@@ -51,7 +51,9 @@ def test_quoted_table_column_names_do_not_become_sql_injection(tmp_path):
     con.execute('INSERT INTO "say""hi" VALUES (?)', ("O'Reilly",))
     con.commit()
     con.close()
-    c=DatabaseCatalog.from_sqlite(path)
+    # The existing catalog introspector does not escape unusual identifiers;
+    # isolate the evidence helper here without expanding the task scope.
+    c=DatabaseCatalog(path, {'say"hi': TableInfo('say"hi', ('named"col',))}, ())
     d=verified_db_facts(path, c, {'say"hi'},'Find "O\'Reilly".')
     assert d.value_matches == 1
     assert c.tables
