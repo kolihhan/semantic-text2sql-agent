@@ -1,4 +1,5 @@
 name: XiYan schema representation causal ablation on BIRD Train40
+# rerun after focused aggregate tests were added to the source branch
 on:
   workflow_dispatch:
   push:
