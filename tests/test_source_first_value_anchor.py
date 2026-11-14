@@ -65,3 +65,12 @@ def test_quoted_identifiers_and_values_are_safe(tmp_path):
     r=observed_value_anchors(path,c,'Find "A\'b"',selected_tables=set())
     assert r.hits[0].table=='odd"table'
     assert r.hits[0].column=='odd"column'
+
+
+
+def test_quoted_literals_ignore_possessives_and_numeric_ids():
+    from evaluation.source_first_value_anchor import _literals
+    assert _literals("What's the driver's name?") == ()
+    assert _literals("Which school's campus is larger?") == ()
+    assert _literals('Find "174" but also "Blue Land".') == ("Blue Land",)
+    assert _literals("Search 'Unique Widget' and 'TR004'") == ("Unique Widget", "TR004")
