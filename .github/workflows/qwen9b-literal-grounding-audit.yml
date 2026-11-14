@@ -1,4 +1,5 @@
 name: Qwen9B frozen100 SQL-conditioned physical literal diagnostic (CPU)
+# Parser gate verified: do not interpret JOIN as a bare FROM table alias.
 on:
   workflow_dispatch:
   push:
