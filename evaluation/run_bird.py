@@ -222,7 +222,7 @@ def run_paired_dev(
             "model": model, "model_digest": model_digest, "base_url": base_url, "timeout_s": timeout_s,
             "think": False, "max_repairs": max_repairs, "max_rows": max_rows,
             "guarded_treatment": GUARDED_TREATMENT_ID,
-            "schema_grounding": "deterministic_lexical_v1",
+            "schema_grounding": "deterministic_lexical_v2",
         },
         "official_bird_evaluator": {"url": OFFICIAL_BIRD_EVALUATOR_URL, "revision": OFFICIAL_BIRD_EVALUATOR_REVISION},
         "metrics": None,
