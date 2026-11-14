@@ -1,4 +1,5 @@
 name: Qwen9B frozen-rule casefold transfer40 (CPU-only, no new model)
+# Real 40-case trial uses explicit valid-gold fixture parity in focused tests.
 on:
   workflow_dispatch:
   push:
