@@ -1,0 +1,99 @@
+name: Qwen9B rank40 recover unscorable reference shards
+# Qwen only; reuse identical pinned seeded generation backend from prior Qwen pilot\n# New BIRD TRAIN questions and databases outside earlier DEV / Train40; neutral A/A controls
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/qwen-rank-intent-new40-20261114]
+    paths: [.github/workflows/bird-qwen-rank-recover4.yml]
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  paired:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 5]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_bird_qwen_rank_intent40.py
+      - name: Fetch frozen BIRD question sources
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 https://huggingface.co/datasets/Emulated-Inc/text-to-sql-with-evidence-training-pool/resolve/cd2c4ea321075aa53ce7dfe52deaaffa505d046a/raw/bird/train.json -o train.json
+          curl -fsSL --retry 4 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o dev.zip
+          echo "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  dev.zip" | sha256sum -c -
+          unzip -p dev.zip dev_20240627/dev.json > dev.json
+      - name: Preregister question-only ranking and control cohort before model inference
+        run: |
+          python - <<'PY'
+          from collections import Counter
+          from pathlib import Path
+          from evaluation.bird_generator_transfer import load_checked,TRAIN_SHA,SOURCE_SHA256,remote_manifest
+          from evaluation.bird_qwen_rank_intent40 import choose_cases
+          rows=choose_cases(load_checked(Path("train.json"),TRAIN_SHA),load_checked(Path("dev.json"),SOURCE_SHA256),remote_manifest())
+          counts=Counter(r["group"] for r in rows)
+          assert counts == {"rank":20,"control":20}
+          print("QWEN_RANK_FROZEN_COHORT",counts,len({r["database_id"] for r in rows}))
+          PY
+      - name: Run Qwen9B ranking/grain contract versus original with neutral A/A controls
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          OLLAMA_MAX_LOADED_MODELS=1 ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          ollama --version
+          ollama pull qwen3.5:9b-q4_K_M
+          python -m evaluation.bird_qwen_rank_intent40 --train train.json --dev dev.json \
+            --shard "$SHARD" --output "qwen-rank-$SHARD.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: bird-qwen-rank-recovery-shard-${{ matrix.shard }}
+          path: qwen-rank-${{ matrix.shard }}.json
+          if-no-files-found: error
+          retention-days: 30
+
+  aggregate:
+    needs: paired
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[dev]'
+      - name: Reuse six successful unchanged-model shards from the failed original run
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          run-id: 43586760825
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          pattern: bird-qwen-rank-transfer-shard-*
+          path: shards
+          merge-multiple: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: bird-qwen-rank-recovery-shard-*
+          path: shards
+          merge-multiple: true
+      - run: |
+          python -m evaluation.bird_qwen_rank_intent40 --inputs shards/qwen-rank-*.json --output qwen-rank-goldcoverage-final.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: bird-qwen-rank-goldcoverage-measured
+          path: qwen-rank-goldcoverage-final.json
+          if-no-files-found: error
+          retention-days: 30
