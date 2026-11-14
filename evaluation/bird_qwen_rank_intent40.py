@@ -26,7 +26,7 @@ from evaluation.run_bird import _ollama_model_digest
 from evaluation.schema_context import select_schema_context
 from evaluation.xiyan_qwen_factorial_fresh40 import QWEN_DIGEST, MODEL_IDS, SOURCE_SHA256, generate
 from semantic_sql.catalog import DatabaseCatalog
-from semantic_sql.execution import execute_readonly
+from semantic_sql.execution import execute_readonly, SQLExecutionError
 from semantic_sql.inference import run_guarded
 
 SHARDS = 10
@@ -162,13 +162,21 @@ def inference_shard(*, source_train: Path, source_dev: Path,
     # Only inspect ground-truth after both arms finish generation.
     for rec in records:
         db, _ = dbs[rec["database_id"]]
-        expected = execute_readonly(db, train[rec["case_id"]]["SQL"], max_rows=50_000)
-        if expected.truncated:
-            raise ValueError("gold truncated")
+        try:
+            expected = execute_readonly(db, train[rec["case_id"]]["SQL"], max_rows=50_000)
+            if expected.truncated:
+                raise ValueError("reference result truncated")
+            rec["reference_scorable"] = True
+        except (SQLExecutionError, ValueError) as exc:
+            # Gold DB mismatch is NOT a model mistake or a zero-correct case.
+            # Preserve the frozen question and count reference coverage.
+            rec["reference_scorable"] = False
+            rec["reference_error_type"] = type(exc).__name__
+            expected = None
         for arm in rec["arms"].values():
             rows = arm.pop("rows")
-            arm["ex"] = bool(arm["execution_success"] and set(rows) == set(expected.rows))
-            arm["bag"] = bool(arm["execution_success"] and Counter(rows) == Counter(expected.rows))
+            arm["ex"] = bool(arm["execution_success"] and set(rows) == set(expected.rows)) if expected is not None else None
+            arm["bag"] = bool(arm["execution_success"] and Counter(rows) == Counter(expected.rows)) if expected is not None else None
     return {
         "shard": shard, "model_digest": digest,
         "cohort_sha": sha256(json.dumps([
@@ -192,12 +200,17 @@ def aggregate(parts: list[dict]) -> dict:
     outcome = {}
     for group in ("rank", "control", "all"):
         subset = [r for r in records if group == "all" or r["group"] == group]
+        valid = [r for r in subset if r.get("reference_scorable", True)]
         outcome[group] = {
             "n": len(subset),
-            "baseline_ex": sum(r["arms"]["original"]["ex"] for r in subset),
-            "treatment_ex": sum(r["arms"]["rank_contract"]["ex"] for r in subset),
-            "rescues": sum(not r["arms"]["original"]["ex"] and r["arms"]["rank_contract"]["ex"] for r in subset),
-            "regressions": sum(r["arms"]["original"]["ex"] and not r["arms"]["rank_contract"]["ex"] for r in subset),
+            "reference_scorable": len(valid),
+            "reference_unscorable": len(subset) - len(valid),
+            "reference_error_types": dict(Counter(r.get("reference_error_type","unknown")
+                                                  for r in subset if not r.get("reference_scorable", True))),
+            "baseline_ex": sum(r["arms"]["original"]["ex"] for r in valid),
+            "treatment_ex": sum(r["arms"]["rank_contract"]["ex"] for r in valid),
+            "rescues": sum(not r["arms"]["original"]["ex"] and r["arms"]["rank_contract"]["ex"] for r in valid),
+            "regressions": sum(r["arms"]["original"]["ex"] and not r["arms"]["rank_contract"]["ex"] for r in valid),
             "changed_sql": sum(r["arms"]["original"]["sql"] != r["arms"]["rank_contract"]["sql"] for r in subset),
             "avg_pair_wall_s": round(sum(r["wall_s"] for r in subset)/len(subset), 2),
         }
