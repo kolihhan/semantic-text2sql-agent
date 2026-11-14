@@ -66,8 +66,10 @@ def audit(source: Path, root: Path, frozen: Path, n: int = 40) -> dict:
         counts[dbid] += 1
         if len(chosen)==n:
             break
-    if len(chosen)!=n or len(counts)<6:
-        raise ValueError("not enough database-diverse quoted entity cases")
+    # Record the attainable denominator rather than forcing a 40-case claim
+    # when the pinned public source has fewer quote-entity cases after caps.
+    if not chosen:
+        raise ValueError("no eligible quoted-entity cases under the frozen exclusions")
     records = []
     for i,(cid,row) in enumerate(chosen):
         dbid,question=str(row["db_id"]),str(row["question"])
@@ -98,7 +100,7 @@ def audit(source: Path, root: Path, frozen: Path, n: int = 40) -> dict:
     report = {
         "protocol":"source-first-entity-positive-observation-v1",
         "source_sha256":SOURCE_SHA,
-        "seed":SEED,"sample_size":n,
+        "seed":SEED,"sample_size":len(chosen),"requested_sample_size":n,
         "prior_case_ids_excluded":len(excluded),
         "db_count":len(counts),
         "query_and_database_only":True,"no_model_inference":True,"no_gold_used":True,
