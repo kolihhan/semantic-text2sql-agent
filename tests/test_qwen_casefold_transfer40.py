@@ -10,10 +10,12 @@ def _sample(schema, index):
     if schema:
         return {
             "case_id":str(index),"database_id":"db1",
+            "reference_scorable":True,
             "arms":{"legacy":{"sql":"SELECT 1", "ex":True,"bag":True}},
         }
     return {
         "case_id":str(index),"db_id":"db2",
+        "reference_scorable":True,
         "arms":{"baseline":{"sql":"SELECT 2", "ex":False,"bag":False}},
     }
 
