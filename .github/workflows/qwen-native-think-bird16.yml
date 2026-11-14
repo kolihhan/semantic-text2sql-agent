@@ -1,0 +1,141 @@
+name: Qwen9B native reasoning vs no-thinking BIRD DEV16
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/qwen9b-native-think-gate-20261114]
+    paths: [.github/workflows/qwen-native-think-bird16.yml]
+permissions:
+  contents: read
+
+jobs:
+  preregister:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Test Qwen runtime parity and native-reasoning paired scoring
+        run: |
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_qwen_native_think_gate.py tests/test_qwen_native_think_bird16.py
+      - name: Download pinned BIRD DEV questions and physical database bytes
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 'https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true' -o dev.json
+          echo 'ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb  dev.json' | sha256sum -c -
+          curl -fsSL --retry 4 'https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip' -o dev.zip
+          echo 'cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  dev.zip' | sha256sum -c -
+          mkdir -p bird/unpacked bird/databases
+          unzip -q dev.zip -d bird/unpacked
+          DB_ZIP=$(find bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ZIP"
+          unzip -q "$DB_ZIP" -d bird/databases
+          DB_ROOT=$(find bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=bird/databases; fi
+          echo "DB_ROOT=$PWD/$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Freeze independent Qwen16 questions BEFORE model inference or gold SQL score
+        run: |
+          python -m evaluation.qwen_native_think_bird16 --source dev.json \
+            --database-root "$DB_ROOT" --output qwen-thinking-cohort.json
+          python - <<'PY'
+          import json
+          m=json.load(open('qwen-thinking-cohort.json'))
+          assert len(m['selected'])==16
+          assert len(set(x['case_id'] for x in m['selected']))==16
+          assert [x['group'] for x in m['selected']].count('analytic')==8
+          assert [x['group'] for x in m['selected']].count('other')==8
+          assert m['max_new_tokens_both_arms']==4096
+          assert m['gold_used_for_selection'] is False
+          assert m['gold_used_for_generation'] is False
+          print('PREREGISTERED',m['cohort_sha256'])
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen-native-thinking-frozen16
+          path: qwen-thinking-cohort.json
+          if-no-files-found: error
+          retention-days: 30
+
+  paired:
+    needs: preregister
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[dev]'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: qwen-native-thinking-frozen16
+      - name: Verify pinned BIRD source and database payload
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 'https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true' -o dev.json
+          echo 'ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb  dev.json' | sha256sum -c -
+          curl -fsSL --retry 4 'https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip' -o dev.zip
+          echo 'cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  dev.zip' | sha256sum -c -
+          mkdir -p bird/unpacked bird/databases
+          unzip -q dev.zip -d bird/unpacked
+          DB_ZIP=$(find bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ZIP"
+          unzip -q "$DB_ZIP" -d bird/databases
+          DB_ROOT=$(find bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=bird/databases; fi
+          echo "DB_ROOT=$PWD/$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Install same pinned Qwen3.5 9B, no competing generator
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          OLLAMA_MAX_LOADED_MODELS=1 ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          ollama pull qwen3.5:9b-q4_K_M
+      - name: Generate no-think and native-thinking Qwen Guarded with same schema/budget
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python -m evaluation.qwen_native_think_bird16 --source dev.json \
+            --database-root "$DB_ROOT" --manifest qwen-thinking-cohort.json \
+            --shard "$SHARD" --output "qwen-thinking-shard-$SHARD.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qwen-native-thinking-shard-${{ matrix.shard }}
+          path: qwen-thinking-shard-*.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  aggregate:
+    needs: paired
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[dev]'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: qwen-native-thinking-shard-*
+          path: shards
+          merge-multiple: true
+      - run: |
+          python -m evaluation.qwen_native_think_bird16 \
+            --inputs shards/qwen-thinking-shard-*.json \
+            --output qwen-thinking-final.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen-native-thinking-measured
+          path: qwen-thinking-final.json
+          if-no-files-found: error
+          retention-days: 30
