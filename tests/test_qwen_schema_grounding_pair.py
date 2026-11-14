@@ -34,7 +34,7 @@ def _shard(i: int):
     cases = []
     for j in range(4):
         idx = 4*i+j
-        changed = idx < 20
+        changed = idx < 8
         left = idx not in (0, 1)
         right = idx not in (1, 2)
         cases.append({
@@ -57,17 +57,17 @@ def _shard(i: int):
 
 
 def test_aggregate_oracle_not_a_real_selector():
-    report = aggregate([_shard(i) for i in range(10)])
-    assert report["overall"]["scorable"] == 39
+    report = aggregate([_shard(i) for i in range(4)])
+    assert report["overall"]["scorable"] == 15
     assert report["overall"]["rescues"] == 1
     assert report["overall"]["regressions"] == 1
-    assert report["overall"]["oracle_ex"] == 38
-    assert report["groups"]["changed"]["sql_changed"] == 20
+    assert report["overall"]["oracle_ex"] == 14
+    assert report["groups"]["changed"]["sql_changed"] == 8
     assert report["groups"]["control"]["sql_changed"] == 0
     assert report["oracle_not_a_runtime_selector"] is True
 
 
 def test_aggregate_rejects_incomplete_cohort():
     import pytest
-    with pytest.raises(ValueError, match="ten unique"):
-        aggregate([_shard(i) for i in range(9)])
+    with pytest.raises(ValueError, match="four unique"):
+        aggregate([_shard(i) for i in range(3)])
