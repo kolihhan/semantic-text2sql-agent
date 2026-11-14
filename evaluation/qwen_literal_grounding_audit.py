@@ -33,7 +33,10 @@ QUALIFIED_EQ = re.compile(
     flags=re.I,
 )
 RELATION = re.compile(
-    r"\b(?:FROM|JOIN)\s+([A-Za-z_]\w*)(?:\s+(?:AS\s+)?([A-Za-z_]\w*))?",
+    r"\b(?:FROM|JOIN)\s+([A-Za-z_]\w*)"
+    r"(?:\s+(?:AS\s+)?(?!WHERE\b|ON\b|JOIN\b|INNER\b|LEFT\b|RIGHT\b|"
+    r"FULL\b|GROUP\b|ORDER\b|LIMIT\b|HAVING\b|CROSS\b|OUTER\b)"
+    r"([A-Za-z_]\w*))?",
     flags=re.I,
 )
 WHERE = re.compile(r"\bWHERE\b(.*)", flags=re.I | re.S)
