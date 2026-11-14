@@ -15,6 +15,9 @@ class OllamaProvider:
     model: str = "qwen3.5:4b"
     base_url: str = "http://localhost:11434"
     timeout_s: float = 60.0
+    temperature: float | None = None
+    seed: int | None = None
+    num_predict: int | None = None
 
     def _chat(self, *, system: str, user: str) -> str:
         payload = {
@@ -26,6 +29,12 @@ class OllamaProvider:
                 {"role": "user", "content": user},
             ],
         }
+        options = {key: value for key, value in (
+            ("temperature", self.temperature), ("seed", self.seed),
+            ("num_predict", self.num_predict),
+        ) if value is not None}
+        if options:
+            payload["options"] = options
         req = urllib.request.Request(
             self.base_url.rstrip("/") + "/api/chat",
             data=json.dumps(payload).encode("utf-8"),
