@@ -38,3 +38,25 @@ def test_database_preflight_checks_lfs_and_normal_git_blobs():
     assert check_database_bytes(data, {**metadata, "lfs": {"oid": sha256(data).hexdigest()}})
     assert check_database_bytes(data, {**metadata, "oid": sha1(b"blob 2\0db").hexdigest()})
     assert not check_database_bytes(b"xx", {**metadata, "oid": sha1(b"blob 2\0db").hexdigest()})
+
+
+def test_guarded_reference_runs_real_preflight_and_repair(tmp_path):
+    import sqlite3
+
+    from evaluation.bird_generator_transfer import guarded_qwen
+
+    db = tmp_path / "test.sqlite"
+    with sqlite3.connect(db) as conn:
+        conn.execute("CREATE TABLE accounts (name TEXT)")
+    calls = []
+
+    def fake_generate(*, model, system, user):
+        calls.append((model, system, user))
+        if len(calls) == 1:
+            return "SELECT missing FROM accounts"
+        assert "sqlite_compile_error" in user and "SELECT missing" in user
+        return "SELECT name FROM accounts"
+
+    result = guarded_qwen(db, "List account names", "accounts(name)", None, fake_generate)
+    assert result["sql"] == "SELECT name FROM accounts"
+    assert result["model_calls"] == 2

@@ -1,8 +1,8 @@
-name: XiYan and Qwen on unseen project BIRD databases
+name: XiYan versus Qwen Guarded on another 20 BIRD databases
 on:
   workflow_dispatch:
   push:
-    branches: [experiment/xiyan-qwen-transfer-20261114]
+    branches: [experiment/xiyan-vs-guarded-20261114]
     paths: [.github/workflows/bird-generator-transfer.yml]
 permissions:
   contents: read
@@ -30,7 +30,7 @@ jobs:
           curl -fsSL --retry 4 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o dev.zip
           echo "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  dev.zip" | sha256sum -c -
           unzip -p dev.zip dev_20240627/dev.json > dev.json
-      - name: Load the two historical models and compare with one common prompt
+      - name: Compare XiYan native generation against the original Qwen guarded pipeline
         env:
           SHARD: ${{ matrix.shard }}
         run: |
@@ -45,10 +45,10 @@ jobs:
           ollama pull qwen3.5:9b-q4_K_M
           ollama pull hf.co/wanhin/XiYanSQL-QwenCoder-7B-2504-gguf:Q4_K_M
           python -m evaluation.bird_generator_transfer --train train.json --dev dev.json \
-            --shard "$SHARD" --output "transfer-$SHARD.json"
+            --guarded --shard "$SHARD" --output "transfer-$SHARD.json"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: bird-generator-transfer-shard-${{ matrix.shard }}
+          name: bird-xiyan-guarded-shard-${{ matrix.shard }}
           path: transfer-${{ matrix.shard }}.json
           if-no-files-found: error
           retention-days: 30
@@ -64,14 +64,14 @@ jobs:
       - run: python -m pip install -e '.[dev]'
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          pattern: bird-generator-transfer-shard-*
+          pattern: bird-xiyan-guarded-shard-*
           path: shards
           merge-multiple: true
       - run: |
           python -m evaluation.bird_generator_transfer --inputs shards/transfer-*.json --output transfer-final.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: bird-generator-transfer-measured
+          name: bird-xiyan-guarded-measured
           path: transfer-final.json
           if-no-files-found: error
           retention-days: 30
