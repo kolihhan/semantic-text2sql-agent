@@ -133,3 +133,28 @@ Guarded with at most one regression, rescues on both DBs, net gain at least
 2 versus the matched no-rows control, and no bag decline versus Guarded.
 Any passing mechanism still needs a matched BIRD evaluation to measure the
 target 39/100 baseline.
+
+**Result — REJECT the physical-row intervention.** All 16 probes returned
+nonempty observations. Strict set and bag EX were **5/16 Guarded, 5/16
+probe SQL alone, 4/16 probe SQL plus physical rows**. The row arm rescued
+zero and regressed one against either control. Its calls increased from
+18 to 32 versus Guarded. In Chinook `t13`, all three arms averaged a line
+item instead of aggregating invoice totals first. The probe reinforced the
+wrong grain. In `t19` both probe arms returned the ranking total alongside
+the requested year. In Sakila `s14` the SQL-only arm returned just the film
+title, while the row arm also returned the unrequested ranking count.
+This trial supplies physical evidence that a valid probe can preserve a
+wrong grain or induce a projection error.
+
+The first Actions attempt reached real generation before encountering the
+source's list-valued equivalent SQL references. After supporting all official
+alternatives, the four inference shards completed in [run
+43703246942](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/43703246942).
+The uploader preserved all per-case model and probe SQL. The original
+Sakila import triggers use the current time, so the two Sakila binary
+fingerprints differed and workflow aggregation stopped. A read-only replay
+on one physical file per domain exactly reproduced 16/16 original probe
+payloads and 48/48 prediction execution statuses and scores, reusing the
+original Qwen outputs. The original fingerprints, single-file verification,
+and replay code are saved with [PR #54](https://github.com/kolihhan/semantic-text2sql-agent/pull/54).
+BIRD100 was outside this sample.

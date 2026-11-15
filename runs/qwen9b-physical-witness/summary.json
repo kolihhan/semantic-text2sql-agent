@@ -1,0 +1,71 @@
+{
+  "protocol": "qwen9b-real-sql-witness-v1",
+  "digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+  "total": 16,
+  "scorable": 16,
+  "physical_observations": {
+    "ok": 16
+  },
+  "nonempty_observations": 16,
+  "database_sha256": {
+    "chinook": "bdf635be69850bd3be09c9a2dbeef7ddfb80036bd3ef3381383cd03b61e4a61a",
+    "sakila": "44f82e170340d73c66e5b0fff2fe422b9459706453bb94d2e31314e2725017ba"
+  },
+  "arms": {
+    "guarded": {
+      "set_ex": 5,
+      "bag_ex": 5,
+      "calls": 18,
+      "seconds": 433.1
+    },
+    "probe_text": {
+      "set_ex": 5,
+      "bag_ex": 5,
+      "calls": 33,
+      "seconds": 838.5
+    },
+    "probe_rows": {
+      "set_ex": 4,
+      "bag_ex": 4,
+      "calls": 32,
+      "seconds": 816.8
+    }
+  },
+  "transitions": {
+    "guarded": {
+      "rescues": [],
+      "regressions": [
+        "chinook:t19"
+      ],
+      "rescued_dbs": []
+    },
+    "probe_text": {
+      "rescues": [],
+      "regressions": [
+        "sakila:s14"
+      ],
+      "rescued_dbs": []
+    }
+  },
+  "positive_screen": false,
+  "promotion_allowed": false,
+  "physical_replay": {
+    "original_shard_db_sha256": {
+      "chinook-0": "bdf635be69850bd3be09c9a2dbeef7ddfb80036bd3ef3381383cd03b61e4a61a",
+      "chinook-1": "bdf635be69850bd3be09c9a2dbeef7ddfb80036bd3ef3381383cd03b61e4a61a",
+      "sakila-0": "82af97d3b16c6158c0536f728c943c9d8be12f931aa7338c1233292d4b121f83",
+      "sakila-1": "e1568553497404aa5a25e83e7b5c80ef84c32bc73f7d78661eb4c83da1e1dd7d"
+    },
+    "matched_probe_payloads": 16,
+    "matched_execution_and_strict_outcomes": 48,
+    "new_model_calls": 0
+  },
+  "decision": "REJECT",
+  "raw_inference_run_id": 43703246942,
+  "original_shard_artifacts": [
+    14157431796,
+    14157760972,
+    14157625937,
+    14157900388
+  ]
+}
