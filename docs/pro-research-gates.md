@@ -166,3 +166,11 @@ happened to match the reference year (2012). Changing only invoice 264's
 billing country in an isolated copy changed the baseline to 2010, while
 the customer-country reference still returned 2012. This is mechanism
 evidence and leaves the official paired scores intact.
+
+## Distinguish grain detection from SQL correction (2026-11-15)
+
+The independent six-physical-Spider-DB [Qwen answer-grain planning experiment 43705751417](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/43705751417) **finished** on 12/12 scorable questions: original Guarded **9/12 strict set and bag EX**, Qwen-generated answer entity/row grain/relation input **9/12**, with **zero rescues, zero regressions**, **13→25 model calls** and **215.2→496.57 seconds**. [PR #55](https://github.com/kolihhan/semantic-text2sql-agent/pull/55) **REJECTED unmerged**. A new `semantic constraints` name must not replay that rejected one-extra-Qwen-plan mechanism.
+
+Separately, a post-hoc physical [Chinook t13 counterfactual run 43707817012](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/43707817012) verifies an existing aggregation-grain failure at the exact original Chinook **v1.4.5** source blob. The *previously generated* Qwen9B query `AVG(InvoiceLine.Quantity)` computes **1.00** both before and after adding 100 purchased line items to one already existing invoice. The source reference `AVG(SUM(Quantity) per InvoiceId)`, correctly rounded, shifts **5.44→5.68** across unchanged **412** invoices. The treatment updates `Invoice.Total` for accounting consistency. **Decision: CONFIRMED_GRAIN_FAILURE_NOT_A_REPAIR**; [PR #56](https://github.com/kolihhan/semantic-text2sql-agent/pull/56) retains the small source-pinned diagnostic. This is a known, already-exposed question on the old Chinook DB, not out-of-sample EX, a Qwen repair, or a BIRD100 gain.
+
+A prospective mechanism must first be detectable from **question + available schema/data only**, with a justified *answer-preserving or answer-changing* database mutation (not simply any perturbation). Test its ability to reject incorrect relational semantics on new physical databases before attempting correction. Only a frozen generator change that produces paired independent strict-EX rescues without regressions can justify altering the Guarded default; otherwise stop.
