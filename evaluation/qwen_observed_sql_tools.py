@@ -150,7 +150,13 @@ def _extract_call(record:dict)->tuple[str,dict]|None:
 
 def run_tool_agent(question:str,schema:str,db:Path,evidence:str|None,
                    *,url:str="http://127.0.0.1:11434/api/chat",request_fn=None)->ToolAgentRun:
-    """Use physical observed tools only; evaluator gold never passed to caller."""
+    """Expose real SQLite facts and preserve all valid native batched tool calls.
+
+    A native Ollama message may contain multiple independent tool calls. The
+    original experimental harness refused all such messages; this corrects the
+    tool protocol, not the benchmark gold. Frozen source-selection excludes the
+    original exposed cohort. Tool responses never include gold SQL or labels.
+    """
     observer=ObservedSqlTools(db)
     user=f"Question: {question}\nSchema context:\n{schema}"
     if evidence:
@@ -166,9 +172,19 @@ def run_tool_agent(question:str,schema:str,db:Path,evidence:str|None,
         return ToolAgentRun(sql,outcome,tools,
             observer.used["inspect_schema"],observer.used["sample_rows"],
             observer.used["run_sql"],errors,model_calls)
+
     for step in range(MAX_STEPS):
+        # Expose only actions still permitted by the frozen resource limits.
+        # This avoids enticing Qwen to make a third trial after two already ran.
+        available=(
+            [item for item in TOOL_DEFS
+             if item["function"]["name"]=="submit_sql"
+             or (step<MAX_STEPS-1 and tools<MAX_TOOLS and
+                 (item["function"]["name"]!="run_sql"
+                  or observer.used["run_sql"]<MAX_TRIAL_QUERIES))]
+        )
         payload={
-            "model":MODEL,"stream":False,"think":False,"tools":TOOL_DEFS,
+            "model":MODEL,"stream":False,"think":False,"tools":available,
             "messages":deepcopy(history),
             "options":{"temperature":0,"seed":42,"num_predict":700},
         }
@@ -184,34 +200,54 @@ def run_tool_agent(question:str,schema:str,db:Path,evidence:str|None,
             return result(None,"malformed_model_reply")
         model_calls+=1
         calls=msg.get("tool_calls") or []
+        if not isinstance(calls,list):
+            errors+=1
+            return result(None,"malformed_model_tool_calls")
         if not calls:
             sql=_strip_fence(str(msg.get("content") or "")).strip()
             return result(sql or None,"plain_sql_final" if sql else "empty_model_final")
-        if len(calls)!=1:
-            errors+=1
-            return result(None,"multiple_tool_calls_unsupported")
+        parsed=[]
         try:
-            name,args=_extract_call(calls[0])
+            for call in calls:
+                parsed.append(_extract_call(call))
         except ValueError:
             errors+=1
             return result(None,"invalid_model_tool_args")
-        if name=="submit_sql":
-            sql=str(args.get("sql") or "").strip()
+        if len(parsed)==1 and parsed[0][0]=="submit_sql":
+            sql=str(parsed[0][1].get("sql") or "").strip()
             return result(sql or None,"model_submitted")
-        if tools>=MAX_TOOLS:
-            return result(None,"tool_budget_exhausted")
-        if name not in {"inspect_schema","sample_rows","run_sql"}:
+        if any(name=="submit_sql" for name,args in parsed):
             errors+=1
-            return result(None,"unknown_model_tool")
-        if name=="run_sql" and observer.used["run_sql"]>=MAX_TRIAL_QUERIES:
-            errors+=1
-            return result(None,"trial_sql_budget_exhausted")
-        try:
-            feedback=observer.invoke(name,args)
-        except (ValueError,SQLExecutionError) as exc:
-            errors+=1
-            feedback="Tool refused: "+type(exc).__name__
-        tools+=1
-        history.append({"role":"assistant","content":str(msg.get("content") or ""),"tool_calls":calls})
-        history.append({"role":"tool","name":name,"content":feedback})
+            return result(None,"mixed_submit_and_tool_calls")
+        # An assistant can request several tools in ONE turn. Deliver one
+        # original, bounded first-party observation for each requested call,
+        # preserving order and the same native assistant tool batch.
+        history.append({
+            "role":"assistant",
+            "content":str(msg.get("content") or ""),
+            "tool_calls":calls,
+        })
+        for index,(name,args) in enumerate(parsed):
+            if name not in {"inspect_schema","sample_rows","run_sql"}:
+                errors+=1
+                feedback="Unsupported requested tool"
+            elif tools>=MAX_TOOLS:
+                errors+=1
+                feedback="Tool budget exhausted; submit final SQL"
+            elif name=="run_sql" and observer.used["run_sql"]>=MAX_TRIAL_QUERIES:
+                errors+=1
+                feedback="SQL trial budget exhausted; submit final SQL"
+            else:
+                try:
+                    feedback=observer.invoke(name,args)
+                except (ValueError,SQLExecutionError) as exc:
+                    errors+=1
+                    feedback="Tool refused: "+type(exc).__name__
+                tools+=1
+            # Native Ollama tool reply order matches the original call batch.
+            # IDs are optional in Ollama; emit one only when originally present.
+            response={"role":"tool","name":name,"content":feedback}
+            if isinstance(calls[index],dict) and calls[index].get("id"):
+                response["tool_call_id"]=str(calls[index]["id"])
+            history.append(response)
     return result(None,"model_step_budget_exhausted")
