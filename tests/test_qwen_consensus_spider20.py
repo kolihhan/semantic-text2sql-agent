@@ -67,6 +67,7 @@ def test_aggregate_reports_oracle_headroom_but_never_deploys_by_oracle():
                 "case_id": str(i), "db_id": f"db_{i // 2}",
                 "reference_scorable": True, "consensus_index": 1 if i % 2 else None,
                 "candidate_diversity": 2,
+                "total_latency_s": 5.0,
                 "baseline": {"strict_ex": baseline, "bag": baseline, "execution_success": True, "latency_s": 1},
                 "consensus": {"strict_ex": consensus, "bag": consensus, "execution_success": True, "latency_s": 4},
                 "oracle_correct": baseline or consensus,
