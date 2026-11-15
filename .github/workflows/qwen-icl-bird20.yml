@@ -1,0 +1,156 @@
+name: Qwen9B two-shot cross-database retrieved BIRD train examples on DEV20
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/qwen9b-crossdb-icl-bird20-20261115]
+    paths: [.github/QWEN_ICL_BIRD20_RUN_START]
+permissions:
+  contents: read
+env:
+  SOURCE_SHA256: ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb
+  DEV_ZIP_SHA256: cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630
+
+jobs:
+  preregister:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Test Qwen retrieval invariants and score protocol before any generation
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]' 'datasets>=4,<5' 'huggingface_hub>=0.34'
+          python -m pytest -q tests/test_qwen_icl_bird20.py
+      - name: Download fixed BIRD DEV and enumerate high-quality filtered BIRD TRAIN
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true -o dev.json
+          echo "$SOURCE_SHA256  dev.json" | sha256sum -c -
+          python - <<'PY'
+          from datasets import load_dataset
+          from huggingface_hub import HfApi
+          import json
+          from pathlib import Path
+          repo="birdsql/bird23-train-filtered"
+          revision=HfApi().dataset_info(repo).sha
+          assert len(revision)==40 and all(c in "0123456789abcdef" for c in revision)
+          rows=[dict(r) for r in load_dataset(repo,split="train",revision=revision)]
+          assert len(rows)==6601,len(rows)
+          assert len({r["db_id"] for r in rows})>=51
+          Path("train.json").write_text(json.dumps(rows,ensure_ascii=False),encoding="utf-8")
+          Path("train-revision.txt").write_text(revision+"\n")
+          print("QWEN_ICL_SOURCE_CHECKED",repo,"revision",revision,"rows",len(rows),flush=True)
+          PY
+      - name: Freeze 20 questions and 40 cross-DB gold demonstrations BEFORE any Qwen/gold DEV SQL score
+        run: |
+          set -euo pipefail
+          REV="$(cat train-revision.txt)"
+          python -m evaluation.qwen_icl_bird20 \
+            --source dev.json --train train.json --train-revision "$REV" \
+            --output qwen-icl-bird20-manifest.json
+          python - <<'PY'
+          import json
+          m=json.load(open("qwen-icl-bird20-manifest.json"))
+          assert m["count"]==20 and len({x["db_id"] for x in m["selected"]})==10
+          assert all(len(x["examples"])==2 and len({e["db_id"] for e in x["examples"]})==2 for x in m["selected"])
+          assert all("SQL" not in x for x in m["selected"])
+          print("QWEN_ICL_GOLD_BLIND_COHORT",m["cohort_sha256"])
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen-icl-bird20-question-only-frozen
+          path: qwen-icl-bird20-manifest.json
+          if-no-files-found: error
+          retention-days: 30
+  paired:
+    needs: preregister
+    runs-on: ubuntu-latest
+    timeout-minutes: 220
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[dev]'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: qwen-icl-bird20-question-only-frozen
+      - name: Verify same SHA-pinned DEV BIRD source and physical SQLite
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true -o dev.json
+          echo "$SOURCE_SHA256  dev.json" | sha256sum -c -
+          curl -fsSL --retry 4 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o dev.zip
+          echo "$DEV_ZIP_SHA256  dev.zip" | sha256sum -c -
+          mkdir -p bird/unpacked bird/databases
+          unzip -q dev.zip -d bird/unpacked
+          DB_ZIP="$(find bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)"
+          test -n "$DB_ZIP"
+          unzip -q "$DB_ZIP" -d bird/databases
+          DB_ROOT="$(find bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)"
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=bird/databases; fi
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Start ONLY original pinned Qwen3.5-9B, zero training
+        run: |
+          set -euo pipefail
+          curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          OLLAMA_MAX_LOADED_MODELS=1 ollama serve > "$RUNNER_TEMP/ollama-qwen9b-icl.log" 2>&1 &
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break
+            sleep 1
+          done
+          ollama pull qwen3.5:9b-q4_K_M
+      - name: Run paired original Guarded vs cross-DB two-shot Qwen Guarded
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python -m evaluation.qwen_icl_bird20 \
+            --source dev.json --manifest qwen-icl-bird20-manifest.json \
+            --db-root "$DB_ROOT" --shard "$SHARD" \
+            --output "qwen-icl-bird20-shard-$SHARD.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qwen-icl-bird20-shard-${{ matrix.shard }}
+          path: qwen-icl-bird20-shard-*.json
+          if-no-files-found: warn
+          retention-days: 30
+  aggregate:
+    needs: paired
+    if: ${{ always() && needs.paired.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[dev]'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: qwen-icl-bird20-shard-*
+          path: shards
+          merge-multiple: true
+      - name: Fail-closed strict EX bag and rescues/regressions
+        run: |
+          set -euo pipefail
+          python -m evaluation.qwen_icl_bird20 \
+            --inputs shards/qwen-icl-bird20-shard-0.json \
+                     shards/qwen-icl-bird20-shard-1.json \
+                     shards/qwen-icl-bird20-shard-2.json \
+                     shards/qwen-icl-bird20-shard-3.json \
+                     shards/qwen-icl-bird20-shard-4.json \
+            --output qwen-icl-bird20-final.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen-icl-bird20-retrieved-crossdb-final
+          path: qwen-icl-bird20-final.json
+          if-no-files-found: error
+          retention-days: 30
