@@ -118,7 +118,7 @@ def test_same_model_provider_can_only_emit_compiled_ir_not_raw_sql(tmp_path):
     class Provider:
         response = json.dumps(_grouped())
         def complete_text(self, *, system, user):
-            assert "JSON" in system and "physical schema" in user
+            assert "JSON" in system and "physical schema" in user.casefold()
             assert "paid" in user
             return self.response
 
