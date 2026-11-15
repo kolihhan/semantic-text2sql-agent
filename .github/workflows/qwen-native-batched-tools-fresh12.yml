@@ -2,7 +2,7 @@ name: PRO native Qwen9B batched real SQLite tools vs Guarded, 12 new BIRD DEV qu
 on:
   push:
     branches: [experiment/qwen-tools-batched-bird12-fresh-20261116]
-    paths: [.github/workflows/qwen-native-batched-tools-fresh12.yml]
+    paths: [.github/workflows/qwen-native-batched-tools-fresh12.yml, evaluation/qwen_observed_sql_tools.py, evaluation/qwen_tools_bird12.py, tests/test_qwen_observed_batched_tools.py, tests/test_qwen_observed_sql_tools.py]
   workflow_dispatch:
 permissions:
   contents: read
