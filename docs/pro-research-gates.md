@@ -158,3 +158,11 @@ payloads and 48/48 prediction execution statuses and scores, reusing the
 original Qwen outputs. The original fingerprints, single-file verification,
 and replay code are saved with [PR #54](https://github.com/kolihhan/semantic-text2sql-agent/pull/54).
 BIRD100 was outside this sample.
+
+A separate read-only counterfactual diagnosed a hidden filter error in
+Chinook `t19`. The original fixture has zero invoices where customer
+country differs from billing country, so the baseline's billing predicate
+happened to match the reference year (2012). Changing only invoice 264's
+billing country in an isolated copy changed the baseline to 2010, while
+the customer-country reference still returned 2012. This is mechanism
+evidence and leaves the official paired scores intact.
