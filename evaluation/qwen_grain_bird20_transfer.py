@@ -148,9 +148,11 @@ def generate_shard(source:Path, original:Path, frozen:Path, dbroot:Path, shard:i
             outputs[label]=result
             print("QWEN_GRAIN_BIRD20_GENERATED",shard,cid,label,
                   "calls",result["model_calls"],flush=True)
+        with db.open("rb") as db_handle:
+            physical_sha=file_digest(db_handle,"sha256").hexdigest()
         records.append({
             **item,"schema_sha256":sha256(schema.encode()).hexdigest(),
-            "database_sha256":file_digest(db.open("rb"),"sha256").hexdigest(),
+            "database_sha256":physical_sha,
             "arms":outputs
         })
     # Gold SQL was not consulted for sampling, generation or gating.
