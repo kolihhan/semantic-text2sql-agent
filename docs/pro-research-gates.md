@@ -86,6 +86,8 @@ requires a separate physical-DB confirmation and a matched BIRD100 rerun.
 **Result — REJECT column definitions as a standalone treatment.**
 All 18 references were scorable. Strict set EX and bag EX both moved
 **3/18 → 2/18** (one rescue, two regressions, rescue in one DB).
+The models referenced all documented reference columns in **12/18 → 15/18**;
+that proxy improved while returned tuples declined.
 Both arms executed 18/18, with 19 model calls each. Summed generation and
 execution time was 351.7s → 643.0s. The rescue retained exactly the same
 gold-referenced columns: documentation helped the model choose the stored
@@ -99,7 +101,8 @@ columns. The other regression changed single-fire ranking to sum-by-year.
 **Post-hoc physical BIRD replay.** Among 51 uncapped executable errors,
 19 had a result-width mismatch. Gold-aware deletion or reordering of
 already-produced columns could match both the exact set and the bag for
-**6/51** (four databases). The other 45 did not match under this oracle.
+**6/51** (four databases). The other 45 did not match under this oracle. In 15/51 the verified physical
+base-column set was already identical to the reference, yet the result differed.
 The oracle uses reference rows and changes no predictions; the original
 **39/100** is the measured Guarded score. Some projection differences reflect
 reference ambiguity, including a question explicitly asking for full names
