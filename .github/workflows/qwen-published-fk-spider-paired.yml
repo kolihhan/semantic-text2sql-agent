@@ -34,6 +34,35 @@ jobs:
           DB_ROOT="$(dirname "$TRAIN_JSON")/database"
           TABLES_JSON="$(find /tmp/spider/extract -type f -name tables.json ! -path '*/__MACOSX/*' | head -n1)"
           test -n "$TABLES_JSON"
+          export DB_ROOT TABLES_JSON
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          from collections import Counter
+          from evaluation.spider_published_fk import published_foreign_keys
+          from semantic_sql.catalog import DatabaseCatalog
+          root=Path(os.environ["DB_ROOT"])
+          meta=json.load(open(os.environ["TABLES_JSON"]))
+          out=Counter()
+          examples=[]
+          for e in meta:
+              dbid=e["db_id"]
+              db=root/dbid/(dbid+".sqlite")
+              if not db.exists():
+                  continue
+              c=DatabaseCatalog.from_sqlite(db)
+              fk=published_foreign_keys(c,e)
+              declared={frozenset(((a,b),(d,f))) for a,b,d,f in c.foreign_keys}
+              missing=[edge for edge in fk if frozenset(((edge[0],edge[1]),(edge[2],edge[3]))) not in declared]
+              out["source_databases"]+=1
+              out["source_annotations"]+=len(e.get("foreign_keys",[]))
+              out["physically_valid_annotations"]+=len(fk)
+              out["physical_pragma_fks"]+=len(c.foreign_keys)
+              out["source_only_fk_edges"]+=len(missing)
+              if missing and len(examples)<5:
+                  examples.append((dbid,len(missing),len(c.foreign_keys)))
+          print("PUBLISHED_SPIDER_FK_PHYSICAL_COVERAGE",dict(out),"missing_examples",examples,flush=True)
+          PY
           python -m evaluation.qwen_published_fk_spider --train "$TRAIN_JSON" --dev "$DEV_JSON" --db-root "$DB_ROOT" --tables "$TABLES_JSON" --output spider-published-fk-frozen.json
           python - <<'PY'
           import json
