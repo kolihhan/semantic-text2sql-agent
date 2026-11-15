@@ -50,8 +50,11 @@ def test_frozen_aggregate_retains_invalidity_even_when_metric_counts_match():
     base={"protocol":"qwen9b-offline-replay-shard-v1",
           "model_digest":"m","source_sha256":"source",
           "cases":[{"case_id":str(i),"db_id":f"db{i}","reference_scorable":True,
-                    "original_ex_verified":True,"direct":{"replay_ex":i<1},
-                    "guarded":{"replay_ex":i<2},"original":{"direct":i<1,"guarded":i<2}} for i in range(25)]}
+                    "reference_truncated":False,"reference_error":None,
+                    "original_guarded_status":"ok","original_ex_verified":True,
+                    "direct":{"replay_ex":i<1,"truncated":False},
+                    "guarded":{"replay_ex":i<2,"truncated":False,"both_empty":False},
+                    "original":{"direct":i<1,"guarded":i<2}} for i in range(25)]}
     reports=[]
     for i in range(4):
         r={**base,"shard":i,"original_status":"invalid" if i==3 else "complete",
