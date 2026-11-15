@@ -2,7 +2,7 @@ name: PRO Qwen9B actual SQLite tool-use semantic EX BIRD12 paired control
 on:
   push:
     branches: [experiment/qwen-tool-interaction-bird12-20261115]
-    paths: [.github/workflows/qwen-tools-bird12.yml]
+    paths: [.github/workflows/qwen-tools-bird12.yml, evaluation/qwen_observed_sql_tools.py, evaluation/qwen_tools_bird12.py, tests/test_qwen_observed_sql_tools.py, tests/test_qwen_tools_bird12.py]
   workflow_dispatch:
 permissions:
   contents: read
