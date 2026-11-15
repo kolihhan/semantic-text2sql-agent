@@ -1,0 +1,128 @@
+{
+  "protocol": "kaggledbqa-qwen9b-column-docs-18-v1",
+  "source_revision": "ab6325c9b5749f2f3509a1f64299bfa30396e6b0",
+  "model": "qwen3.5:9b-q4_K_M",
+  "model_digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+  "database_sha256": {
+    "GeoNuclearData": "4802600b172d30b3c4da4d9a9864dfc893d72b67d868d23774a18dd3f9062f8b",
+    "GreaterManchesterCrime": "f522e872a6bc228146cfb2736c9e4c25f82acc2ffbcab79a4d901ed46099a3ec",
+    "Pesticide": "74242788e54f09da218bcbcaf9e93b5eaef645a163fc7be33a216b8f49d326de",
+    "StudentMathScore": "2d623b9f7a864049b4b96e6eb7c539f3a9b23fd98ee27caa2905fb86ad81d1d8",
+    "USWildFires": "da96ab5032460d79684a579ff9b8f2ecb8069ccccbd53a922eaf277feb1d5b41",
+    "WhatCDHipHop": "215dce88124384dd28facd42496ab2003a657eda6205c0cc7d0c126e10411059"
+  },
+  "total": 18,
+  "scorable": 18,
+  "arms": {
+    "baseline": {
+      "set_ex": 3,
+      "bag_ex": 3,
+      "executed": 18,
+      "truncated": 0,
+      "calls": 19,
+      "seconds": 351.7
+    },
+    "documented": {
+      "set_ex": 2,
+      "bag_ex": 2,
+      "executed": 18,
+      "truncated": 0,
+      "calls": 19,
+      "seconds": 643.0
+    }
+  },
+  "improved_dbs": [
+    "USWildFires"
+  ],
+  "rescues": [
+    "USWildFires:1"
+  ],
+  "regressions": [
+    "GreaterManchesterCrime:11",
+    "USWildFires:7"
+  ],
+  "rescues_with_more_gold_documented_columns": 0,
+  "positive_screen": false,
+  "promotion_allowed": false,
+  "original_archive_sha256": "242900cf8e4b92e56c2a44c79749fa71cedb41d0233a694c8baa2f83c73edd36",
+  "actions_run_id": 43699471878,
+  "actions_artifact_id": 14156200917,
+  "decision": "REJECT",
+  "posthoc_frozen_bird_projection": {
+    "metrics": {
+      "noncapped_executable_wrong": 51,
+      "wrong_result_width": 19,
+      "unable_to_repair_by_projection": 45,
+      "projection_oracle_rescues": 6,
+      "projection_oracle_bag_rescues": 6,
+      "same_strict_score": 39,
+      "verification_refused": 9,
+      "capped": 1
+    },
+    "cases": [
+      {
+        "case": "1366",
+        "db": "student_club",
+        "prediction_width": 3,
+        "reference_width": 1,
+        "oracle_columns": [
+          0
+        ],
+        "bag": true
+      },
+      {
+        "case": "1396",
+        "db": "student_club",
+        "prediction_width": 4,
+        "reference_width": 2,
+        "oracle_columns": [
+          3,
+          2
+        ],
+        "bag": true
+      },
+      {
+        "case": "348",
+        "db": "card_games",
+        "prediction_width": 2,
+        "reference_width": 1,
+        "oracle_columns": [
+          1
+        ],
+        "bag": true
+      },
+      {
+        "case": "812",
+        "db": "superhero",
+        "prediction_width": 2,
+        "reference_width": 1,
+        "oracle_columns": [
+          0
+        ],
+        "bag": true
+      },
+      {
+        "case": "714",
+        "db": "codebase_community",
+        "prediction_width": 3,
+        "reference_width": 1,
+        "oracle_columns": [
+          0
+        ],
+        "bag": true
+      },
+      {
+        "case": "797",
+        "db": "superhero",
+        "prediction_width": 2,
+        "reference_width": 1,
+        "oracle_columns": [
+          0
+        ],
+        "bag": true
+      }
+    ],
+    "model_digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+    "frozen_source": "ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb"
+  }
+}

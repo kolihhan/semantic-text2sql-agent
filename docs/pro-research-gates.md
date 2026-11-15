@@ -82,3 +82,27 @@ databases conservatively because both topic families occur in prior evaluation.
 Use six original publisher SQLite files and the pinned official test split.
 Possible base model pretraining exposure is unknown. Any positive screen still
 requires a separate physical-DB confirmation and a matched BIRD100 rerun.
+
+**Result — REJECT column definitions as a standalone treatment.**
+All 18 references were scorable. Strict set EX and bag EX both moved
+**3/18 → 2/18** (one rescue, two regressions, rescue in one DB).
+Both arms executed 18/18, with 19 model calls each. Summed generation and
+execution time was 351.7s → 643.0s. The rescue retained exactly the same
+gold-referenced columns: documentation helped the model choose the stored
+value `OR` and a top-one query. For Colorado funding it found both correct
+program columns but used an absent `CO` fact-table code. On another question
+it found the correct location but leaked its ranking count into the returned
+columns. The other regression changed single-fire ranking to sum-by-year.
+[CPU run](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/43699471878) ·
+[Paired predictions](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/43699471878/artifacts/14156200917).
+
+**Post-hoc physical BIRD replay.** Among 51 uncapped executable errors,
+19 had a result-width mismatch. Gold-aware deletion or reordering of
+already-produced columns could match both the exact set and the bag for
+**6/51** (four databases). The other 45 did not match under this oracle.
+The oracle uses reference rows and changes no predictions; the original
+**39/100** is the measured Guarded score. Some projection differences reflect
+reference ambiguity, including a question explicitly asking for full names
+whose SQL returns superhero aliases. Independently review ambiguous labels
+before pursuing a question-only result contract. The original evidence and
+read-only procedure are preserved in [PR #53](https://github.com/kolihhan/semantic-text2sql-agent/pull/53).
