@@ -108,3 +108,25 @@ def test_abstains_on_invalid_types_and_invalid_alias(tmp_path):
     p = _grouped()
     p["where"][0]["value"] = ["paid"]
     assert compile_typed_query(p, cat) is None
+
+
+def test_same_model_provider_can_only_emit_compiled_ir_not_raw_sql(tmp_path):
+    import json
+    from evaluation.typed_query_ir import draft_typed_query_sql
+    _, cat = _catalog(tmp_path)
+
+    class Provider:
+        response = json.dumps(_grouped())
+        def complete_text(self, *, system, user):
+            assert "JSON" in system and "physical schema" in user
+            assert "paid" in user
+            return self.response
+
+    p = Provider()
+    sql = draft_typed_query_sql("Count paid orders per customer", cat.schema_text(),
+                                cat, p, evidence="paid")
+    assert sql is not None and sql.startswith("SELECT ")
+    p.response = "SELECT * FROM orders"
+    assert draft_typed_query_sql("q", cat.schema_text(), cat, p) is None
+    p.response = '{"from": "orders", "select": [{"op": "raw_sql", "column": "DROP TABLE orders"}]}'
+    assert draft_typed_query_sql("q", cat.schema_text(), cat, p) is None
