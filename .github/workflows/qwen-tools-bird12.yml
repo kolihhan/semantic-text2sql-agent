@@ -1,0 +1,137 @@
+name: PRO Qwen9B actual SQLite tool-use semantic EX BIRD12 paired control
+on:
+  push:
+    branches: [experiment/qwen-tool-interaction-bird12-20261115]
+    paths: [.github/workflows/qwen-tools-bird12.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Test observed physical SQL feedback, bounded inputs, no writes, strict EX gate
+        run: |
+          python -m pip install -e '.[dev]'
+          python -m pytest -q \
+            tests/test_qwen_observed_sql_tools.py \
+            tests/test_qwen_tools_bird12.py
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          run-id: 43733784127
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          name: frozen-qwen-grain-bird20-manifest
+          path: input
+      - name: Confirm exact pre-frozen 20-case BIRD SHA before source model calls
+        run: |
+          python - <<'PY'
+          import json
+          x=json.load(open('input/qwen-grain-original-bird20-frozen.json'))
+          assert x['selected_cohort_sha256']=='75ae61bffbf061f5143509ff5dd564db841d576da00230943dea6a4efbb43cd1'
+          assert x['n']==20 and x['databases']==10
+          assert x['source_gold_used_during_freeze'] is False
+          assert len({r['database_id'] for r in x['cases'][:12]})==6
+          print('QWEN_SQL_INTERACTIVE_SOURCE_FROZEN_12',flush=True)
+          PY
+
+  paired:
+    needs: tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
+    env:
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_CONTEXT_LENGTH: '8192'
+      OLLAMA_NUM_PARALLEL: '1'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          run-id: 43733784127
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          name: frozen-qwen-grain-bird20-manifest
+      - name: Restore identical BIRD physical database and source SHA
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 'https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true' -o dev.json
+          echo 'ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb  dev.json' | sha256sum -c -
+          curl -fsSL --retry 4 'https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip' -o dev.zip
+          echo 'cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  dev.zip' | sha256sum -c -
+          mkdir -p bird/unpacked bird/databases
+          unzip -q dev.zip -d bird/unpacked
+          DB_ZIP=$(find bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ZIP"
+          unzip -q "$DB_ZIP" -d bird/databases
+          DB_ROOT=$(find bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=bird/databases; fi
+          echo "DB_ROOT=$PWD/$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Start original Qwen3.5-9B for actual first-party SQLite read-only tool interaction
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break
+            sleep 1
+          done
+          ollama pull qwen3.5:9b-q4_K_M
+      - name: Run genuine multi-step Qwen tool calls and frozen Guarded control
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python -m evaluation.qwen_tools_bird12 \
+            --source dev.json \
+            --original runs/bird-paired-dev-v5/paired.json \
+            --frozen qwen-grain-original-bird20-frozen.json \
+            --database-root "$DB_ROOT" \
+            --shard "$SHARD" \
+            --output "qwen-tools-bird12-shard-$SHARD.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qwen-tools-bird12-shard-${{ matrix.shard }}
+          path: qwen-tools-bird12-shard-*.json
+          if-no-files-found: warn
+
+  aggregate:
+    needs: paired
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: qwen-tools-bird12-shard-*
+          merge-multiple: true
+          path: shards
+      - name: Strict set/bag EX, paired rescues regressions, real tool evidence and model cost
+        run: |
+          python -m evaluation.qwen_tools_bird12 \
+            --inputs shards/qwen-tools-bird12-shard-0.json \
+                     shards/qwen-tools-bird12-shard-1.json \
+                     shards/qwen-tools-bird12-shard-2.json \
+            --output qwen-tools-bird12-final.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen-native-tool-feedback-bird12-genuine-ex
+          path: qwen-tools-bird12-final.json
+          if-no-files-found: error
