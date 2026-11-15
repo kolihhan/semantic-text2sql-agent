@@ -1,9 +1,9 @@
-"""Qwen9B dynamic real SQLite schema/rows/trial-SQL vs Guarded on frozen BIRD12.
+"""Qwen9B native BATCH tool protocol with real physical SQLite vs Guarded.
 
-No training, no gold-fed feedback, no oracle candidate selection. Each tool
-call returns actual readonly physical SQLite data. The source is BIRD DEV;
-questions are from the same previously frozen BIRD20 cohort, so this test
-is NOT an independent hidden benchmark. This is a mechanistic screen only.
+The first trial had an artificial "multiple_tool_calls_unsupported" rejection
+on four of the first eight questions. Correct the general Ollama tool protocol
+and freeze NEW question IDs before inference. No gold in selection or calls.
+Public BIRD DEV physical DB families may overlap; this is NOT hidden OOD.
 """
 from __future__ import annotations
 
@@ -11,11 +11,12 @@ import argparse
 from collections import Counter
 from hashlib import sha256,file_digest
 import json
+import re
 from pathlib import Path
 from time import monotonic
 
 from evaluation.qwen_grain_bird20_transfer import (
-    BIRD_SOURCE_SHA,freeze as freeze_bird20,PROTOCOL as SOURCE_PROTOCOL
+    BIRD_SOURCE_SHA,freeze as freeze_bird20,PRIOR16,PRIOR24
 )
 from evaluation.qwen_observed_sql_tools import (
     run_tool_agent,MODEL,DIGEST,MAX_STEPS,MAX_TOOLS
@@ -28,32 +29,86 @@ from semantic_sql.execution import SQLExecutionError,execute_readonly
 from semantic_sql.inference import run_guarded
 from semantic_sql.providers import OllamaProvider
 
-PROTOCOL="qwen9b-real-sql-execution-tool-agent-versus-guarded-bird12-v1"
+PROTOCOL="qwen9b-native-batched-tool-observation-versus-guarded-bird-dev12-v2"
 N=12
 DBS=6
 SHARDS=3
 MAX_ROWS=50_000
 
 
-def source_manifest(frozen:Path,source:Path,original:Path)->dict:
-    # Re-use already frozen source IDs. Never resample on observed outcome.
-    manifest=json.loads(frozen.read_text())
-    if manifest!=freeze_bird20(source,original):
-        raise ValueError("BIRD20 previously locked source or model identities changed")
-    if manifest.get("protocol")!=SOURCE_PROTOCOL or manifest.get("n")!=20:
-        raise ValueError("expected original 20-case source manifest")
-    first=manifest["cases"][:N]
-    if len(first)!=N or len({r["database_id"] for r in first})!=DBS:
-        raise ValueError("BIRD12 physical DB count drift")
+SEED="native-batched-tool-protocol-unseen-bird12-20261116-v1"
+
+
+def freeze_fresh(source:Path,original:Path)->dict:
+    """Select only new question IDs, with 1 analytic and 1 other in 6 DBs."""
+    if sha256(source.read_bytes()).hexdigest()!=BIRD_SOURCE_SHA:
+        raise ValueError("original publisher BIRD DEV source SHA mismatch")
+    original100=json.loads(original.read_text())
+    if (original100.get("status")!="complete"
+        or original100.get("sample_size")!=100
+        or len(original100.get("cases",[]))!=100):
+        raise ValueError("historical BIRD original100 unavailable")
+    first=freeze_bird20(source,original)
+    excludes={str(x["case_id"]) for x in original100["cases"]}
+    excludes |= PRIOR16|PRIOR24|{x["case_id"] for x in first["cases"]}
+    if len(excludes)!=160:
+        raise ValueError("prior question-exclusion cohort drift")
+    data=json.loads(source.read_text(encoding="utf-8"))
+    if len(data)!=1534:
+        raise ValueError("BIRD source length unexpected")
+    groups={}
+    for i,row in enumerate(data):
+        cid=str(row.get("question_id") or row.get("id") or i)
+        question=" ".join(str(row.get("question") or "").split())
+        db=str(row.get("db_id") or "")
+        if not question or cid in excludes or not db:
+            continue
+        # Question-only comparison, not reference SQL/operators or old EX.
+        kind="analytic" if re.search(
+            r"\b(?:how many|number of|count|average|mean|sum|total|most|least|"
+            r"per|each|highest|lowest|top|percentage|ratio)\b",question,re.I
+        ) else "other"
+        grouped=groups.setdefault(db,{"analytic":{},"other":{}})
+        grouped[kind].setdefault(question.casefold(),{
+            "case_id":cid,"database_id":db,"question":question,
+            "evidence":str(row.get("evidence") or "")
+        })
+    rank=lambda value:sha256((SEED+":"+value).encode()).hexdigest()
+    eligible=sorted(
+        (db for db,bykind in groups.items()
+         if bykind["analytic"] and bykind["other"]),
+        key=lambda db:rank("db:"+db)
+    )
+    selected=[]
+    for db in eligible[:DBS]:
+        for kind in ("analytic","other"):
+            candidates=sorted(groups[db][kind].values(),key=lambda x:rank("q:"+x["case_id"]))
+            selected.append(candidates[0])
+    if len(selected)!=N or len({c["database_id"] for c in selected})!=DBS:
+        raise ValueError("new source-diverse question-only BIRD cohort not feasible")
+    if len({x["case_id"] for x in selected})!=N:
+        raise ValueError("duplicate BIRD new cases")
+    cases_sha=sha256(json.dumps(selected,sort_keys=True).encode()).hexdigest()
     return {
         "protocol":PROTOCOL,"source_sha":BIRD_SOURCE_SHA,
-        "source_20_sha":manifest["selected_cohort_sha256"],
+        "excluded_original100_previous16_24_and_grain20":len(excludes),
+        "prior_bird20_sha":first["selected_cohort_sha256"],
+        "cases_sha":cases_sha,
         "model":MODEL,"digest":DIGEST,
         "n":N,"db_count":DBS,
-        "no_gold_used_for_selection":True,
-        "source_note":"BIRD DEV, same cohort as generation-hint transfer, public DBs",
-        "cases":first
+        "gold_used_to_select":False,
+        "independent_question_ids_from_exposed_160":True,
+        "source_note":"BIRD DEV public, 12 new IDs across 6 DB; DB and model-pretraining overlap possible",
+        "cases":selected,
     }
+
+
+def source_manifest(frozen:Path,source:Path,original:Path)->dict:
+    observed=json.loads(frozen.read_text())
+    expected=freeze_fresh(source,original)
+    if observed!=expected:
+        raise ValueError("frozen new BIRD12 cohort or selector changed after source freeze")
+    return observed
 
 
 def _model()->CountingProvider:
@@ -159,7 +214,7 @@ def run_shard(source:Path,original:Path,frozen:Path,root:Path,shard:int)->dict:
             pred["bag_ex"]=bool(okay and Counter(map(tuple,rows))==Counter(map(tuple,gold.rows))) if valid else None
     return {
         "protocol":PROTOCOL,"model":MODEL,"digest":DIGEST,
-        "cohort_sha":manifest["source_20_sha"],
+        "cohort_sha":manifest["cases_sha"],
         "source_sha":BIRD_SOURCE_SHA,"shard":shard,
         "cases":records,"sql_training":False,"goldblind_generation":True,
     }
@@ -210,7 +265,7 @@ def aggregate(parts:list[dict])->dict:
         "positive_source_screen_only":candidate_positive,
         "promotion_allowed":False,"training":False,
         "BIRD100_Qwen_Guarded_EX_unchanged":39,
-        "independence_limit":"same publicly frozen BIRD DEV question pool as grain prompt source screen; not hidden out-of-source",
+        "independence_limit":"NEW disjoint BIRD DEV questions, some physical DB and model-pretraining overlap possible; not hidden source-independent",
         "cases":rows
     }
 
@@ -226,9 +281,15 @@ def main():
         raise FileExistsError("refuse overwrite")
     if args.inputs:
         report=aggregate([json.loads(p.read_text()) for p in args.inputs])
-        print("QWEN_OBSERVED_TOOL_AGENT_BIRD12_FINAL",
+        print("QWEN_BATCHED_TOOLS_FRESH_BIRD12_FINAL",
               json.dumps({k:v for k,v in report.items() if k!="cases"},sort_keys=True),
               flush=True)
+    elif args.frozen is None and args.shard is None:
+        if args.source is None or args.original is None:
+            a.error("source/original required to freeze unseen question-only cohort")
+        report=freeze_fresh(args.source,args.original)
+        print("QWEN_BATCHED_TOOLS_FRESH_COHORT_FROZEN",
+              report["cases_sha"],flush=True)
     else:
         if any(v is None for v in (args.source,args.original,args.frozen,args.database_root,args.shard)):
             a.error("paired source/original/frozen/database-root/shard required")
