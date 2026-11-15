@@ -10,14 +10,14 @@ def sample_db(tmp_path):
     with sqlite3.connect(db) as con:
         con.executescript(
             "CREATE TABLE Users(id INTEGER PRIMARY KEY, name TEXT);"
-            "CREATE TABLE Enrollments(id INTEGER PRIMARY KEY, user_id INTEGER,"
-            " FOREIGN KEY(user_id) REFERENCES Users(id));"
-            "CREATE TABLE Classes(id INTEGER PRIMARY KEY, enrollment_id INTEGER,"
-            " FOREIGN KEY(enrollment_id) REFERENCES Enrollments(id));"
-            "CREATE TABLE Assignments(id INTEGER PRIMARY KEY, class_id INTEGER,"
-            " FOREIGN KEY(class_id) REFERENCES Classes(id));"
-            "CREATE TABLE Instructors(id INTEGER PRIMARY KEY, assignment_id INTEGER,"
-            " FOREIGN KEY(assignment_id) REFERENCES Assignments(id));"
+            "CREATE TABLE Enrollments(id INTEGER PRIMARY KEY, owner_ref INTEGER,"
+            " FOREIGN KEY(owner_ref) REFERENCES Users(id));"
+            "CREATE TABLE Classes(id INTEGER PRIMARY KEY, prev_ref INTEGER,"
+            " FOREIGN KEY(prev_ref) REFERENCES Enrollments(id));"
+            "CREATE TABLE Assignments(id INTEGER PRIMARY KEY, prev_ref INTEGER,"
+            " FOREIGN KEY(prev_ref) REFERENCES Classes(id));"
+            "CREATE TABLE Instructors(id INTEGER PRIMARY KEY, prev_ref INTEGER,"
+            " FOREIGN KEY(prev_ref) REFERENCES Assignments(id));"
         )
     return db
 
@@ -36,7 +36,7 @@ def test_bridge_is_physical_schema_only(tmp_path):
     assert info["missing_bridge_table_count"] >= 1
     assert "Classes(" in added
     assert "Enrolments(" not in added
-    assert "Assignments.class_id = Classes.id" in added
+    assert "Assignments.prev_ref = Classes.id" in added
 
 
 def test_no_relation_does_not_invent_foreign_keys(tmp_path):
