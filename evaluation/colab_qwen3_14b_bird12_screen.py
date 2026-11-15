@@ -86,7 +86,7 @@ def download_data():
     if sha_file(dbzip)!=DB_ARCHIVE_SHA:
         raise RuntimeError("original first-party BIRD DEV sqlite zip drift")
     with zipfile.ZipFile(dbzip) as z:
-        entries=[n for n in z.namelist() if n.endswith("/dev_databases.zip") and "__MACOSX" not in n]
+        entries=[n for n in z.namelist() if n.split("/")[-1]=="dev_databases.zip" and "__MACOSX" not in n]
         if len(entries)!=1:
             raise RuntimeError("unexpected physical database zip layout")
         nested=WORK/"dev_databases.zip"
