@@ -15,8 +15,20 @@
 | [Stochastic 4-candidate consensus](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/43675678201) | Guarded **16/20** → consensus **16/20**; hindsight oracle@4 **16/20** | **REJECT**: absent candidate headroom |
 | [Cross-DB lexical 2-shot ICL](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/43680102605) | Guarded **8/20** → 2-shot **7/20**; 1 rescue/2 regressions, bag EX tied 6/20 | **REJECT**; [PR #51 closed unmerged](https://github.com/kolihhan/semantic-text2sql-agent/pull/51) |
 | [Native Qwen thinking](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/43605551107) | Guarded **8/16** → native think **7/16**, materially higher latency | **REJECT** for this paired setting |
+| [Physical SQLite question-value grounding, Spider DEV12](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/43685240570) | Original Qwen Guarded **9/12** → grounded **9/12**; 0 rescues, 0 regressions, 6 physical DBs, bag EX tied **9/12** | **REJECT**, [PR #52 closed unmerged](https://github.com/kolihhan/semantic-text2sql-agent/pull/52); not BIRD EX |
 
 **Scope warning:** Spider TRAIN, BIRD DEV16/20, the historical frozen100, and other public seen datasets are different populations and not interchangeable. These results **do not** show that all IR, reasoning or few-shot schemes fail; they reject the **specific tested variants**. Public split reuse/model pretraining contamination remains possible.
+
+## Newly verified scoring/data-quality boundary (2026-11-15)
+
+The source-disjoint *within BIRD DEV* physical-DB value-grounding screen **stopped before any inference**: historical frozen100 already covered **all 11 physical BIRD DEV databases**, so demanding 10 never-seen BIRD DEV databases was impossible. [Gate run 43684181898](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/43684181898). Do **not** quietly relax this constraint; new physical DBs must come from another corpus and must not be described as a new BIRD DEV holdout.
+
+An independent source-shift pilot on Spider DEV12 did generate actual Qwen predictions. The pre-registered evidence intervention did **not** increase semantic set-EX: **9/12 → 9/12**. [Full physical run 43685240570](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/43685240570). [CPU-only physical original-reference audit 43688758256](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/43688758256) found:
+- **One true relational operator error:** `voter_1:700` asks for *area codes* shared by vote sets for two contestants (reference `INTERSECT`, 14 rows); Qwen imposed a false *same phone number* requirement, yielding 0.
+- **One question family appearing twice:** `course_teach:387` / `:388` ask to exclude teachers from a hometown. Actual SQLite uses case-preserved `Little Lever Urban District` (1 matching record); Qwen's exact-case filter returns 6 rows. The provided reference SQL uses `little lever urban district` (lowercase), returning 7 under SQLite's ordinary case-sensitive equality. This is a **source reference/data inconsistency candidate**, not evidence of two independent Qwen semantic failures. Keep source strict EX **9/12** unchanged; annotate, do not silently rescore.
+- This 12-case data set contains **at most two distinct failing database families**, and these observations are post-hoc. They cannot justify a special-case `INTERSECT` prompt patch or revised evaluation labels.
+
+New evaluation reports should retain **source-SQL EX** and separately flag **reference-data consistency and semantic review**, especially literal collation/case, duplicated paraphrases, and incompatible result units. Use *fresh independent questions/physical databases* before testing a general relational-set mechanism.
 
 ## Next allowed experiment: prove generation-level headroom first
 
@@ -32,5 +44,5 @@
 
 - Clean historical Qwen9B **offline SQL replay completed**: [PR #50](https://github.com/kolihhan/semantic-text2sql-agent/pull/50) (CPU-only; original inference was not a clean workflow).
 - Detailed post-hoc structural comparison completed: [run #43679575503](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/43679575503).
-- Latest 2-shot lexical retrieval **failed the gate** (8→7/20), [PR #51 closed](https://github.com/kolihhan/semantic-text2sql-agent/pull/51).
+- Latest 2-shot lexical retrieval **failed** (8→7/20), [PR #51 closed](https://github.com/kolihhan/semantic-text2sql-agent/pull/51). New physical-value evidence also **failed** (9→9/12), [PR #52 closed](https://github.com/kolihhan/semantic-text2sql-agent/pull/52).
 - **Do not start another prompt sweep now.** The next change must expose a previously absent *generation-level* semantic signal and a source-disjoint verification route; otherwise stop costly experiments. The reported current target remains **>39/100 strict EX**, not “90% SQL execution success.”
