@@ -8,6 +8,7 @@ This module is NOT connected to production or default Guarded.
 from __future__ import annotations
 
 from collections import Counter
+from copy import deepcopy
 from dataclasses import dataclass
 import json
 from pathlib import Path
@@ -168,7 +169,7 @@ def run_tool_agent(question:str,schema:str,db:Path,evidence:str|None,
     for step in range(MAX_STEPS):
         payload={
             "model":MODEL,"stream":False,"think":False,"tools":TOOL_DEFS,
-            "messages":history,
+            "messages":deepcopy(history),
             "options":{"temperature":0,"seed":42,"num_predict":700},
         }
         if request_fn is not None:
