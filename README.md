@@ -30,6 +30,10 @@ How many orders were placed in 2024?
 
 The built-in offline provider demonstrates the service flow only; benchmark claims below come from frozen local-model artifacts.
 
+## Research protocol — PRO (fail fast, prove transfer)
+
+The [PRO research gates](docs/pro-research-gates.md) require a proven semantic failure mechanism, paired EX/rescue-regression and cost accounting, and independent database/source validation before promoting a change. The latest cross-database two-shot experiment [failed its gate (8/20 → 7/20)](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/43680102605) and remains unmerged.
+
 ## Results
 
 The checked-in frozen paired summary covers **100 BIRD DEV queries** using local `qwen3.5:9b-q4_K_M` through Ollama:
