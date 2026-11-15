@@ -6,6 +6,7 @@ Guarded baseline can be kept unchanged by the future paired runner.
 """
 from __future__ import annotations
 
+import json
 import math
 import re
 from typing import Any
@@ -190,3 +191,42 @@ def _compile(plan: object, catalog: DatabaseCatalog) -> str:
     if limit is not None:
         parts.append("LIMIT " + str(limit))
     return " ".join(parts)
+
+
+def draft_typed_query_sql(
+    question: str,
+    schema_context: str,
+    catalog: DatabaseCatalog,
+    provider: object,
+    *,
+    evidence: str | None = None,
+) -> str | None:
+    """One same-Qwen structured intent call; never accept model-generated raw SQL.
+
+    Experimental caller selects which Qwen provider/digest to use and retains
+    original Guarded output on None. This has no production entrypoint.
+    """
+    system = (
+        "Translate the question into a single JSON query-intent object using only "
+        "the supplied physical SQLite schema. Return JSON ONLY, never SQL or prose. "
+        "Use exactly eight keys: from, select, joins, where, group_by, grain, "
+        "order_by, limit. from is one physical table string. select is a nonempty "
+        "list of {op,column,optional as,optional distinct} with op column/count/"
+        "sum/avg/min/max and physical qualified table.column or COUNT(*). joins "
+        "is a list of {table,on:[table.column,table.column]} along DECLARED foreign "
+        "keys only. where is a list of {column,op,value} primitive comparisons; "
+        "group_by and grain are physical qualified-column lists, identical for "
+        "aggregations; otherwise both empty. order_by is a list of {alias,direction} "
+        "or {column,direction}; direction ASC/DESC. limit is integer 1..1000 or null. "
+        "Do not guess unsupported semantics, physical identifiers or join edges. "
+        "For a query requiring nested SELECT, arithmetic expressions, HAVING, OR, "
+        "window functions, or ambiguous grain, output {} to abstain."
+    )
+    user = f"Question:\n{question}\n\nPhysical schema:\n{schema_context}"
+    if evidence:
+        user += f"\n\nExternal evidence:\n{evidence}"
+    response = provider.complete_text(system=system, user=user)
+    try:
+        return compile_typed_query(json.loads(response), catalog)
+    except (ValueError, TypeError):
+        return None
