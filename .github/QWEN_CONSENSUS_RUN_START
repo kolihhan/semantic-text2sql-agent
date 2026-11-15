@@ -1,0 +1,6 @@
+2026-11-15 one-shot source-shift Qwen-only candidate consensus run.
+CI 43675617347 green; source-pin SHA256 00636695dabed6b5f4b8328a16b13e069a2f16591d5efcce57660669c85b121b.
+Pre-registered fresh 10 Spider TRAIN physical databases, exclude prior 100 and typed-IR 10.
+Base: Qwen3.5-9B temp0 seed42; three same-Qwen seeds 103/211/307 temp0.35; max 2 repairs each.
+Gold-blind 2-of-3 execution-bag consensus. Hindsight oracle@4 is ONLY diagnostic.
+No SQL training, no alternate model, no main merge/production promotion.
