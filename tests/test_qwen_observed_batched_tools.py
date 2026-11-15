@@ -122,4 +122,4 @@ def test_final_only_last_turn_exposes_no_new_tool_action(tmp_path):
     assert r.calls==4
     assert r.sql=="SELECT 2"
     assert len(seen)==6
-    assert all([x["function"]["name"] for x in seen[-1]["tools"]]==["submit_sql"])
+    assert [x["function"]["name"] for x in seen[-1]["tools"]]==["submit_sql"]
