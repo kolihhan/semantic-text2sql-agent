@@ -1,0 +1,80 @@
+name: Qwen9B KaggleDBQA physical column definitions (18 paired)
+
+on:
+  push:
+    branches: [experiment/qwen9b-kaggledbqa-column-docs-20261115]
+    paths: [.github/workflows/qwen-kaggledbqa-column-docs.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  paired:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        db: [GeoNuclearData, GreaterManchesterCrime, Pesticide, StudentMathScore, USWildFires, WhatCDHipHop]
+    env:
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_CONTEXT_LENGTH: "8192"
+      OLLAMA_NUM_PARALLEL: "1"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+      - name: Restore original SQLite files and pinned official test split
+        env:
+          DB_ID: ${{ matrix.db }}
+        run: |
+          python -m pip install -e . 'gdown==6.5.1'
+          git init source
+          git -C source fetch --depth=1 https://github.com/Chia-Hsuan-Lee/KaggleDBQA.git ab6325c9b5749f2f3509a1f64299bfa30396e6b0
+          git -C source checkout --detach FETCH_HEAD
+          gdown --no-cookies --retries 2 --timeout 50 'https://drive.google.com/uc?id=1YM3ZK-yyUflnUKWNuduVZxGdwEnQr77c' -O original.zip
+          echo '242900cf8e4b92e56c2a44c79749fa71cedb41d0233a694c8baa2f83c73edd36  original.zip' | sha256sum -c -
+          unzip -q original.zip "databases/$DB_ID/$DB_ID.sqlite"
+      - name: Start CPU Ollama and restore the pinned Qwen model
+        run: |
+          curl -fsSL --retry 3 'https://ollama.com/download/ollama-linux-amd64.tar.zst' | sudo tar --zstd -x -C /usr
+          ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:11434/api/tags > /dev/null 2>&1 && break
+            sleep 1
+          done
+          ollama pull qwen3.5:9b-q4_K_M
+      - name: Freeze paired predictions, then execute reference SQL read-only
+        env:
+          DB_ID: ${{ matrix.db }}
+        run: |
+          python -m evaluation.qwen_kaggledbqa_docs --source source --db-root databases --db "$DB_ID" --output "kdb-$DB_ID.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: kdb-pair-${{ matrix.db }}
+          path: kdb-*.json
+          if-no-files-found: error
+
+  aggregate:
+    needs: paired
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: kdb-pair-*
+          path: shards
+          merge-multiple: true
+      - run: python -m evaluation.qwen_kaggledbqa_docs --inputs shards/kdb-*.json --output kdb-qwen9b-docs-final.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: kdb-qwen9b-docs-final
+          path: kdb-qwen9b-docs-final.json
+          if-no-files-found: error

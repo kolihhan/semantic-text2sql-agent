@@ -46,3 +46,39 @@ New evaluation reports should retain **source-SQL EX** and separately flag **ref
 - Detailed post-hoc structural comparison completed: [run #43679575503](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/43679575503).
 - Latest 2-shot lexical retrieval **failed** (8→7/20), [PR #51 closed](https://github.com/kolihhan/semantic-text2sql-agent/pull/51). New physical-value evidence also **failed** (9→9/12), [PR #52 closed](https://github.com/kolihhan/semantic-text2sql-agent/pull/52).
 - **Do not start another prompt sweep now.** The next change must expose a previously absent *generation-level* semantic signal and a source-disjoint verification route; otherwise stop costly experiments. The reported current target remains **>39/100 strict EX**, not “90% SQL execution success.”
+
+## Published schema definitions on KaggleDBQA
+
+The LLM Prompt Recovery fifth-place team compared generated and public prompt
+distributions, combined different candidate sources, and traced a failed local
+metric gain to the production tokenizer. The CMI sensor winning team grouped
+validation by subject and modeled sensor orientation and missing modalities.
+These are team-reported experiments. Our application is to split by physical
+database and test information that is absent from the baseline schema.
+Sources: [Prompt Recovery](https://www.kaggle.com/competitions/llm-prompt-recovery/writeups/z-d-z-5th-place-solution)
+and [CMI](https://www.kaggle.com/competitions/cmi-detect-behavior-with-sensor-data/writeups/cmi-1st-place-solution).
+
+**P.** The historical BIRD replay contains executable-but-wrong queries that use
+the expected operator family and choose a different result entity or column
+(e.g. card IDs for a question about set names and IDs). This differs from the
+confirmed Spider set-identity error and the case-sensitive reference anomaly.
+An earlier declaration-only primary/foreign-key experiment delivered new schema
+metadata on ten BIRD TRAIN DBs and scored **13/18 → 12/18** (0 rescues, 1
+regression, 2 unscorable). [Run and raw results](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/43626767080).
+Keys describe joinability. The new treatment supplies publisher-authored field
+meanings, such as units, roles and abbreviated labels that the DDL omits.
+
+**R.** Freeze three official test questions per DB by hash ahead of inference.
+Use the same visible tables, original Qwen3.5-9B digest, generation options,
+Guarded repairs and SQLite execution in both arms. Add only the publisher's
+column definitions for visible physical columns. Compare strict set and bag EX,
+paired outcomes, resolved column use, model calls and elapsed time. Read gold
+SQL after freezing predictions. Require at least 16/18 scorable, at least
+three net set-EX gains, at most one regression, rescues in at least three DBs,
+and nondecreasing bag EX to retain for independent confirmation.
+
+**O.** KaggleDBQA is a separate public corpus. Exclude its baseball and soccer
+databases conservatively because both topic families occur in prior evaluation.
+Use six original publisher SQLite files and the pinned official test split.
+Possible base model pretraining exposure is unknown. Any positive screen still
+requires a separate physical-DB confirmation and a matched BIRD100 rerun.
