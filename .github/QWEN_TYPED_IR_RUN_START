@@ -1,0 +1,5 @@
+Qwen3.5-9B ONLY; typed IR screening on Spider TRAIN physical SQLite 10 new databases.
+Original Guarded unchanged, SQL model not trained, exact pinned Qwen digest.
+Code/tests/workflow frozen on branch; no BIRD ref lookup, no alternate model.
+One 20-question paired launch after green CI 43667271562; source-only DB eligibility job is a hard gate.
+No tune-retry loops. No merge/promotion from small public Spider pilot.
