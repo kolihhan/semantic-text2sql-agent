@@ -26,6 +26,7 @@ BIRD_SHA="ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb"
 DB_ARCHIVE_SHA="cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630"
 BASE_QWEN9B_DIGEST="56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90"
 MODEL="Qwen/Qwen3-14B"
+MODEL_SHA="40c069824f4251a91eefaf281ebe4c544efd3e18"
 PROTOCOL="qwen3-14b-4bit-original-guarded-bird12-same-original9b-source-v1"
 COHORT=Path("/content/qwen-native-batched-fresh-bird12-cohort.json")
 ORIGINAL=Path("/content/qwen-native-batched-bird12-final.json")
@@ -145,7 +146,7 @@ def main():
                     "transformers>=4.58","accelerate","bitsandbytes",
                     "huggingface_hub"],check=True)
     sys.path[:0]=[str(repo/"src"),str(repo)]
-    from huggingface_hub import HfApi,snapshot_download
+    from huggingface_hub import snapshot_download
     from transformers import AutoTokenizer,AutoModelForCausalLM,BitsAndBytesConfig
     from evaluation.run_bird import _resolve_database
     from evaluation.schema_context import select_schema_context
@@ -156,8 +157,7 @@ def main():
     all_source=json.loads(original_json.read_text(encoding="utf-8"))
     original_by_id={str(r.get("question_id") or r.get("id") or i):r
                     for i,r in enumerate(all_source)}
-    info=HfApi().model_info(MODEL)
-    model_sha=str(info.sha)
+    model_sha=MODEL_SHA
     if len(model_sha)!=40:
         raise RuntimeError("immutable Qwen3-14B revision unavailable")
     checkpoint=snapshot_download(MODEL,revision=model_sha)
