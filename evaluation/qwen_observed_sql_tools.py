@@ -211,6 +211,6 @@ def run_tool_agent(question:str,schema:str,db:Path,evidence:str|None,
             errors+=1
             feedback="Tool refused: "+type(exc).__name__
         tools+=1
-        history.append({"role":"assistant","tool_calls":calls})
+        history.append({"role":"assistant","content":str(msg.get("content") or ""),"tool_calls":calls})
         history.append({"role":"tool","name":name,"content":feedback})
     return result(None,"model_step_budget_exhausted")
