@@ -134,7 +134,7 @@ class GrainDirectProvider:
 
 
 def _generate_and_run(db: Path, schema: str, question: str, *,
-                      treated: bool) -> dict:
+                      treated: bool, external_evidence: str | None = None) -> dict:
     model = CountingProvider(OllamaProvider(
         model=MODEL, timeout_s=750,
         temperature=0, seed=42, num_predict=700,
@@ -142,17 +142,19 @@ def _generate_and_run(db: Path, schema: str, question: str, *,
     started = monotonic()
     if treated:
         initial = generate_direct_sql(
-            question, schema, GrainDirectProvider(model)
+            question, schema, GrainDirectProvider(model),
+            external_evidence=external_evidence,
         )
         result = run_guarded(
             database=db, provider=model, question=question,
             schema_context=schema, initial_candidate=initial,
-            max_repairs=2, max_rows=50_000,
+            evidence=external_evidence, max_repairs=2, max_rows=50_000,
         )
     else:
         result = run_guarded(
             database=db, provider=model, question=question,
-            schema_context=schema, max_repairs=2, max_rows=50_000,
+            schema_context=schema, evidence=external_evidence,
+            max_repairs=2, max_rows=50_000,
         )
     return {
         "sql": result.candidate.sql if result.candidate else None,
