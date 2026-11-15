@@ -119,13 +119,14 @@ def test_same_model_provider_can_only_emit_compiled_ir_not_raw_sql(tmp_path):
         response = json.dumps(_grouped())
         def complete_text(self, *, system, user):
             assert "JSON" in system and "physical schema" in user.casefold()
-            assert "paid" in user
+            self.last_user = user
             return self.response
 
     p = Provider()
     sql = draft_typed_query_sql("Count paid orders per customer", cat.schema_text(),
                                 cat, p, evidence="paid")
     assert sql is not None and sql.startswith("SELECT ")
+    assert "paid" in p.last_user
     p.response = "SELECT * FROM orders"
     assert draft_typed_query_sql("q", cat.schema_text(), cat, p) is None
     p.response = '{"from": "orders", "select": [{"op": "raw_sql", "column": "DROP TABLE orders"}]}'
