@@ -1,0 +1,143 @@
+name: Qwen9B physical-value source shift to independent Spider DEV databases (12 paired)
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/qwen9b-physical-value-evidence-20261115]
+    paths: [.github/QWEN_VALUE_SPIDER12_START]
+permissions:
+  contents: read
+env:
+  SPIDER_SHA256: 00636695dabed6b5f4b8328a16b13e069a2f16591d5efcce57660669c85b121b
+
+jobs:
+  preregister:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Prove gold-blind source/DB selection and paired scoring before model calls
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_qwen_value_evidence_bird20.py tests/test_qwen_value_evidence_spider12.py
+      - name: Download exact public Spider source and physical databases
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/spider
+          curl -fL --retry 4 --retry-delay 5 https://huggingface.co/datasets/HAL-9001/spider-databases/resolve/main/spider_data.zip -o /tmp/spider/source.zip
+          echo "$SPIDER_SHA256  /tmp/spider/source.zip" | sha256sum -c -
+          unzip -q /tmp/spider/source.zip -d /tmp/spider/extract
+          TRAIN_JSON="$(find /tmp/spider/extract -type f -name train_spider.json ! -path '*/__MACOSX/*' | head -n1)"
+          DEV_JSON="$(find /tmp/spider/extract -type f -name dev.json ! -path '*/__MACOSX/*' | head -n1)"
+          DB_ROOT="$(dirname "$TRAIN_JSON")/database"
+          test -f "$TRAIN_JSON" && test -f "$DEV_JSON" && test -d "$DB_ROOT"
+          python -m evaluation.qwen_value_evidence_spider12 --train "$TRAIN_JSON" \
+            --dev "$DEV_JSON" --db-root "$DB_ROOT" --output spider-value12-frozen.json
+      - name: Check all 6 physical database IDs and 12 questions locked gold-blind
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          m=json.load(open('spider-value12-frozen.json'))
+          assert m['count']==12 and m['db_count']==6
+          assert len({r['case_id'] for r in m['cases']})==12
+          assert len({r['db_id'] for r in m['cases']})==6
+          assert all(r['value_hits'] and 'query' not in r and 'SQL' not in r for r in m['cases'])
+          print('SPIDER_VALUES_SOURCE_SHIFT_FROZEN',m['cohort_sha256'])
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen9b-spider-dev12-value-question-only-frozen
+          path: spider-value12-frozen.json
+          if-no-files-found: error
+          retention-days: 30
+
+  paired:
+    needs: preregister
+    runs-on: ubuntu-latest
+    timeout-minutes: 230
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[dev]'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: qwen9b-spider-dev12-value-question-only-frozen
+      - name: Verify exact same Spider archive and physical database source
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/spider
+          curl -fL --retry 4 --retry-delay 5 https://huggingface.co/datasets/HAL-9001/spider-databases/resolve/main/spider_data.zip -o /tmp/spider/source.zip
+          echo "$SPIDER_SHA256  /tmp/spider/source.zip" | sha256sum -c -
+          unzip -q /tmp/spider/source.zip -d /tmp/spider/extract
+          TRAIN_JSON="$(find /tmp/spider/extract -type f -name train_spider.json ! -path '*/__MACOSX/*' | head -n1)"
+          DEV_JSON="$(find /tmp/spider/extract -type f -name dev.json ! -path '*/__MACOSX/*' | head -n1)"
+          DB_ROOT="$(dirname "$TRAIN_JSON")/database"
+          test -f "$TRAIN_JSON" && test -f "$DEV_JSON" && test -d "$DB_ROOT"
+          echo "TRAIN_JSON=$TRAIN_JSON" >> "$GITHUB_ENV"
+          echo "DEV_JSON=$DEV_JSON" >> "$GITHUB_ENV"
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Start pinned ORIGINAL Qwen3.5-9B only; no SQL training
+        run: |
+          set -euo pipefail
+          curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          OLLAMA_MAX_LOADED_MODELS=1 ollama serve > "$RUNNER_TEMP/ollama-value-spider.log" 2>&1 &
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break
+            sleep 1
+          done
+          ollama pull qwen3.5:9b-q4_K_M
+      - name: Frozen paired original Guarded vs physical source-value evidence
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python -m evaluation.qwen_value_evidence_spider12 \
+            --train "$TRAIN_JSON" --dev "$DEV_JSON" --db-root "$DB_ROOT" \
+            --manifest spider-value12-frozen.json --shard "$SHARD" \
+            --output "spider-value12-shard-$SHARD.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: spider-value12-shard-${{ matrix.shard }}
+          path: spider-value12-shard-*.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  aggregate:
+    needs: paired
+    if: ${{ always() && needs.paired.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[dev]'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: spider-value12-shard-*
+          path: shards
+          merge-multiple: true
+      - name: Strict paired set/bag SQL execution scores, rescue/regression and runtime cost
+        run: |
+          set -euo pipefail
+          python -m evaluation.qwen_value_evidence_spider12 \
+            --inputs shards/spider-value12-shard-0.json shards/spider-value12-shard-1.json \
+                     shards/spider-value12-shard-2.json \
+            --output spider-value12-final.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen9b-spider-dev12-physical-value-paired-final
+          path: spider-value12-final.json
+          if-no-files-found: error
+          retention-days: 30
