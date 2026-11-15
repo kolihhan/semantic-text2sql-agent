@@ -109,3 +109,27 @@ reference ambiguity, including a question explicitly asking for full names
 whose SQL returns superhero aliases. Independently review ambiguous labels
 before pursuing a question-only result contract. The original evidence and
 read-only procedure are preserved in [PR #53](https://github.com/kolihhan/semantic-text2sql-agent/pull/53).
+
+## One physical observation before Qwen SQL generation
+
+The prior schema and metadata studies measured more column grounding without
+better execution match. A physical check of a stored code, value representation,
+or entity multiplicity supplies a different signal. The diagnostic comparison
+uses one Qwen-generated read-only probe with three arms. Original Guarded uses
+no probe. A matched inference control receives only the probe SQL. The
+treatment gets the identical probe SQL and up to five actual rows with column
+names. Invalid probes use the original generation path. All three arms keep the
+same original Qwen digest, schema selection, repair limits and read-only checks.
+
+Freeze four medium and four hard questions by identity per database from the
+independently authored [Chinook and Sakila questions](https://github.com/VinayakMokashi/text2sql-analyst/tree/d5420f1ad73c6608c1b2869d7fba662ea4709920/eval).
+Use original physical sample DBs and exact pinned source versions. The two
+domains are fresh to this repository. The source is public and the sample
+database result is conditional on these difficulty strata. Score predictions
+against source SQL only after freezing them. Measure strict set and bag
+execution match, paired flips, probe visibility, and total model calls and
+latency. Screening requires at least 14 scorable, net gain at least 3 versus
+Guarded with at most one regression, rescues on both DBs, net gain at least
+2 versus the matched no-rows control, and no bag decline versus Guarded.
+Any passing mechanism still needs a matched BIRD evaluation to measure the
+target 39/100 baseline.
