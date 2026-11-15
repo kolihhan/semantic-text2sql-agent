@@ -1,0 +1,155 @@
+name: PRO actual Colab T4 Qwen3-14B 4-bit no SQL training vs original Qwen9B BIRD12
+on:
+  push:
+    branches: [experiment/qwen3-14b-samebird12-colab-screen-20261116]
+    paths: [.github/workflows/qwen3-14b-colab-bird12.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: qwen3-14b-bird12-gpu-screen-one-slot
+  cancel-in-progress: false
+jobs:
+  gpu-model-screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 220
+    env:
+      COLAB_ADC_JSON: ${{ secrets.COLAB_ADC_JSON }}
+      COLAB_OAUTH_JSON: ${{ secrets.COLAB_OAUTH_JSON }}
+      COLAB_CREDENTIALS_JSON: ${{ secrets.COLAB_CREDENTIALS_JSON }}
+      COLAB_TOKEN: ${{ secrets.COLAB_TOKEN }}
+      HF_HUB_DISABLE_TELEMETRY: '1'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Original-model and new Qwen no-training evaluation tests before asking for GPU
+        run: |
+          set -euo pipefail
+          python -m pip install -q pytest
+          python -m pytest -q tests/test_qwen3_14b_bird12_screen.py
+          python -m py_compile evaluation/colab_qwen3_14b_bird12_screen.py
+      - name: Recover frozen exact Qwen9B BIRD12 original SQL and original source from CPU verified artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          run-id: 43745804794
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          name: qwen3-14b-bird12-original-9b-same-source-model-freeze
+          path: inputs
+      - name: Require the original Qwen9B stored EX3 and pinned new Qwen3-14B SHA before any GPU
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os,json
+          from pathlib import Path
+          from hashlib import sha256
+          source=Path('inputs/fresh-native-batched-bird12-manifest.json')
+          original=Path('inputs/native-batched-bird12-final.json')
+          contract=Path('inputs/qwen3-14b-source-model-contract.json')
+          for f in (source,original,contract):
+              assert f.is_file(),f
+          m=json.loads(source.read_text())
+          prev=json.loads(original.read_text())
+          c=json.loads(contract.read_text())
+          assert m['cases_sha']==c['original9b_source_cohort_sha']=='d889f818f2988d66e612e97e0d9762f797c300fa205d73addfb6b62df24d9c86'
+          assert sha256(json.dumps(m['cases'],sort_keys=True).encode()).hexdigest()==m['cases_sha']
+          assert prev['arms']['original']['strict_set_ex']==3
+          assert c['new_qwen_model_sha']=='40c069824f4251a91eefaf281ebe4c544efd3e18'
+          assert c['sql_training'] is False and c['new_model_inference_performed'] is False
+          script=Path('evaluation/colab_qwen3_14b_bird12_screen.py').read_text()
+          assert 'SOURCE_CODE_SHA="__CODE_SHA__"' in script
+          assert 'MODEL_SHA="40c069824f4251a91eefaf281ebe4c544efd3e18"' in script
+          script=script.replace('SOURCE_CODE_SHA="__CODE_SHA__"',
+                                'SOURCE_CODE_SHA="'+os.environ['GITHUB_SHA']+'"')
+          Path('inputs/colab-qwen3-14b-real.py').write_text(script)
+          print('QWEN3_14B_GPU_LAUNCH_SOURCE_PREP_VERIFIED',
+                {'source':m['cases_sha'],'original9b_set_ex':3,
+                 'new_qwen_sha':c['new_qwen_model_sha'],
+                 'new_sql_training':False},flush=True)
+          PY
+      - name: Authenticate existing user-owned Colab ADC without logging tokens
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'google-auth>=2.20' 'requests>=2.31' 'google-colab-cli==0.8.0'
+          python - <<'PY'
+          import os,json,pathlib
+          import google.auth
+          from google.auth.transport.requests import Request
+          credentials=None
+          for name in ('COLAB_ADC_JSON','COLAB_OAUTH_JSON','COLAB_CREDENTIALS_JSON','COLAB_TOKEN'):
+              raw=os.environ.get(name,'').strip()
+              if not raw:continue
+              try:d=json.loads(raw)
+              except (TypeError,ValueError):continue
+              if not isinstance(d,dict):continue
+              if all(d.get(k) for k in ('client_id','client_secret','refresh_token')):
+                  credentials={**d,'type':'authorized_user'};break
+              if d.get('type')=='service_account' and all(d.get(k) for k in ('private_key','client_email')):
+                  credentials=d;break
+          if credentials is None:raise RuntimeError('AUTHORIZED_COLAB_ADC_CREDENTIALS_NOT_AVAILABLE_FOR_SQL_REPO')
+          path=pathlib.Path(os.environ['RUNNER_TEMP'])/'qwen3-14b-colab-owner-adc.json'
+          path.write_text(json.dumps(credentials));path.chmod(0o600)
+          auth,_=google.auth.load_credentials_from_file(str(path))
+          auth.refresh(Request())
+          if not auth.valid:raise RuntimeError('COLAB_ADC_OAUTH_EXPIRED')
+          with open(os.environ['GITHUB_ENV'],'a') as f:
+              f.write('GOOGLE_APPLICATION_CREDENTIALS='+str(path)+'\n')
+          print('QWEN3_14B_SQL_COLAB_OWNER_AUTH_SUCCESS',flush=True)
+          PY
+      - name: Prevent overlap with already active QLoRA GPU runs
+        run: |
+          set -euo pipefail
+          usage="$(timeout 100 colab --auth=adc usage)"
+          active="$(printf '%s\n' "$usage" | awk '/^Active assignments:/ {print $3}')"
+          if ! [[ "$active" =~ ^[0-9]+$ ]] || [ "$active" != 0 ]; then
+            echo "COLAB_GPU_BUSY_OR_UNKNOWN; no inference was attempted"
+            exit 75
+          fi
+      - name: Allocate Colab T4 and physically generate Qwen3-14B Guarded SQL
+        run: |
+          set -euo pipefail
+          SESSION="qwen3-14b-bird12-$GITHUB_RUN_ID"
+          mkdir -p exported
+          cleanup() { colab --auth=adc stop -s "$SESSION" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          colab --auth=adc new -s "$SESSION" --gpu T4
+          echo "QWEN3_14B_BIRD_SQL_REAL_COLAB_T4_ALLOCATED"
+          colab --auth=adc upload -s "$SESSION" inputs/fresh-native-batched-bird12-manifest.json /content/qwen-native-batched-fresh-bird12-cohort.json
+          colab --auth=adc upload -s "$SESSION" inputs/native-batched-bird12-final.json /content/qwen-native-batched-bird12-final.json
+          set +e
+          set -o pipefail
+          colab --auth=adc exec -s "$SESSION" --timeout 7800 -f inputs/colab-qwen3-14b-real.py 2>&1 | tee "$RUNNER_TEMP/qwen3-14b-real-sql-inference.txt"
+          RC=$?
+          set -e
+          colab --auth=adc download -s "$SESSION" /content/qwen3-14b-guarded-original-bird12-comparison.json exported/qwen3-14b-guarded-original-bird12-comparison.json || true
+          colab --auth=adc download -s "$SESSION" /content/qwen3-14b-guarded-source-screen/predictions-frozen-before-gold.json exported/qwen3-14b-predictions-frozen-before-gold.json || true
+          colab --auth=adc log -s "$SESSION" -o exported/qwen3-14b-real-sql-colab-runtime.ipynb || true
+          if [ "$RC" -ne 0 ]; then
+            echo "QWEN3_14B_SQL_EXPERIMENT_FAILED rc=$RC; no score gain claim"
+            exit "$RC"
+          fi
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          path=Path('exported/qwen3-14b-guarded-original-bird12-comparison.json')
+          if not path.is_file():raise RuntimeError('no physical new-model Qwen3-14B strict EX report')
+          d=json.loads(path.read_text())
+          assert d['n']==12 and d['scorable']==12
+          assert d['new_model_sha']=='40c069824f4251a91eefaf281ebe4c544efd3e18'
+          assert d['strict_set_qwen35_9b']==3 and d['no_training'] is True
+          assert len(d['cases'])==12 and d['promoted'] is False
+          print('QWEN3_14B_SQL_BIRD12_PHYSICAL_EX_PROOF',
+                json.dumps({k:v for k,v in d.items() if k!='cases'},
+                           sort_keys=True),flush=True)
+          PY
+      - name: Retain source-fixed SQL and physical GPU evidence even if failure
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen3-14b-4bit-original-vs-qwen35-9b-bird12-physical-strict-ex
+          path: exported/
+          if-no-files-found: warn
+          retention-days: 30
