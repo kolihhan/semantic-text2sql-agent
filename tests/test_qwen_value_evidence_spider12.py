@@ -38,7 +38,7 @@ def test_paired_requires_complete_matched_cohort():
         for j in range(4):
             i=4*shard+j
             old=i<4
-            new=(i<4 or i in (4,5))
+            new=(i<4 or i in (4,6))
             cases.append({
                 "case_id":f"c{i}","db_id":f"d{i//2}",
                 "reference_scorable":True,
