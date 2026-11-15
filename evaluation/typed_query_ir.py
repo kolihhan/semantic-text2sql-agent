@@ -15,7 +15,7 @@ from semantic_sql.catalog import DatabaseCatalog
 _KEYS = {"from", "select", "joins", "where", "group_by", "grain", "order_by", "limit"}
 _OPERATORS = {"=", "!=", "<>", "<", "<=", ">", ">=", "LIKE"}
 _AGGREGATES = {"count", "sum", "avg", "min", "max"}
-_ALIAS = re.compile(r"[A-Za-z_][A-Za-z_0-9]*\\Z")
+_ALIAS = re.compile(r"[A-Za-z_][A-Za-z_0-9]*\Z")
 
 
 class UnsupportedIntent(ValueError):
@@ -23,14 +23,14 @@ class UnsupportedIntent(ValueError):
 
 
 def _identifier(name: str) -> str:
-    if not isinstance(name, str) or not name or "\\x00" in name:
+    if not isinstance(name, str) or not name or "\x00" in name:
         raise UnsupportedIntent("invalid physical identifier")
     return '"' + name.replace('"', '""') + '"'
 
 
 def _literal(value: Any) -> str:
     if isinstance(value, str):
-        if "\\x00" in value:
+        if "\x00" in value:
             raise UnsupportedIntent("NUL literal")
         return "'" + value.replace("'", "''") + "'"
     if type(value) is int:
