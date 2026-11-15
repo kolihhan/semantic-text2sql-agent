@@ -213,6 +213,10 @@ def run_tool_agent(question:str,schema:str,db:Path,evidence:str|None,
         except ValueError:
             errors+=1
             return result(None,"invalid_model_tool_args")
+        if any(name not in {"inspect_schema","sample_rows","run_sql","submit_sql"}
+               for name,args in parsed):
+            errors+=1
+            return result(None,"unknown_model_tool")
         if len(parsed)==1 and parsed[0][0]=="submit_sql":
             sql=str(parsed[0][1].get("sql") or "").strip()
             return result(sql or None,"model_submitted")
