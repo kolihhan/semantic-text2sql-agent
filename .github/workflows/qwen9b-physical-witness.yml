@@ -64,7 +64,7 @@ jobs:
             sleep 1
           done
           ollama pull qwen3.5:9b-q4_K_M
-      - name: Paired physical SQL generation and strict scoring
+      - name: Paired physical SQL generation and scoring against source alternatives
         env:
           DATASET: ${{ matrix.db }}
           SHARD: ${{ matrix.shard }}

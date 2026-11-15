@@ -110,21 +110,28 @@ def benchmark(source: Path, db: Path, dataset: str, shard: int) -> dict:
 
     scored = []
     for row, predictions, probe, observed, probe_seconds in cases:
-        try:
-            target = execute_readonly(db, row["gold_sql"], max_rows=MAX_ROWS)
-            scorable = not target.truncated
-        except SQLExecutionError:
-            target = None
-            scorable = False
+        gold = row["gold_sql"]
+        references = [gold] if isinstance(gold, str) else gold
+        reference_rows = []
+        for statement in references:
+            try:
+                target = execute_readonly(db, statement, max_rows=MAX_ROWS)
+            except SQLExecutionError:
+                continue
+            if not target.truncated:
+                reference_rows.append(target.rows)
+        scorable = bool(reference_rows)
+        target_sets = [set(rows) for rows in reference_rows]
+        target_bags = [Counter(rows) for rows in reference_rows]
         output = {"id": row["id"], "dataset": dataset, "difficulty": row["difficulty"],
                   "probe": probe, "observation": observed, "probe_seconds": probe_seconds,
-                  "scorable": scorable, "reference_sql": row["gold_sql"]}
+                  "scorable": scorable, "reference_sql": gold, "scorable_references": len(reference_rows)}
         for arm, (result, calls, seconds) in predictions.items():
             usable = result.status == "ok" and not result.truncated
             output[arm] = {
                 "sql": result.candidate.sql if result.candidate else "",
-                "set_ex": bool(usable and set(result.rows) == set(target.rows)) if scorable else None,
-                "bag_ex": bool(usable and Counter(result.rows) == Counter(target.rows)) if scorable else None,
+                "set_ex": bool(usable and set(result.rows) in target_sets) if scorable else None,
+                "bag_ex": bool(usable and Counter(result.rows) in target_bags) if scorable else None,
                 "seconds": seconds, "calls": calls, "status": result.status, "capped": result.truncated,
             }
         scored.append(output)
