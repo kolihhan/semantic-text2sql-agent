@@ -39,7 +39,7 @@ jobs:
           assert x["count"]==12 and x["physical_dbs"]==6 and x["gold_blind"]
           assert all("query" not in c for c in x["cases"])
           print("FROZEN_DBS",sorted({c["db_id"] for c in x["cases"]}))
-          print("COHORT_SHA",x["cohort_sha256"])
+          print("COHORT_SHA",x["cases_sha256"])
           PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
