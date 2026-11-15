@@ -20,7 +20,7 @@ def test_source_prompt_byte_identical_not_model_cheat():
     assert t.complete_text(system="Unmodified original system",user="Question")=="SELECT 1"
     assert q.call==("Unmodified original system\n"+_GRAIN_HINT,"Question")
     assert sha256(_GRAIN_HINT.encode()).hexdigest()==(
-        "b8eab1e89db42ebdaf4c0b5cb32c15dd586e49d7c3f8c78dd07c64c1d829d4f"
+        "ec071e441fd02425cb286ad12c3fec2934b1fa43d64b2da4344c80381b617804"
     )
 
 
