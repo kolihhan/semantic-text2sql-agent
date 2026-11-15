@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [experiment/unique-fk-join-source-repair-bird100-20261115]
-    paths: [.github/workflows/qwen9b-unique-fk-join-replay.yml]
+    paths: [.github/workflows/qwen9b-unique-fk-join-replay.yml, evaluation/qwen9b_frozen_replay.py, evaluation/unique_fk_bird_replay.py, evaluation/unique_fk_join_repair.py, tests/test_unique_fk_join_repair.py, tests/test_unique_fk_bird_replay.py]
 permissions:
   contents: read
   actions: read
