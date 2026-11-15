@@ -1,0 +1,78 @@
+name: PRO CPU freeze exact BIRD12 model-comparison source for Qwen3 14B Colab
+on:
+  push:
+    branches: [experiment/qwen3-14b-samebird12-colab-screen-20261116]
+    paths: [.github/workflows/qwen3-14b-bird12-source-freeze.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  freeze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Offline no-gold source provenance and model-call fidelity tests
+        run: |
+          set -euo pipefail
+          python -m pip install -q pytest huggingface_hub
+          python -m py_compile evaluation/colab_qwen3_14b_bird12_screen.py
+          python -m pytest -q tests/test_qwen3_14b_bird12_screen.py
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          run-id: 43738683554
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          name: qwen-native-batched-fresh-bird12-cohort
+          path: pinned
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          run-id: 43738683554
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          name: qwen-native-batched-real-sql-fresh-bird12-final
+          path: pinned
+      - name: Verify identical prior 9B 12 source outputs and freeze Qwen3-14B model SHA BEFORE GPU
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          from hashlib import sha256
+          from huggingface_hub import HfApi
+          from evaluation import colab_qwen3_14b_bird12_screen as screen
+          screen.COHORT=Path('pinned/fresh-native-batched-bird12-manifest.json')
+          screen.ORIGINAL=Path('pinned/native-batched-bird12-final.json')
+          screen.SOURCE_CODE_SHA='0'*40
+          rows,old=screen.source_inputs()
+          assert len(rows)==12 and len(old)==12
+          assert sum(x['arms']['original']['set_ex'] for x in json.loads(screen.ORIGINAL.read_text())['cases'])==3
+          assert len({x['database_id'] for x in rows})==6
+          model_sha=HfApi().model_info(screen.MODEL).sha
+          assert len(model_sha)==40 and model_sha.isalnum()
+          record={
+              'protocol':screen.PROTOCOL,
+              'original9b_source_cohort_sha':screen.COHORT_SHA,
+              'original9b_model_digest':screen.BASE_QWEN9B_DIGEST,
+              'new_qwen_model':screen.MODEL,
+              'new_qwen_model_sha':model_sha,
+              'n':12,
+              'original_baseline_strict_set_ex':3,
+              'original_baseline_strict_bag_ex':3,
+              'sql_training':False,
+              'new_model_inference_performed':False,
+              'evaluation_independence':'same public BIRD DEV12 previously evaluated; future independent screen required'
+          }
+          Path('pinned/qwen3-14b-source-model-contract.json').write_text(json.dumps(record,indent=2,sort_keys=True)+'\n')
+          print('QWEN3_14B_ORIGINAL9B_BIRD12_SOURCE_AND_MODEL_FROZEN',
+                json.dumps(record,sort_keys=True),flush=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen3-14b-bird12-original-9b-same-source-model-freeze
+          path: pinned/
+          if-no-files-found: error
