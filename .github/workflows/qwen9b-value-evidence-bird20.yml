@@ -1,0 +1,155 @@
+name: Qwen9B BIRD20 physical SQLite value grounding on new database cohort
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/qwen9b-physical-value-evidence-20261115]
+    paths: [.github/QWEN_BIRD20_VALUE_EVIDENCE_START]
+permissions:
+  contents: read
+  actions: read
+env:
+  SOURCE_SHA256: ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb
+  DB_ZIP_SHA256: cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630
+
+jobs:
+  preregister:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Run the value-evidence and heldout pairing tests first
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_qwen_value_evidence_bird20.py
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          run-id: 43680102605
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          name: qwen-icl-bird20-question-only-frozen
+          path: prior
+      - name: Restore physical BIRD DEV source and exact SQLite archive, before any Qwen
+        run: |
+          set -euo pipefail
+          mkdir -p bird/unpacked bird/databases
+          curl -fsSL --retry 4 'https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true' -o dev.json
+          echo "$SOURCE_SHA256  dev.json" | sha256sum -c -
+          curl -fsSL --retry 4 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o dev.zip
+          echo "$DB_ZIP_SHA256  dev.zip" | sha256sum -c -
+          unzip -q dev.zip -d bird/unpacked
+          DB_ZIP="$(find bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)"
+          test -n "$DB_ZIP"
+          unzip -q "$DB_ZIP" -d bird/databases
+          DB_ROOT="$(find bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)"
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=bird/databases; fi
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Freeze exactly 20 questions on 10 new physical databases based on actual text-value evidence, no gold outcomes
+        run: |
+          set -euo pipefail
+          python -m evaluation.qwen_value_evidence_bird20 \
+            --source dev.json \
+            --reference runs/bird-paired-dev-v5/paired.json \
+            --old-icl prior/qwen-icl-bird20-manifest.json \
+            --db-root "$DB_ROOT" \
+            --output qwen-value-grounding-bird20-manifest.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen9b-value-evidence-newdb-preselected
+          path: qwen-value-grounding-bird20-manifest.json
+          if-no-files-found: error
+          retention-days: 30
+
+  paired:
+    needs: preregister
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[dev]'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: qwen9b-value-evidence-newdb-preselected
+      - name: Verify same physical BIRD DEV source and databases
+        run: |
+          set -euo pipefail
+          mkdir -p bird/unpacked bird/databases
+          curl -fsSL --retry 4 'https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true' -o dev.json
+          echo "$SOURCE_SHA256  dev.json" | sha256sum -c -
+          curl -fsSL --retry 4 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o dev.zip
+          echo "$DB_ZIP_SHA256  dev.zip" | sha256sum -c -
+          unzip -q dev.zip -d bird/unpacked
+          DB_ZIP="$(find bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)"
+          test -n "$DB_ZIP"
+          unzip -q "$DB_ZIP" -d bird/databases
+          DB_ROOT="$(find bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)"
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=bird/databases; fi
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Start only the original pinned Qwen3.5-9B
+        run: |
+          set -euo pipefail
+          curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          OLLAMA_MAX_LOADED_MODELS=1 ollama serve > "$RUNNER_TEMP/ollama-value-evidence.log" 2>&1 &
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break
+            sleep 1
+          done
+          ollama pull qwen3.5:9b-q4_K_M
+      - name: Compare same-Qwen Guarded vs question-grounded physical SQLite evidence
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python -m evaluation.qwen_value_evidence_bird20 \
+            --source dev.json --db-root "$DB_ROOT" \
+            --manifest qwen-value-grounding-bird20-manifest.json \
+            --shard "$SHARD" --output "qwen-value-bird20-shard-$SHARD.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qwen-value-bird20-shard-${{ matrix.shard }}
+          path: qwen-value-bird20-shard-*.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  aggregate:
+    needs: paired
+    if: ${{ always() && needs.paired.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[dev]'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: qwen-value-bird20-shard-*
+          path: shards
+          merge-multiple: true
+      - name: Aggregate paired strict/bag EX, rescues/regressions and cost; never auto-promote
+        run: |
+          set -euo pipefail
+          python -m evaluation.qwen_value_evidence_bird20 \
+            --inputs shards/qwen-value-bird20-shard-0.json \
+                     shards/qwen-value-bird20-shard-1.json \
+                     shards/qwen-value-bird20-shard-2.json \
+                     shards/qwen-value-bird20-shard-3.json \
+                     shards/qwen-value-bird20-shard-4.json \
+            --output qwen-value-bird20-final.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen-value-bird20-database-disjoint-final
+          path: qwen-value-bird20-final.json
+          if-no-files-found: error
+          retention-days: 30
