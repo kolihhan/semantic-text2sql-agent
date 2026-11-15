@@ -2,7 +2,7 @@ name: Qwen9B source-only multi-hop FK relation route physical EX
 on:
   push:
     branches: [experiment/fk-path-bridging-spider-source-shift-20261115]
-    paths: [.github/workflows/qwen-fk-path-spider-paired.yml]
+    paths: [.github/workflows/qwen-fk-path-spider-paired.yml, tests/test_schema_fk_bridge.py]
   workflow_dispatch:
 permissions:
   contents: read
