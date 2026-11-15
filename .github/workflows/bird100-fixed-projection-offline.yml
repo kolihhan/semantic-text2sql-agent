@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [experiment/bird100-fixed-projection-replay-20261115]
-    paths: [.github/workflows/bird100-fixed-projection-offline.yml]
+    paths: [.github/workflows/bird100-fixed-projection-offline.yml, evaluation/projection_bird100_replay.py, tests/test_projection_repair.py]
 permissions:
   contents: read
   actions: read
