@@ -1,0 +1,101 @@
+name: Original Qwen9B BIRD100 SQL semantic structure audit (read-only, no model)
+on:
+  workflow_dispatch:
+  push:
+    branches: [research/qwen9b-frozen100-offline-replay-20261115]
+    paths: [.github/QWEN9B_GOLD_SQL_STRUCTURE_START]
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  read-original-artifacts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          run-id: 37307108955
+          pattern: qwen9b-xiyan-style-shard-*
+          path: predictions
+          merge-multiple: true
+      - name: Verify same pinned original public BIRD source
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true -o source.json
+          echo 'ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb  source.json' | sha256sum -c -
+      - name: Freeze posthoc 100-case gold-vs-original-candidate structural diagnostics
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,re,glob,hashlib,collections
+          from pathlib import Path
+          src=json.loads(Path("source.json").read_text())
+          lookup={str(r.get("question_id") or r.get("id") or i):r for i,r in enumerate(src)}
+          paths=sorted(glob.glob("predictions/qwen9b-shard-*.json"))
+          assert len(paths)==4,paths
+          candidates=[]
+          for p in paths:
+              data=json.loads(Path(p).read_text())
+              assert data["model_digest"]=="56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90"
+              assert data["source_sha256"]=="0310b7ca2dfb6247234e2073f93e7a75106ee41ba55231f75d06d2ef68efe2ec"
+              assert len(data["cases"])==25
+              candidates+=data["cases"]
+          assert len(candidates)==100 and len({str(x["case_id"]) for x in candidates})==100
+          def features(sql):
+              s=str(sql or "")
+              patterns={
+                  "JOIN":r"\bJOIN\b","WHERE":r"\bWHERE\b","GROUP_BY":r"\bGROUP\s+BY\b",
+                  "ORDER_BY":r"\bORDER\s+BY\b","HAVING":r"\bHAVING\b","LIMIT":r"\bLIMIT\b",
+                  "DISTINCT":r"\bDISTINCT\b","COUNT":r"\bCOUNT\s*\(",
+                  "SUM":r"\bSUM\s*\(","AVG":r"\bAVG\s*\(","CASE":r"\bCASE\b",
+                  "UNION":r"\bUNION\b","EXCEPT":r"\bEXCEPT\b","NOT":r"\bNOT\b",
+                  "LIKE":r"\bLIKE\b","BETWEEN":r"\bBETWEEN\b"
+              }
+              return sorted(k for k,p in patterns.items() if re.search(p,s,re.I))
+          rows=[]
+          for c in candidates:
+              cid=str(c["case_id"])
+              source=lookup[cid]
+              assert source["db_id"]==c["database_id"] and source["question"]==c["question"]
+              gold=source["SQL"]
+              pred=c["guarded"]["final_sql"] or ""
+              gold_flags=features(gold)
+              pred_flags=features(pred)
+              rows.append({
+                  "case_id":cid,"db_id":c["database_id"],"question":c["question"],
+                  "guarded_status":c["guarded"]["status"],
+                  "guarded_ex":bool(c["guarded"]["official_ex"]),
+                  "gold_sql":gold,"original_guarded_sql":pred,
+                  "gold_features":gold_flags,"predicted_features":pred_flags,
+                  "missing_from_prediction":sorted(set(gold_flags)-set(pred_flags)),
+                  "extra_in_prediction":sorted(set(pred_flags)-set(gold_flags)),
+              })
+          wrong=[r for r in rows if not r["guarded_ex"]]
+          absent=collections.Counter(k for r in wrong for k in r["missing_from_prediction"])
+          extra=collections.Counter(k for r in wrong for k in r["extra_in_prediction"])
+          report={
+              "status":"posthoc_diagnostic_only",
+              "source_sha256":"ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb",
+              "model_digest":"56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+              "count":100,"wrong":len(wrong),
+              "missing_flags_in_wrong":dict(absent.most_common()),
+              "extra_flags_in_wrong":dict(extra.most_common()),
+              "read_only":True,
+              "gold_used_only_after_original_predictions":"yes",
+              "do_not_tune_on_frozen_cases":True,
+              "no_semantic_causality_claim":"SQL keyword flags are not SQL AST or semantic correctness",
+              "cases":rows
+          }
+          Path("qwen9b-original-gold-structure.json").write_text(json.dumps(report,ensure_ascii=False,indent=2)+"\n")
+          print("QWEN9B_POSTHOC_STRUCTURAL_DIAGNOSTIC",json.dumps({k:v for k,v in report.items() if k!="cases"},sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen9b-original-gold-structure-readonly
+          path: qwen9b-original-gold-structure.json
+          if-no-files-found: error
+          retention-days: 30
