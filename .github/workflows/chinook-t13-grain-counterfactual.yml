@@ -1,0 +1,36 @@
+name: PRO Chinook original-source SQL grain counterfactual (CPU no model)
+on:
+  push:
+    branches: [experiment/chinook-t13-grain-counterfactual-20261115]
+    paths: [.github/workflows/chinook-t13-grain-counterfactual.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  physical:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Check fixed SQL metamorphic sensitivity
+        run: |
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_audit_chinook_t13_grain_counterfactual.py
+      - name: Download physical original Chinook 1.4.5 script, verify Git blob
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 https://raw.githubusercontent.com/lerocha/chinook-database/v1.4.5/ChinookDatabase/DataSources/Chinook_Sqlite.sql -o Chinook_Sqlite.sql
+          test "$(git hash-object Chinook_Sqlite.sql)" = "3989874548c7be6156a49d3b37800c3ee9b2a6d1"
+          test -s Chinook_Sqlite.sql
+      - name: Execute Qwen9B frozen t13 wrong-grain and official reference on physical SQLite copies
+        run: |
+          python -m evaluation.audit_chinook_t13_grain_counterfactual --source-sql Chinook_Sqlite.sql --output chinook-t13-grain-result.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: chinook-t13-real-sql-grain-counterfactual
+          path: chinook-t13-grain-result.json
+          if-no-files-found: warn
