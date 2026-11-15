@@ -115,7 +115,21 @@ jobs:
           mkdir -p exported
           cleanup() { colab --auth=adc stop -s "$SESSION" >/dev/null 2>&1 || true; }
           trap cleanup EXIT
-          colab --auth=adc new -s "$SESSION" --gpu T4
+          # Colab /tun/m/assign can transiently respond HTTP 503 after a
+          # preceding T4 experiment; retry a bounded number of times only.
+          allocated=0
+          for attempt in 1 2 3; do
+            if colab --auth=adc new -s "$SESSION" --gpu T4; then
+              allocated=1
+              break
+            fi
+            echo "QWEN3_14B_COLAB_ASSIGNMENT_UNAVAILABLE attempt=$attempt"
+            if [ "$attempt" -lt 3 ]; then sleep 45; fi
+          done
+          if [ "$allocated" -ne 1 ]; then
+            echo "QWEN3_14B_T4_ALLOCATION_FAILED_NO_MODEL_INFERENCE"
+            exit 75
+          fi
           echo "QWEN3_14B_BIRD_SQL_REAL_COLAB_T4_ALLOCATED"
           colab --auth=adc upload -s "$SESSION" inputs/fresh-native-batched-bird12-manifest.json /content/qwen-native-batched-fresh-bird12-cohort.json
           colab --auth=adc upload -s "$SESSION" inputs/native-batched-bird12-final.json /content/qwen-native-batched-bird12-final.json
