@@ -1,0 +1,131 @@
+name: Qwen9B candidate diversity vs execution consensus on 10 fresh Spider DBs
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/qwen9b-candidate-consensus-spider-shift20-20261115]
+    paths: [.github/QWEN_CONSENSUS_RUN_START]
+permissions:
+  contents: read
+env:
+  SPIDER_SHA256: 00636695dabed6b5f4b8328a16b13e069a2f16591d5efcce57660669c85b121b
+
+jobs:
+  source-and-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Run preregistered Qwen ensemble selector/score tests
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_qwen_consensus_spider20.py
+      - name: Physical source gate, exclude prior 100 + typed-IR 10 databases
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/spider
+          curl -fL --retry 3 --retry-delay 5 https://huggingface.co/datasets/HAL-9001/spider-databases/resolve/main/spider_data.zip -o /tmp/spider/source.zip
+          echo "$SPIDER_SHA256  /tmp/spider/source.zip" | sha256sum -c -
+          unzip -q /tmp/spider/source.zip -d /tmp/spider/extract
+          export TRAIN_JSON="$(find /tmp/spider/extract -type f -name train_spider.json ! -path '*/__MACOSX/*' | head -n1)"
+          export DEV_JSON="$(find /tmp/spider/extract -type f -name dev.json ! -path '*/__MACOSX/*' | head -n1)"
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          from evaluation.qwen_consensus_spider20 import select_cases
+          train=json.loads(Path(os.environ["TRAIN_JSON"]).read_text())
+          dev=json.loads(Path(os.environ["DEV_JSON"]).read_text())
+          selected=select_cases(train,dev)
+          root=Path(os.environ["TRAIN_JSON"]).parent/"database"
+          assert len(selected)==20 and len({s["database_id"] for s in selected})==10
+          assert all((root/s["database_id"]/(s["database_id"]+".sqlite")).is_file() for s in selected)
+          assert all("query" not in row and "sql" not in row for row in selected)
+          print("QWEN_CONSENSUS_SOURCE_DISJOINT_PASS",{"train":len(train),"dev":len(dev),"dbs":10,"cases":20},flush=True)
+          PY
+
+  paired:
+    needs: source-and-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[dev]'
+      - name: Verify same frozen public Spider archive (no benchmark selection)
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/spider
+          curl -fL --retry 3 --retry-delay 5 https://huggingface.co/datasets/HAL-9001/spider-databases/resolve/main/spider_data.zip -o /tmp/spider/source.zip
+          echo "$SPIDER_SHA256  /tmp/spider/source.zip" | sha256sum -c -
+          unzip -q /tmp/spider/source.zip -d /tmp/spider/extract
+          TRAIN_JSON="$(find /tmp/spider/extract -type f -name train_spider.json ! -path '*/__MACOSX/*' | head -n1)"
+          DEV_JSON="$(find /tmp/spider/extract -type f -name dev.json ! -path '*/__MACOSX/*' | head -n1)"
+          DB_ROOT="$(dirname "$TRAIN_JSON")/database"
+          test -d "$DB_ROOT"
+          echo "TRAIN_JSON=$TRAIN_JSON" >> "$GITHUB_ENV"
+          echo "DEV_JSON=$DEV_JSON" >> "$GITHUB_ENV"
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Load ONLY original pinned Qwen3.5-9B via Ollama
+        run: |
+          set -euo pipefail
+          curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          OLLAMA_MAX_LOADED_MODELS=1 ollama serve > "$RUNNER_TEMP/ollama-consensus.log" 2>&1 &
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break
+            sleep 1
+          done
+          ollama pull qwen3.5:9b-q4_K_M
+      - name: Generate 1 deterministic and 3 sampled Qwen candidates before gold scoring
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python -m evaluation.qwen_consensus_spider20 \
+            --train "$TRAIN_JSON" --dev "$DEV_JSON" --db-root "$DB_ROOT" \
+            --shard "$SHARD" --output "qwen-consensus-shard-$SHARD.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qwen-consensus-shard-${{ matrix.shard }}
+          path: qwen-consensus-shard-${{ matrix.shard }}.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  aggregate:
+    needs: paired
+    if: ${{ always() && needs.paired.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[dev]'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: qwen-consensus-shard-*
+          path: shards
+          merge-multiple: true
+      - name: Fail-closed full 20-case paired EX/bag, candidate reachability and latency
+        run: |
+          set -euo pipefail
+          python -m evaluation.qwen_consensus_spider20 \
+            --inputs shards/qwen-consensus-shard-0.json shards/qwen-consensus-shard-1.json \
+                     shards/qwen-consensus-shard-2.json shards/qwen-consensus-shard-3.json \
+                     shards/qwen-consensus-shard-4.json \
+            --output qwen-consensus-final.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen-consensus-spider20-final
+          path: qwen-consensus-final.json
+          if-no-files-found: error
+          retention-days: 30
