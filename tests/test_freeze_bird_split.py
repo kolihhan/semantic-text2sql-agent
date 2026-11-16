@@ -57,3 +57,15 @@ def test_historical_ids_required_in_source():
     with pytest.raises(ValueError, match="historical IDs absent"):
         freeze(rows, ["999", "1"], labels, "src", "old", "level",
                dev_size=15, holdout_size=8, historical_expected=2)
+
+
+def test_excludes_entire_duplicate_question_group_before_freeze():
+    rows, labels = fixtures()
+    # IDs 22 and 25 share db_1. The duplicate was never selected using SQL/EX.
+    rows[25]["question"] = rows[22]["question"]
+    result = freeze(rows, ["0", "1"], labels, "src", "old", "level",
+                    dev_size=15, holdout_size=8, historical_expected=2)
+    chosen = set(result["dev_case_ids"]) | set(result["holdout_case_ids"])
+    assert "22" not in chosen and "25" not in chosen
+    assert result["excluded_exact_duplicate_question_groups"] == 1
+    assert result["excluded_exact_duplicate_question_ids"] == 2
