@@ -1,0 +1,58 @@
+name: PRO freeze new BIRD TRAIN physical FK32 before any Qwen inference
+
+on:
+  push:
+    branches: [experiment/bird-implicit-fk-grounding-v1-20261117]
+    paths:
+      - scripts/freeze_birdtrain_fk32.py
+      - .github/workflows/pro-freeze-birdtrain-fk32.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  source-only-freeze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+      - name: Install unchanged original source verifier
+        run: |
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_implicit_fk_grounding.py
+      - name: Pinned original BIRD TRAIN / DEV for ID exclusion only
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 https://huggingface.co/datasets/Emulated-Inc/text-to-sql-with-evidence-training-pool/resolve/cd2c4ea321075aa53ce7dfe52deaaffa505d046a/raw/bird/train.json -o train.json
+          echo "cd5884489dffd7c76d73509b396bd919fbe8b486efbc4ba2f48f89460de7d69f  train.json" | sha256sum -c -
+          curl -fsSL --retry 5 "https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true" -o dev.json
+          echo "ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb  dev.json" | sha256sum -c -
+      - name: Recover immutable 242/64 source population to exclude their 20 databases
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          run-id: 43888747753
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          name: qwen9b-birdtrain-db-disjoint-original-sql-sft-candidates
+          path: inputs
+      - name: Freeze 4 novel physical DBs x8 cases based ONLY on FK presence and verified publisher SQL
+        run: |
+          set -euo pipefail
+          cp inputs/train.jsonl inputs/prior_train.jsonl
+          cp inputs/validation.jsonl inputs/prior_validation.jsonl
+          python -m scripts.freeze_birdtrain_fk32 \
+            --train train.json --dev dev.json \
+            --prior inputs/source-verification.json \
+            --work original-source-db \
+            --out inputs/fk32
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen9b-fk-correction-prospective-source32-frozen
+          path: inputs/fk32/
+          if-no-files-found: error
+          retention-days: 30
