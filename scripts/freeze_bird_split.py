@@ -91,7 +91,7 @@ def freeze(
     if not isinstance(difficulties, dict):
         raise ValueError("difficulty map must be a dictionary mapping case ID to official difficulty")
     ids = {}
-    semantic_keys = set()
+    semantic_key_groups: dict[tuple[str, str], list[str]] = defaultdict(list)
     for i, row in enumerate(rows):
         cid = case_id(row, i)
         if cid in ids:
@@ -99,18 +99,24 @@ def freeze(
         if not row.get("db_id") or not row.get("question"):
             raise ValueError(f"row {cid} lacks db_id or question")
         k = (str(row["db_id"]), " ".join(str(row["question"]).split()).casefold())
-        if k in semantic_keys:
-            raise ValueError("repeated exact normalized question in one database; split is unsafe")
-        semantic_keys.add(k)
+        semantic_key_groups[k].append(cid)
         ids[cid] = row
     missing = set(history) - ids.keys()
     if missing:
         raise ValueError(f"historical IDs absent from source: {len(missing)}")
-    if dev_size + holdout_size > len(ids) - len(history):
-        raise ValueError("not enough novel DEV questions to meet requested sizes")
+    # Freeze policy: remove ALL repeated exact within-database questions from BOTH
+    # partitions. Group assignment could also be safe, but removing them avoids
+    # dependent paraphrase weights and any overlap with a historical ID. This
+    # rule uses only question text + DB; never gold SQL, model outcomes or labels.
+    duplicate_groups = [members for members in semantic_key_groups.values() if len(members) > 1]
+    duplicate_ids = {cid for members in duplicate_groups for cid in members}
+    historical_set = set(history)
+    excluded_ids = duplicate_ids | historical_set
+    if dev_size + holdout_size > len(ids) - len(excluded_ids):
+        raise ValueError("not enough non-duplicate novel DEV questions to meet requested sizes")
     groups: dict[tuple[str, str], list[str]] = defaultdict(list)
     for cid, row in ids.items():
-        if cid in history:
+        if cid in excluded_ids:
             continue
         value = difficulties.get(cid, row.get("difficulty"))
         if not isinstance(value, str) or not value.strip():
@@ -125,7 +131,7 @@ def freeze(
     hold_ids = sorted(cid for k in groups for cid in groups[k][dev_alloc[k]:dev_alloc[k] + hold_alloc[k]])
     assert len(dev_ids) == dev_size and len(hold_ids) == holdout_size
     assert not (set(dev_ids) & set(hold_ids))
-    assert not ((set(dev_ids) | set(hold_ids)) & set(history))
+    assert not ((set(dev_ids) | set(hold_ids)) & set(excluded_ids))
     db_dev = Counter(str(ids[cid]["db_id"]) for cid in dev_ids)
     db_hold = Counter(str(ids[cid]["db_id"]) for cid in hold_ids)
     return {
@@ -137,6 +143,9 @@ def freeze(
         "seed": seed,
         "source_rows": len(rows),
         "excluded_historical_count": len(history),
+        "excluded_exact_duplicate_question_groups": len(duplicate_groups),
+        "excluded_exact_duplicate_question_ids": len(duplicate_ids - historical_set),
+        "eligible_novel_rows": len(ids) - len(excluded_ids),
         "dev_size": dev_size,
         "holdout_size": holdout_size,
         "dev_case_ids": dev_ids,
