@@ -1,0 +1,55 @@
+name: Recover frozen Qwen9B literal-grounding BIRD40 paired EX
+on:
+  push:
+    branches: [fix/value-grounded-semantic-filter-20261113]
+    paths:
+      - .github/workflows/qwen9b-literal-aggregate-recovery.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  aggregate-existing-shards:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout same experimental code
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+      - name: Install project for aggregate imports
+        run: python -m pip install -e ".[dev]"
+      - name: Download immutable completed BIRD40 model outputs only
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          run-id: 43395083414
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          pattern: literal-paired-shard-*
+          merge-multiple: true
+          path: shards
+      - name: Aggregate frozen paired outputs without any new model inference
+        run: |
+          set -euo pipefail
+          for i in 0 1 2 3; do test -s "shards/literal-paired-shard-$i.json"; done
+          python -m evaluation.literal_grounding_paired \
+            --inputs shards/literal-paired-shard-0.json shards/literal-paired-shard-1.json \
+                     shards/literal-paired-shard-2.json shards/literal-paired-shard-3.json \
+            --output qwen9b-literal-paired40.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          d=json.loads(Path("qwen9b-literal-paired40.json").read_text())
+          assert d["sample_size"]==40 and len(d["cases"])==40
+          assert d["net_gain"]==d["wrong_to_correct"]-d["correct_to_wrong"]
+          print("RECOVERED_FROZEN_QWEN9B_SEMANTIC_EX",json.dumps({k:v for k,v in d.items() if k!="cases"},sort_keys=True))
+          PY
+      - name: Persist paired evaluation result
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: qwen9b-literal-paired40-recovered
+          path: qwen9b-literal-paired40.json
+          retention-days: 30
