@@ -22,6 +22,8 @@ def test_generic_entity_value_linking_queries_only_read_only_source_sqlite(tmp_p
     assert {"value":"India","table":"country","column":"country"} in found
     assert not any(x["column"]=="district" and x["value"]=="India" for x in found)
     assert found and "country.country" in evidence_string(found)
+    assert "\n- country.country" in evidence_string(found)
+    assert "\\n" not in evidence_string(found)
     with sqlite3.connect(db) as con:
         assert con.execute("SELECT COUNT(*) FROM country").fetchone()[0]==1
 
