@@ -1,0 +1,70 @@
+name: Historical Qwen9B failure structure diagnostic (CPU only)
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/qwen9b-failure-diagnostic.yml"
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pinned BIRD original DEV source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp-historic
+          curl -fL --retry 3 \
+            "https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true" \
+            -o .tmp-historic/bird_dev.json
+          echo "ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb  .tmp-historic/bird_dev.json" | sha256sum -c -
+      - name: Download original unchanged Qwen9B shards from run 37307108955
+        uses: actions/download-artifact@v4
+        with:
+          run-id: 37307108955
+          repository: ${{ github.repository }}
+          github-token: ${{ github.token }}
+          pattern: qwen9b-xiyan-style-shard-*
+          merge-multiple: true
+          path: .tmp-historic/shards
+      - name: Calculate post-hoc noncausal structural flags
+        shell: bash
+        run: |
+          set -euo pipefail
+          find .tmp-historic/shards -name 'qwen9b-shard-*.json' -print | sort
+          test "$(find .tmp-historic/shards -name 'qwen9b-shard-*.json' | wc -l)" -eq 4
+          python scripts/analyze_qwen9b_failures.py \
+            --source .tmp-historic/bird_dev.json \
+            --shard .tmp-historic/shards/qwen9b-shard-0.json \
+            --shard .tmp-historic/shards/qwen9b-shard-1.json \
+            --shard .tmp-historic/shards/qwen9b-shard-2.json \
+            --shard .tmp-historic/shards/qwen9b-shard-3.json \
+            --output .tmp-historic/qwen9b-frozen100-diagnostic.json
+      - name: Upload label-free diagnostic (no gold SQL or question text)
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen9b-frozen100-posthoc-noncausal-diagnostic
+          path: .tmp-historic/qwen9b-frozen100-diagnostic.json
+          if-no-files-found: error
+      - name: Commit historical diagnostic on this isolated research branch only
+        if: github.ref_name == 'research/qwen9b-failure-taxonomy-20261116'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          cp .tmp-historic/qwen9b-frozen100-diagnostic.json evidence/qwen9b-frozen100-posthoc-diagnostic.json
+          git add evidence/qwen9b-frozen100-posthoc-diagnostic.json
+          if git diff --cached --quiet; then
+            echo "No change to immutable diagnostic"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "evidence: audit Qwen9B historical executable-but-wrong structural flags"
+            git push origin "HEAD:${{ github.ref_name }}"
+          fi

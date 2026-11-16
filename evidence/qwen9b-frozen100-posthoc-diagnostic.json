@@ -1,0 +1,968 @@
+{
+  "by_database": {
+    "california_schools": {
+      "executed_but_ex_wrong": 4,
+      "execution_failed": 3,
+      "total": 7
+    },
+    "card_games": {
+      "correct": 6,
+      "executed_but_ex_wrong": 8,
+      "total": 14
+    },
+    "codebase_community": {
+      "correct": 5,
+      "executed_but_ex_wrong": 6,
+      "execution_failed": 1,
+      "total": 12
+    },
+    "debit_card_specializing": {
+      "correct": 1,
+      "executed_but_ex_wrong": 2,
+      "total": 3
+    },
+    "european_football_2": {
+      "correct": 6,
+      "executed_but_ex_wrong": 4,
+      "total": 10
+    },
+    "financial": {
+      "correct": 1,
+      "executed_but_ex_wrong": 4,
+      "execution_failed": 2,
+      "total": 7
+    },
+    "formula_1": {
+      "correct": 5,
+      "executed_but_ex_wrong": 5,
+      "execution_failed": 1,
+      "total": 11
+    },
+    "student_club": {
+      "correct": 4,
+      "executed_but_ex_wrong": 3,
+      "total": 7
+    },
+    "superhero": {
+      "correct": 5,
+      "executed_but_ex_wrong": 3,
+      "total": 8
+    },
+    "thrombosis_prediction": {
+      "correct": 5,
+      "executed_but_ex_wrong": 6,
+      "execution_failed": 2,
+      "total": 13
+    },
+    "toxicology": {
+      "correct": 1,
+      "executed_but_ex_wrong": 7,
+      "total": 8
+    }
+  },
+  "candidate_noncausal_difference_counts_on_52": {
+    "evidence_or_external_knowledge_unknown": 52,
+    "join_or_aggregation": 26,
+    "no_structural_difference_detected": 8,
+    "result_shape": 19,
+    "schema_linking": 18,
+    "value_matching": 17
+  },
+  "causal_error_breakdown": "NOT_ESTABLISHED",
+  "counts": {
+    "direct_correct": 33,
+    "executed_but_ex_wrong": 52,
+    "execution_failed": 9,
+    "guarded_correct": 39,
+    "guarded_executable": 91,
+    "total": 100
+  },
+  "human_label_agreement": "NOT_MEASURED",
+  "invalid_historical_shards": [
+    "qwen9b-shard-3.json"
+  ],
+  "new_holdout_uses": 0,
+  "new_model_calls": 0,
+  "original_model_digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+  "review_queue": [
+    {
+      "candidate_difference_flags": {
+        "execution_failure": true
+      },
+      "case_id": "8",
+      "db_id": "california_schools",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": false,
+        "schema_linking": false,
+        "value_matching": false
+      },
+      "case_id": "28",
+      "db_id": "california_schools",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": false,
+        "schema_linking": false,
+        "value_matching": true
+      },
+      "case_id": "38",
+      "db_id": "california_schools",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "execution_failure": true
+      },
+      "case_id": "60",
+      "db_id": "california_schools",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "execution_failure": true
+      },
+      "case_id": "69",
+      "db_id": "california_schools",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": true,
+        "schema_linking": true,
+        "value_matching": true
+      },
+      "case_id": "77",
+      "db_id": "california_schools",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": true,
+        "schema_linking": true,
+        "value_matching": false
+      },
+      "case_id": "84",
+      "db_id": "california_schools",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": false,
+        "schema_linking": false,
+        "value_matching": false
+      },
+      "case_id": "93",
+      "db_id": "financial",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": true,
+        "schema_linking": true,
+        "value_matching": true
+      },
+      "case_id": "96",
+      "db_id": "financial",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "execution_failure": true
+      },
+      "case_id": "111",
+      "db_id": "financial",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "execution_failure": true
+      },
+      "case_id": "121",
+      "db_id": "financial",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": true,
+        "schema_linking": false,
+        "value_matching": false
+      },
+      "case_id": "131",
+      "db_id": "financial",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": true,
+        "schema_linking": false,
+        "value_matching": true
+      },
+      "case_id": "169",
+      "db_id": "financial",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": false,
+        "schema_linking": true,
+        "value_matching": false
+      },
+      "case_id": "217",
+      "db_id": "toxicology",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": false,
+        "schema_linking": false,
+        "value_matching": false
+      },
+      "case_id": "287",
+      "db_id": "toxicology",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": false,
+        "schema_linking": false,
+        "value_matching": false
+      },
+      "case_id": "298",
+      "db_id": "toxicology",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": false,
+        "schema_linking": false,
+        "value_matching": true
+      },
+      "case_id": "300",
+      "db_id": "toxicology",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": true,
+        "schema_linking": true,
+        "value_matching": false
+      },
+      "case_id": "305",
+      "db_id": "toxicology",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": false,
+        "schema_linking": true,
+        "value_matching": false
+      },
+      "case_id": "312",
+      "db_id": "toxicology",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": false,
+        "schema_linking": false,
+        "value_matching": false
+      },
+      "case_id": "325",
+      "db_id": "toxicology",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": true,
+        "schema_linking": false,
+        "value_matching": false
+      },
+      "case_id": "348",
+      "db_id": "card_games",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": true,
+        "schema_linking": false,
+        "value_matching": true
+      },
+      "case_id": "421",
+      "db_id": "card_games",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": true,
+        "schema_linking": true,
+        "value_matching": false
+      },
+      "case_id": "430",
+      "db_id": "card_games",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": false,
+        "schema_linking": false,
+        "value_matching": false
+      },
+      "case_id": "444",
+      "db_id": "card_games",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": false,
+        "schema_linking": false,
+        "value_matching": false
+      },
+      "case_id": "455",
+      "db_id": "card_games",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": false,
+        "schema_linking": false,
+        "value_matching": false
+      },
+      "case_id": "476",
+      "db_id": "card_games",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": false,
+        "schema_linking": false,
+        "value_matching": false
+      },
+      "case_id": "513",
+      "db_id": "card_games",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": true,
+        "schema_linking": false,
+        "value_matching": true
+      },
+      "case_id": "515",
+      "db_id": "card_games",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": false,
+        "schema_linking": true,
+        "value_matching": false
+      },
+      "case_id": "546",
+      "db_id": "codebase_community",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": false,
+        "schema_linking": false,
+        "value_matching": true
+      },
+      "case_id": "569",
+      "db_id": "codebase_community",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": true,
+        "schema_linking": false,
+        "value_matching": false
+      },
+      "case_id": "586",
+      "db_id": "codebase_community",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "execution_failure": true
+      },
+      "case_id": "634",
+      "db_id": "codebase_community",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": false,
+        "schema_linking": true,
+        "value_matching": false
+      },
+      "case_id": "656",
+      "db_id": "codebase_community",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": false,
+        "schema_linking": true,
+        "value_matching": false
+      },
+      "case_id": "680",
+      "db_id": "codebase_community",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": true,
+        "schema_linking": false,
+        "value_matching": false
+      },
+      "case_id": "714",
+      "db_id": "codebase_community",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": true,
+        "schema_linking": false,
+        "value_matching": false
+      },
+      "case_id": "797",
+      "db_id": "superhero",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": true,
+        "schema_linking": false,
+        "value_matching": false
+      },
+      "case_id": "812",
+      "db_id": "superhero",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": false,
+        "schema_linking": true,
+        "value_matching": true
+      },
+      "case_id": "838",
+      "db_id": "superhero",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "execution_failure": true
+      },
+      "case_id": "884",
+      "db_id": "formula_1",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": true,
+        "schema_linking": false,
+        "value_matching": true
+      },
+      "case_id": "891",
+      "db_id": "formula_1",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": false,
+        "schema_linking": true,
+        "value_matching": false
+      },
+      "case_id": "952",
+      "db_id": "formula_1",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": false,
+        "schema_linking": true,
+        "value_matching": false
+      },
+      "case_id": "973",
+      "db_id": "formula_1",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": false,
+        "schema_linking": false,
+        "value_matching": false
+      },
+      "case_id": "994",
+      "db_id": "formula_1",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": false,
+        "schema_linking": true,
+        "value_matching": true
+      },
+      "case_id": "1017",
+      "db_id": "formula_1",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": false,
+        "schema_linking": false,
+        "value_matching": true
+      },
+      "case_id": "1061",
+      "db_id": "european_football_2",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": false,
+        "schema_linking": true,
+        "value_matching": false
+      },
+      "case_id": "1130",
+      "db_id": "european_football_2",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": false,
+        "schema_linking": false,
+        "value_matching": true
+      },
+      "case_id": "1133",
+      "db_id": "european_football_2",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": false,
+        "schema_linking": true,
+        "value_matching": true
+      },
+      "case_id": "1142",
+      "db_id": "european_football_2",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": true,
+        "schema_linking": false,
+        "value_matching": true
+      },
+      "case_id": "1179",
+      "db_id": "thrombosis_prediction",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": true,
+        "schema_linking": false,
+        "value_matching": false
+      },
+      "case_id": "1196",
+      "db_id": "thrombosis_prediction",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "execution_failure": true
+      },
+      "case_id": "1197",
+      "db_id": "thrombosis_prediction",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "execution_failure": true
+      },
+      "case_id": "1226",
+      "db_id": "thrombosis_prediction",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": false,
+        "schema_linking": false,
+        "value_matching": true
+      },
+      "case_id": "1243",
+      "db_id": "thrombosis_prediction",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": false,
+        "schema_linking": true,
+        "value_matching": false
+      },
+      "case_id": "1255",
+      "db_id": "thrombosis_prediction",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": false,
+        "schema_linking": false,
+        "value_matching": false
+      },
+      "case_id": "1299",
+      "db_id": "thrombosis_prediction",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": false,
+        "schema_linking": true,
+        "value_matching": false
+      },
+      "case_id": "1308",
+      "db_id": "thrombosis_prediction",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": true,
+        "schema_linking": false,
+        "value_matching": false
+      },
+      "case_id": "1366",
+      "db_id": "student_club",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": true,
+        "schema_linking": false,
+        "value_matching": false
+      },
+      "case_id": "1396",
+      "db_id": "student_club",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": false,
+        "schema_linking": false,
+        "value_matching": false
+      },
+      "case_id": "1438",
+      "db_id": "student_club",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": false,
+        "result_shape": false,
+        "schema_linking": false,
+        "value_matching": true
+      },
+      "case_id": "1485",
+      "db_id": "debit_card_specializing",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    },
+    {
+      "candidate_difference_flags": {
+        "evidence_or_external_knowledge": null,
+        "execution_failure": false,
+        "join_or_aggregation": true,
+        "result_shape": false,
+        "schema_linking": false,
+        "value_matching": false
+      },
+      "case_id": "1490",
+      "db_id": "debit_card_specializing",
+      "human_agreement": "NOT_MEASURED",
+      "primary_error_type": "UNREVIEWED",
+      "requires_manual_primary_label": true
+    }
+  ],
+  "shard_sha256": {
+    "qwen9b-shard-0.json": "e1c70b24e5470d5721639b78ac8e38e8b67a7960b94550d171131ebaea97109b",
+    "qwen9b-shard-1.json": "d3a4f28767e51c3b72b6c6435cbd979bfbe923a8d39cd5cbbf55d6466d5ad100",
+    "qwen9b-shard-2.json": "88a19d94447d7cfdc6e0ce8c85a4862cf9714c182cec459e1196579728b7769e",
+    "qwen9b-shard-3.json": "89e685a9e0a4b9e10144db25a6aa893b21d36186e2fc902dd8a70c376ccfac29"
+  },
+  "source_sha256": "ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb",
+  "status": "DIAGNOSTIC_ONLY_NOT_NEW_SCORE",
+  "warning": "SQL string/shallow-structure differences are not causal labels; equivalent SQL and label errors can confound them. Preserve original EX labels."
+}
