@@ -15,7 +15,7 @@ from hashlib import sha256
 import json
 from pathlib import Path
 
-from evaluation.physical_value_grounding import physical_value_columns,evidence_string
+from evaluation.physical_value_grounding import candidate_literals,physical_value_columns,evidence_string
 from evaluation.schema_context import select_schema_context
 from scripts.prepare_birdtrain_qwen9b_sft_source import (
     TRAIN_SHA,DEV_SHA,load_checked,fetch_manifest,fetch_database,
@@ -79,8 +79,9 @@ def freeze(train_file:Path,dev_file:Path,prior_train:Path,
         physical=fetch_database(dbid,manifest[dbid],root)
         catalog=DatabaseCatalog.from_sqlite(physical)
         accepted=[]
-        for idx,row in sorted(by_db[dbid],key=lambda x:keyed("row",x[0])):
+        for idx,row in sorted(by_db[dbid],key=lambda x:keyed("row",x[0]))[:35]:
             question=str(row["question"])
+            if not candidate_literals(question):continue
             source_sql=str(row.get("SQL") or "")
             if validate_gold_sql(physical,source_sql) is not None:
                 continue
