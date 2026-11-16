@@ -5,7 +5,7 @@
 - **Hypothesis:** current semantic/EX confusion and repeated DEV exposure can make apparent gains unreliable.
 - **Predeclared outcome:** accept only an explicit semantic rubric + evaluator implementation + blinded double annotation agreement + repeated-score variance, and an immutable input/SHA-backed question-disjoint BIRD500/300 manifest with original 100 excluded. If inputs missing: **BLOCKED / insufficient evidence**, never pass by skipping.
 - **Cost estimate:** 0 GPU-hours, 0 model calls; human annotation time needed for any subjective semantic rubric (estimate only after rubric agreed).
-- **Result [Verified: Actions `43833618248`]:** BIRD 1534 source/history/difficulty preflight and duplicate-safe DEV500/HOLDOUT300 freeze **PASS**; two duplicate questions excluded; zero overlapping/new evaluated IDs; **independent semantic rubric and source-independent validation still BLOCKED**. No model calls, no correctness promotion.
+- **Result [Verified: Actions `43834589773`]:** BIRD 1534 source/history/difficulty preflight and exposure-audited DEV500/HOLDOUT300 **V2 PASS**; 100 historical IDs + 126 additional prior public cohort IDs + 2 exact duplicate questions excluded, no known-previous overlap; zero new model evaluations. V1 had 23 old-pilot overlaps in holdout and is quarantined. **Independent semantic rubric, complete historical exposure reconstruction and source-independent validation remain BLOCKED**. No model calls, no correctness promotion.
 
 ## M1 — failure taxonomy on *already exposed* frozen100
 
