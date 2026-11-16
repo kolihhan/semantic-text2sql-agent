@@ -174,6 +174,9 @@ def generate_pair(source,root,manifest,shard):
         ok,why=evaluated_rows(database,str(row["SQL"]),record["arms"])
         record["reference_scorable"]=ok
         record["reference_error"]=why
+        # Never retain raw result rows in the stored evaluation artifact.
+        for arm in record["arms"].values():
+            arm.pop("_result",None)
     return {
         "protocol":PROTOCOL,"shard":shard,
         "model_digest":MODEL_DIGEST,"cohort_sha256":frozen["cohort_sha256"],
