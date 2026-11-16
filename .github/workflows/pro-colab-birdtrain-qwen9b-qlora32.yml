@@ -1,0 +1,159 @@
+name: PRO Real BIRD TRAIN-only Qwen3.5-9B QLoRA32 via Colab T4
+
+on:
+  push:
+    branches: [experiment/qwen9b-sql-qlora32-train20261116]
+    paths:
+      - scripts/colab_sql_qwen9b_qlora32.py
+      - .github/workflows/pro-colab-birdtrain-qwen9b-qlora32.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: pro-qwen9b-sql-birdtrain-32-gpu-20261116
+  cancel-in-progress: false
+
+jobs:
+  original-sql-sft:
+    runs-on: ubuntu-latest
+    timeout-minutes: 230
+    env:
+      COLAB_ADC_JSON: ${{ secrets.COLAB_ADC_JSON }}
+      COLAB_OAUTH_JSON: ${{ secrets.COLAB_OAUTH_JSON }}
+      COLAB_CREDENTIALS_JSON: ${{ secrets.COLAB_CREDENTIALS_JSON }}
+      COLAB_TOKEN: ${{ secrets.COLAB_TOKEN }}
+      HF_HUB_DISABLE_TELEMETRY: '1'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Recover frozen original BIRD TRAIN-only source
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          run-id: 43888747753
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          name: qwen9b-birdtrain-db-disjoint-original-sql-sft-candidates
+          path: inputs
+      - name: CPU preflight real source, split and script syntax
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/colab_sql_qwen9b_qlora32.py
+          echo "b6851fb0f2b5027833aff45a0b5e01326359b245be1c812edc66986d0df1d402  inputs/train.jsonl" | sha256sum -c -
+          echo "cc112305bc9de33a03cea704f2edecfdfb45e62cc953ae498cea27fbed93b506  inputs/validation.jsonl" | sha256sum -c -
+          python - <<'PY'
+          from pathlib import Path
+          from collections import Counter
+          import json
+          j=json.loads(Path('inputs/source-verification.json').read_text())
+          assert j['status']=='SOURCE_VERIFIED_NO_MODEL_TRAINING'
+          assert j['train_n']==242 and j['validation_n']==64
+          assert j['train_db_n']==16 and j['validation_db_n']==4
+          assert j['dev_db_overlap']==0 and j['train_valid_db_overlap']==0
+          assert j['heldout_bird_dev_v2_accessed'] is False
+          train=[json.loads(x) for x in Path('inputs/train.jsonl').read_text().splitlines()]
+          valid=[json.loads(x) for x in Path('inputs/validation.jsonl').read_text().splitlines()]
+          assert len({x['source_db_id'] for x in train})==16
+          assert len({x['source_db_id'] for x in valid})==4
+          assert not ({x['source_db_id'] for x in train} & {x['source_db_id'] for x in valid})
+          assert len({x['source_index'] for x in train+valid})==306
+          print('QWEN9B_SOURCE_PHYSICAL_SQL_TRAIN_ONLY_242_CONFIRMED')
+          PY
+      - name: Authenticate existing user-owned Google Colab ADC refresh credentials
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'google-auth>=2.20' 'requests>=2.31' 'google-colab-cli==0.8.0'
+          python - <<'PY'
+          import os,json,pathlib
+          import google.auth
+          from google.auth.transport.requests import Request
+          credentials=None
+          for key in ('COLAB_ADC_JSON','COLAB_OAUTH_JSON','COLAB_CREDENTIALS_JSON','COLAB_TOKEN'):
+              value=os.environ.get(key,'').strip()
+              if not value:continue
+              try:payload=json.loads(value)
+              except (TypeError,ValueError):continue
+              if not isinstance(payload,dict):continue
+              if all(payload.get(k) for k in ('client_id','client_secret','refresh_token')):
+                  credentials={**payload,'type':'authorized_user'}
+                  break
+              if payload.get('type')=='service_account' and all(payload.get(k) for k in ('private_key','client_email')):
+                  credentials=payload
+                  break
+          if credentials is None:raise RuntimeError('NO_AUTHORIZED_COLAB_ADC_REFRESH_SECRET')
+          path=pathlib.Path(os.environ['RUNNER_TEMP'])/'sql-qlora-colab-adc.json'
+          path.write_text(json.dumps(credentials));path.chmod(0o600)
+          auth,_=google.auth.load_credentials_from_file(str(path))
+          auth.refresh(Request())
+          if not auth.valid:raise RuntimeError('INVALID_COLAB_CREDENTIALS')
+          with open(os.environ['GITHUB_ENV'],'a') as f:
+              f.write('GOOGLE_APPLICATION_CREDENTIALS='+str(path)+'\n')
+          print('SQL_QLORA_EXISTING_COLAB_AUTHENTICATED')
+          PY
+      - name: Avoid hijacking other Colab work; wait for one free GPU slot
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 45); do
+            usage="$(timeout 100 colab --auth=adc usage || true)"
+            active="$(printf '%s\n' "$usage" | awk '/^Active assignments:/ {print $3}')"
+            if [[ "$active" == "0" ]]; then
+              echo "SQL_QLORA_COLAB_GPU_SLOT_AVAILABLE"
+              exit 0
+            fi
+            echo "SQL_QLORA_GPU_SLOT_BUSY_OR_UNDETERMINED_CHECK=$attempt"
+            sleep 40
+          done
+          echo "SQL_QLORA_STOP_NO_AVAILABLE_COLAB_SLOT"
+          exit 75
+      - name: Physical T4 Qwen3.5-9B QLoRA32, recover checkpoint, verify optimizer
+        shell: bash
+        run: |
+          set -euo pipefail
+          SESSION="sqlqwen9b32-$GITHUB_RUN_ID"
+          mkdir -p exported
+          cleanup() { colab --auth=adc stop -s "$SESSION" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          colab --auth=adc new -s "$SESSION" --gpu T4
+          echo "SQL_QLORA32_PHYSICAL_T4_ASSIGNED"
+          colab --auth=adc upload -s "$SESSION" inputs/train.jsonl /content/birdtrain-original-train242.jsonl
+          set +e
+          set -o pipefail
+          colab --auth=adc exec -s "$SESSION" --timeout 6000 -f scripts/colab_sql_qwen9b_qlora32.py 2>&1 | tee "$RUNNER_TEMP/sql-qlora-remote-log.txt"
+          RC=$?
+          set -e
+          colab --auth=adc download -s "$SESSION" /content/sql-qwen9b-qlora32-checkpoint.zip exported/sql-qwen9b-qlora32-checkpoint.zip || true
+          colab --auth=adc download -s "$SESSION" /content/sql-qwen9b-qlora32-proof.json exported/sql-qwen9b-qlora32-proof.json || true
+          colab --auth=adc log -s "$SESSION" -o exported/sql-qwen9b-qlora32-runtime.ipynb || true
+          if [ "$RC" -ne 0 ]; then
+            echo "SQL_QLORA32_GPU_RUN_FAILED no performance claim"
+            exit "$RC"
+          fi
+          python - <<'PY'
+          import hashlib,json,zipfile
+          from pathlib import Path
+          p=Path('exported/sql-qwen9b-qlora32-checkpoint.zip')
+          assert p.is_file() and p.stat().st_size>100000
+          with zipfile.ZipFile(p) as z:
+              d=json.loads(z.read('trainer/physical-sql-training-proof.json'))
+              s=json.loads(z.read('trainer/checkpoint-32/trainer_state.json'))
+              data=z.read('trainer/adapter_model.safetensors')
+              assert d['actual_optimizer_steps']==32 and s['global_step']==32
+              assert d['source_total']==242 and d['kept_examples']>=180
+              assert hashlib.sha256(data).hexdigest()==d['adapter_sha256']
+              assert d['semantic_EX_improvement'] is None
+          print('SQL_QWEN9B_QLORA32_PHYSICAL_WEIGHTS_CHECKPOINT_VERIFIED',
+                {'steps':32,'adapter_bytes':len(data),'train_examples':d['kept_examples']})
+          PY
+      - name: Preserve original training evidence including failure checkpoints
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: original-birdtrain-qwen9b-qlora32-t4-checkpoint-if-trained
+          path: exported/
+          retention-days: 30
+          if-no-files-found: warn
