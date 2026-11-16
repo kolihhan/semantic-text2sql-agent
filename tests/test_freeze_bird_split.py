@@ -69,3 +69,14 @@ def test_excludes_entire_duplicate_question_group_before_freeze():
     assert "22" not in chosen and "25" not in chosen
     assert result["excluded_exact_duplicate_question_groups"] == 1
     assert result["excluded_exact_duplicate_question_ids"] == 2
+
+
+def test_known_previous_exposures_excluded_from_both_new_splits():
+    rows, labels = fixtures()
+    result = freeze(rows, ["0", "1"], labels, "src", "old", "level",
+                    dev_size=15, holdout_size=8, historical_expected=2,
+                    additional_exposed=["4", "5"], additional_exposed_sha="exposure")
+    chosen = set(result["dev_case_ids"]) | set(result["holdout_case_ids"])
+    assert not ({"0", "1", "4", "5"} & chosen)
+    assert result["excluded_additional_exposed_count"] == 2
+    assert result["additional_exposure_sha256"] == "exposure"
