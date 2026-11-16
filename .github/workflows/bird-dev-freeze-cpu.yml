@@ -6,7 +6,7 @@ on:
       - ".github/workflows/bird-dev-freeze-cpu.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   freeze:
@@ -86,3 +86,21 @@ jobs:
           name: bird-dev500-holdout300-frozen-id-manifest
           path: .tmp-bird-freeze/bird_dev500_holdout300_manifest.json
           if-no-files-found: error
+
+      - name: Persist frozen ID manifest to research branch (no question/SQL content)
+        if: startsWith(github.ref_name, 'research/metrics-protocol-')
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p manifests
+          cp .tmp-bird-freeze/bird_dev500_holdout300_manifest.json \
+            manifests/bird-dev500-holdout300-20261116.json
+          git add manifests/bird-dev500-holdout300-20261116.json
+          if git diff --cached --quiet; then
+            echo "Manifest already identical; no commit needed"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "data: freeze question-disjoint BIRD dev500 holdout300 IDs"
+            git push origin "HEAD:${{ github.ref_name }}"
+          fi
