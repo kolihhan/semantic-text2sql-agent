@@ -1,0 +1,10 @@
+ONE_SHOT=2026-11-12
+MODEL=XiYanSQL-QwenCoder-7B-2504-Q4_K_M
+COMPARATOR=original-frozen-XiYan-58-of-100
+TREATMENT=M-Schema
+MIN_CORRECT=61
+NO_TRAINING=1
+RETRY=2
+FIX=python-module-imports
+RETRY=3
+FIX=implicit-fk-and-100-case-cpu-preflight
