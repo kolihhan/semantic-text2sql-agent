@@ -27,7 +27,7 @@ The frozen-100 historical artifact `runs/qwen9b-frozen100/summary.json`: Direct 
 
 ## Frozen population and leakage
 
-- BIRD DEV population: **1,534** tasks. Proposed **new dev 500 + untouched holdout 300**, partition by **physical database and official difficulty** before reading labels or outcomes, fixed seed and SHA. Keep historical 100 separate, permanently excluded from both new partitions where exact IDs are available.
+- BIRD DEV population: **1,534** tasks. **ACTUALLY FROZEN 2026-11-16**, new DEV500 + untouched HOLDOUT300 under `manifests/bird-dev500-holdout300-20261116.json`, Actions `43833618248`, source SHA `ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb`. Selection used physical database × official native difficulty, fixed seed `bird-metric-gate-20261116-v1`, excluded historical100 IDs and one exact duplicate question group (two extra question IDs); 1,432 eligible after those exclusions. Original 100 kept historical only. **Zero model runs** on these newly frozen populations.
 - **CRITICAL:** old frozen100 already touches all 11 BIRD DEV physical DBs (see `docs/pro-research-gates.md`). The new 300 can be **question-disjoint only**, not database/source independent. Never claim it proves out-of-source generalization. Additional external database corpus is required.
 - Do not invent difficulty labels: if difficulty metadata is absent, block requested difficulty stratification and record that blocker; do not silently approximate using gold SQL.
 - Training data: BIRD TRAIN only for SQL QLoRA adapter; exclude all BIRD DEV question/SQL and near-duplicates. Preserve hashed manifests and fail closed on unavailable exclusion data. Never use BIRD DEV labels for prompt retrieval.
