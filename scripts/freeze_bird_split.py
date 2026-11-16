@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """Freeze BIRD DEV500 + untouched DEV300 from a pinned BIRD DEV source.
 
-Requires historical frozen100 IDs and official difficulty labels (file or row).
+Requires historical frozen100 IDs and official difficulty labels (from pinned source rows or a trusted map).
 Does not open gold SQL for selection, and never overwrites a manifest.
 
 python scripts/freeze_bird_split.py --source dev.json \
  --historical-ids original_frozen100_ids.json \
- --difficulty-map official_difficulty_by_id.json \
  --output manifests/bird_dev500_holdout300.json
 """
 from __future__ import annotations
@@ -154,7 +153,8 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--source", type=Path, required=True)
     p.add_argument("--historical-ids", type=Path, required=True)
-    p.add_argument("--difficulty-map", type=Path, required=True)
+    p.add_argument("--difficulty-map", type=Path, default=None,
+                   help="Optional trusted case-ID difficulty map; otherwise use the pinned DEV rows' native difficulty field")
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--seed", default="bird-metric-gate-20261116-v1")
     p.add_argument("--dev-size", type=int, default=500)
@@ -163,9 +163,10 @@ def main() -> int:
     try:
         rows = load_source(args.source)
         history = load_history(args.historical_ids)
-        difficulties = json.loads(args.difficulty_map.read_text(encoding="utf-8"))
+        difficulties = json.loads(args.difficulty_map.read_text(encoding="utf-8")) if args.difficulty_map else {}
+        diff_sha = sha(args.difficulty_map.read_bytes()) if args.difficulty_map else sha(args.source.read_bytes())
         result = freeze(rows, history, difficulties, sha(args.source.read_bytes()),
-                        sha(args.historical_ids.read_bytes()), sha(args.difficulty_map.read_bytes()),
+                        sha(args.historical_ids.read_bytes()), diff_sha,
                         args.seed, args.dev_size, args.holdout_size)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("x", encoding="utf-8") as handle:
