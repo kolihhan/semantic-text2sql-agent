@@ -1,0 +1,91 @@
+name: Semantic SQL filtered BIRD real-data CPU preflight
+on:
+  workflow_dispatch:
+  push:
+    branches: [research/semantic-sft-colab-20261112]
+    paths:
+      - 'experiments/semantic_sft_data.py'
+      - 'experiments/semantic_sft_eval.py'
+      - 'notebooks/semantic_xiyan7b_qlora_colab.ipynb'
+      - '.github/workflows/semantic-sft-data-preflight.yml'
+permissions:
+  contents: read
+jobs:
+  prepare-real-dataset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install minimal data and tokenizer dependencies
+        run: |
+          python -m pip install -e ".[dev]" "huggingface_hub>=1.0" "transformers>=5.15,<6" "jinja2>=3.1"
+      - name: Fetch exact public BIRD filtered TRAIN and schema only (no DEV SQL)
+        run: |
+          python - <<'PY'
+          from huggingface_hub import hf_hub_download
+          from pathlib import Path
+          import shutil
+          args = [
+              ("birdsql/bird23-train-filtered","data/train-00000-of-00001.jsonl","4068469807b255fcfc0816bdd520946fe460d256","/tmp/filtered.jsonl"),
+              ("Deema/BIRD-SQL","train_tables.json","c4a98a1","/tmp/train_tables.json"),
+              ("Deema/BIRD-SQL","dev_tables.json","c4a98a1","/tmp/dev_tables.json"),
+          ]
+          for repo,file,rev,dest in args:
+              src = hf_hub_download(repo,filename=file,revision=rev,repo_type="dataset")
+              shutil.copyfile(src,dest)
+              print("PINNED_TRAIN_METADATA",repo,file,rev,Path(dest).stat().st_size)
+          PY
+      - name: Validate actual 6601 BIRD rows and disjoint train/validation databases
+        run: |
+          set -euo pipefail
+          python -m experiments.semantic_sft_data \
+            --filtered-train /tmp/filtered.jsonl \
+            --tables /tmp/train_tables.json \
+            --dev-tables /tmp/dev_tables.json \
+            --train-output /tmp/semantic-train.jsonl \
+            --validation-output /tmp/semantic-validation.jsonl \
+            --report /tmp/semantic-data-report.json \
+            --min-train 1000 \
+            --min-val 100
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          from transformers import AutoTokenizer
+          from experiments.semantic_sft_data import tokenize_semantic_pair
+          rows=[json.loads(x) for x in Path("/tmp/filtered.jsonl").read_text().splitlines() if x.strip()]
+          assert len(rows)==6601,len(rows)
+          audit=json.loads(Path("/tmp/semantic-data-report.json").read_text())
+          assert audit["train"]>=1000 and audit["validation"]>=100
+          assert not set(audit["train_dbs"]).intersection(audit["validation_dbs"])
+          assert not set(audit["train_dbs"]).intersection(audit["excluded_dev_dbs"])
+          train=[json.loads(x) for x in Path("/tmp/semantic-train.jsonl").read_text().splitlines() if x.strip()]
+          tokenizer=AutoTokenizer.from_pretrained("XGenerationLab/XiYanSQL-QwenCoder-7B-2504",trust_remote_code=True)
+          sample=train
+          lengths=[];overflow={1536:0,2048:0,3072:0}
+          for row in sample:
+              prefix=tokenizer.encode(row["prompt"],add_special_tokens=False)
+              size=len(prefix)+len(tokenizer.encode(row["target_sql"]+(tokenizer.eos_token or ""),add_special_tokens=False))
+              lengths.append(size)
+              for budget in overflow:
+                  if size>budget:overflow[budget]+=1
+              if size<=3072:
+                  x=tokenize_semantic_pair(tokenizer,row,max_length=3072)
+                  assert all(y==-100 for y in x["labels"][:len(prefix)])
+          report={k:v for k,v in audit.items() if k not in ("train_dbs","validation_dbs","excluded_dev_dbs")}
+          report.update({"sample_tokenization":len(sample),"sample_max_tokens":max(lengths),
+                         "overflow_1536":overflow[1536],"overflow_2048":overflow[2048],"overflow_3072":overflow[3072],
+                         "retained_1536":len(sample)-overflow[1536],"retained_2048":len(sample)-overflow[2048],
+                         "retained_3072":len(sample)-overflow[3072]})
+          Path("/tmp/semantic-cpu-preflight.json").write_text(json.dumps(report,indent=2,sort_keys=True)+"\n")
+          print("REAL_BIRD_SEMANTIC_DATA_PREFLIGHT",json.dumps(report,sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: semantic-bird-filtered-cpu-preflight-only
+          path: /tmp/semantic-cpu-preflight.json
+          if-no-files-found: error
+          retention-days: 30

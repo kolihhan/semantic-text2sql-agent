@@ -1,0 +1,106 @@
+name: Release only old SQL Colab T4 session 43209028119
+
+on:
+  push:
+    branches: [research/semantic-sft-colab-20261112]
+    paths: [.github/COLAB_STOP_OLD_SQL_43209028119]
+
+permissions:
+  contents: read
+
+jobs:
+  release-old-sql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      COLAB_ADC_JSON: ${{ secrets.COLAB_ADC_JSON }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: "3.13"
+      - name: Authenticate privately using existing Google ADC
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os,pathlib
+          d=json.loads(os.environ["COLAB_ADC_JSON"])
+          assert d.get("type")=="authorized_user" and all(d.get(k) for k in ("client_id","client_secret","refresh_token"))
+          p=pathlib.Path(os.environ["RUNNER_TEMP"])/"colab-stop-adc.json"
+          p.write_text(json.dumps(d),encoding="utf-8")
+          p.chmod(0o600)
+          with open(os.environ["GITHUB_ENV"],"a") as f:
+              f.write("GOOGLE_APPLICATION_CREDENTIALS="+str(p)+"\n")
+          print("ADC_AVAILABLE_NO_SECRET_DISCLOSURE")
+          PY
+      - name: Install official Google Colab session client
+        run: python -m pip install --quiet "google-colab-cli==0.8.0"
+      - name: Identify exact old assignment, attach an ephemeral local alias
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from colab_cli.auth import AuthProvider
+          from colab_cli.common import state
+          from colab_cli.state import SessionState
+          target="gpu-t4-s-usw4b0-enfddh1d7lwk"
+          state.auth_provider=AuthProvider.ADC
+          assignments=state.client.list_assignments()
+          hits=[a for a in assignments if a.endpoint==target]
+          if not hits:
+              print("TARGET_OLD_SQL_ASSIGNMENT_NOT_ACTIVE; no other session will be stopped")
+              raise SystemExit(0)
+          assert len(hits)==1 and hits[0].accelerator.value=="T4","Target changed hardware; fail closed"
+          a=hits[0]
+          state.store.add(SessionState(
+              name="old-sql-43209028119",
+              token=a.runtime_proxy_info.token,
+              url=a.runtime_proxy_info.url,
+              endpoint=a.endpoint,
+              token_expires_at=a.runtime_proxy_info.expires_at(),
+              variant="GPU",accelerator="T4",machine_shape="STANDARD"))
+          print("TARGET_OLD_SQL_ASSIGNMENT_FOUND; safe ephemeral alias registered")
+          PY
+      - name: Best-effort export of already-completed adapter and notebook trace
+        shell: bash
+        run: |
+          mkdir -p old-sql-artifacts
+          timeout 65 colab --auth=adc download -s old-sql-43209028119 \
+            /content/semantic-sql-full-adapter.zip old-sql-artifacts/semantic-sql-full-adapter.zip \
+            || echo "No verified old SQL adapter was recoverable before shutdown"
+          timeout 45 colab --auth=adc log -s old-sql-43209028119 \
+            -o old-sql-artifacts/old-sql-execution.ipynb \
+            || echo "No Colab execution notebook could be recovered"
+          test ! -e old-sql-artifacts/semantic-sql-full-adapter.zip || test -s old-sql-artifacts/semantic-sql-full-adapter.zip
+      - name: STOP pinned old SQL T4 assignment and verify release
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from colab_cli.auth import AuthProvider
+          from colab_cli.common import state
+          target="gpu-t4-s-usw4b0-enfddh1d7lwk"
+          state.auth_provider=AuthProvider.ADC
+          before=state.client.list_assignments()
+          active={a.endpoint:a for a in before}
+          print("BEFORE_STOP_ACTIVE_ASSIGNMENTS",len(active))
+          if target in active:
+              assert active[target].accelerator.value=="T4"
+              state.client.unassign(target)
+              print("OLD_SQL_T4_UNASSIGN_REQUEST_SUCCEEDED")
+          else:
+              print("OLD_SQL_T4_ALREADY_RELEASED")
+          after=state.client.list_assignments()
+          assert target not in {a.endpoint for a in after}, "Old SQL T4 assignment still active"
+          print("OLD_SQL_T4_RELEASE_VERIFIED")
+          print("AFTER_STOP_ACTIVE_ASSIGNMENTS",len(after))
+          PY
+      - name: Preserve recovered SQL artifacts if any
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: old-sql-stop-43209028119
+          path: old-sql-artifacts/
+          if-no-files-found: ignore
+          retention-days: 30
