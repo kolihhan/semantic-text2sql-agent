@@ -65,17 +65,20 @@ jobs:
           python scripts/freeze_bird_split.py \
             --source .tmp-bird-freeze/bird_dev.json \
             --historical-ids .tmp-bird-freeze/historical100.json \
+            --additional-exposed-ids manifests/bird-known-exposed-extra-20261116.json \
             --dev-size 500 --holdout-size 300 \
-            --seed bird-metric-gate-20261116-v1 \
-            --output .tmp-bird-freeze/bird_dev500_holdout300_manifest.json
+            --seed bird-metric-gate-20261116-v2 \
+            --output .tmp-bird-freeze/bird_dev500_holdout300_manifest_v2.json
           python - <<'PY'
           import json
           from pathlib import Path
-          x=json.loads(Path(".tmp-bird-freeze/bird_dev500_holdout300_manifest.json").read_text())
+          x=json.loads(Path(".tmp-bird-freeze/bird_dev500_holdout300_manifest_v2.json").read_text())
           assert x["dev_size"]==500 and x["holdout_size"]==300
+          assert x["excluded_additional_exposed_count"] == 126, "expected complete known source cohort union"
           assert not set(x["dev_case_ids"]) & set(x["holdout_case_ids"])
           print(json.dumps({"status":"FROZEN","source_sha":x["source_sha256"],
                             "historical_excluded":x["excluded_historical_count"],
+                            "extra_known_exposed_excluded":x["excluded_additional_exposed_count"],
                             "dev_n":x["dev_size"],"holdout_n":x["holdout_size"],
                             "db_dev":len(x["dev_by_db"]),"db_hold":len(x["holdout_by_db"])}))
           PY
@@ -83,8 +86,8 @@ jobs:
       - name: Upload only manifest, never gold/source SQL
         uses: actions/upload-artifact@v4
         with:
-          name: bird-dev500-holdout300-frozen-id-manifest
-          path: .tmp-bird-freeze/bird_dev500_holdout300_manifest.json
+          name: bird-dev500-holdout300-frozen-id-manifest-v2
+          path: .tmp-bird-freeze/bird_dev500_holdout300_manifest_v2.json
           if-no-files-found: error
 
       - name: Persist frozen ID manifest to research branch (no question/SQL content)
@@ -93,9 +96,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p manifests
-          cp .tmp-bird-freeze/bird_dev500_holdout300_manifest.json \
-            manifests/bird-dev500-holdout300-20261116.json
-          git add manifests/bird-dev500-holdout300-20261116.json
+          cp .tmp-bird-freeze/bird_dev500_holdout300_manifest_v2.json \
+            manifests/bird-dev500-holdout300-20261116-v2.json
+          git add manifests/bird-dev500-holdout300-20261116-v2.json
           if git diff --cached --quiet; then
             echo "Manifest already identical; no commit needed"
           else
