@@ -13,7 +13,7 @@ def test_operator_mapping_from_question_only():
     assert {"mean","group"}<=ops("What is the average salary for each office?")
     assert "count" in ops("How many employees are there?")
     assert "rank" in ops("Which state has the highest spending?")
-    assert words("list employees salaries") == {"list"} if False else True
+    assert "employee" in words("list employees salaries")
 
 
 def test_retrieve_distinct_external_train_dbs_only():
@@ -51,7 +51,7 @@ def make_shards(rescues=0,regressions=0):
         original=i<4 or (i in range(4,4+regressions))
         trial=(i<4) or (i in range(4+regressions,4+regressions+rescues))
         cases.append({
-            "case_id":str(i),"database_id":f"db{i//2}",
+            "case_id":str(i),"database_id":f"db{i}",
             "reference_scorable":True,
             "arms":{
                 "original":{"set_ex":original,"bag_ex":original},
