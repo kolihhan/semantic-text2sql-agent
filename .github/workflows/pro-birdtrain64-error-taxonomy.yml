@@ -1,0 +1,56 @@
+name: PRO original BIRD TRAIN64 Qwen9B wrong-result taxonomy CPU audit
+
+on:
+  push:
+    branches: [research/birdtrain64-semantic-error-taxonomy-20261117]
+    paths:
+      - scripts/audit_birdtrain64_semantic_failures.py
+      - tests/test_audit_birdtrain64_semantic_failures.py
+      - .github/workflows/pro-birdtrain64-error-taxonomy.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  physical-frozen-64:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+      - run: |
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_audit_birdtrain64_semantic_failures.py
+      - name: Exact full physical Qwen9B source-disjoint original VAL64 outcomes
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43892823922
+          github-token: ${{ github.token }}
+          name: original-qwen9b-birdtrain-val64-complete
+          path: original-model
+      - name: Exact original physical publisher reference SQL labels, no DEV
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43888747753
+          github-token: ${{ github.token }}
+          name: qwen9b-birdtrain-db-disjoint-original-sql-sft-candidates
+          path: original-source
+      - name: Reproduce every one of 23 executable wrong cases + conservative label warnings
+        run: |
+          set -euo pipefail
+          python -m scripts.audit_birdtrain64_semantic_failures \
+            --baseline original-model/original-qwen9b-validation64-summary.json \
+            --validation original-source/validation.jsonl \
+            --out evidence/qwen9b-birdtrain64-executable-wrong-taxonomy.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pro-birdtrain64-executable-wrong-taxonomy
+          path: evidence/qwen9b-birdtrain64-executable-wrong-taxonomy.json
+          if-no-files-found: error
+          retention-days: 30
