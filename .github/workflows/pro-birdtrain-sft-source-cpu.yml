@@ -33,7 +33,7 @@ jobs:
           curl -fsSL --retry 5 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o dev.zip
           echo "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  dev.zip" | sha256sum -c -
           unzip -p dev.zip dev_20240627/dev.json > dev.json
-          echo "ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03feb  dev.json" | sha256sum -c -
+          echo "ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb  dev.json" | sha256sum -c -
       - name: Physically compile original TRAIN SQL on original checked publisher SQLite databases
         run: |
           python -m scripts.prepare_birdtrain_qwen9b_sft_source \
