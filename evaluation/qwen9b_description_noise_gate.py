@@ -30,7 +30,18 @@ def prune_descriptions(context: str, question: str):
     head, marker, tail=context.partition("\nColumn descriptions:\n")
     if not marker:
         return context,{"original_descriptions":0,"retained_descriptions":0}
-    rows=tail.split("\n")
+    # Public BIRD database_description CSV fields can contain genuine embedded
+    # newlines. The original schema renderer prints them verbatim. Treat such
+    # continuation lines as part of the SAME physical column description;
+    # never silently discard or interpret them as new schema rows.
+    rows=[]
+    for line in tail.split("\n"):
+        if line.startswith("- ") and ": " in line and "." in line[2:].partition(": ")[0]:
+            rows.append(line)
+        elif rows:
+            rows[-1]+="\n"+line
+        else:
+            raise ValueError("unknown physical column-description format: refuse silent drop")
     query_tokens=legacy_tokens(question)
     choices=[]
     for index,line in enumerate(rows):
