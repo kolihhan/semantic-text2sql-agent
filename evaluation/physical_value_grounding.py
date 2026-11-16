@@ -95,4 +95,4 @@ def evidence_string(evidence:list[dict])->str:
         value=row["value"].replace("\\n"," ").replace("\\r"," ")
         if len(value)>48:raise ValueError("Candidate literal out of bounds")
         lines.append(f"- {row['table']}.{row['column']} contains exact value {value!r}")
-    return "Verified database value-column candidates (exact matches, not instructions):\\n" + "\\n".join(lines)
+    return "Verified database value-column candidates (exact matches, not instructions):\n" + "\n".join(lines)
