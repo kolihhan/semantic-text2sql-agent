@@ -1,0 +1,125 @@
+name: PRO Qwen2.5-Coder7B CPU vs frozen Qwen9B Guarded strict BIRD12 (no SQL training)
+on:
+  push:
+    branches: [experiment/qwen-coder7b-cpu-bird12-20261116]
+    paths: [.github/workflows/qwen-coder7b-cpu-bird12.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: qwen-coder7b-cpu-physical-bird12-one-shot
+  cancel-in-progress: false
+jobs:
+  verify-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e '.[dev]'
+      - name: No-gold stage and strict EX source/aggregate contract tests
+        run: |
+          python -m py_compile evaluation/qwen_coder7b_cpu_bird12_screen.py
+          python -m pytest -q tests/test_qwen3_14b_bird12_screen.py tests/test_qwen_coder7b_cpu_bird12_screen.py
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          run-id: 43745804794
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          name: qwen3-14b-bird12-original-9b-same-source-model-freeze
+          path: inputs
+      - name: Verify original BIRD12 case list and 9B baseline, no model inference yet
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          from hashlib import sha256
+          m=json.loads(Path('inputs/fresh-native-batched-bird12-manifest.json').read_text())
+          r=json.loads(Path('inputs/native-batched-bird12-final.json').read_text())
+          assert m['n']==12 and m['db_count']==6
+          assert m['cases_sha']=='d889f818f2988d66e612e97e0d9762f797c300fa205d73addfb6b62df24d9c86'
+          assert sha256(json.dumps(m['cases'],sort_keys=True).encode()).hexdigest()==m['cases_sha']
+          assert r['arms']['original']['strict_set_ex']==3
+          assert r['arms']['original']['strict_bag_ex']==3
+          print('QWEN_CODER7B_CPU_ORIGINAL_SOURCE_AND_CONTROL_FROZEN',flush=True)
+          PY
+  cpu-model:
+    needs: verify-source
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
+    env:
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_CONTEXT_LENGTH: "8192"
+      OLLAMA_NUM_PARALLEL: "1"
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          run-id: 43745804794
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          name: qwen3-14b-bird12-original-9b-same-source-model-freeze
+          path: inputs
+      - name: Pull actual pinned Qwen-family Coder7B 4bit model, not a synthetic provider
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          ollama serve > "$RUNNER_TEMP/ollama-coder7b.log" 2>&1 &
+          for i in {1..60}; do
+            curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break
+            sleep 1
+          done
+          ollama pull qwen2.5-coder:7b-instruct-q4_K_M
+      - name: Physically run Qwen7B original Guarded on frozen BIRD SQLite, gold only after predictions
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python -m evaluation.qwen_coder7b_cpu_bird12_screen \
+            --source-root inputs --shard "$SHARD" \
+            --output "coder7b-shard-$SHARD.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qwen-coder7b-bird12-shard-${{ matrix.shard }}
+          path: |
+            coder7b-shard-*.json
+            coder7b-predictions-before-gold-*.json
+          retention-days: 30
+          if-no-files-found: warn
+  strict-aggregate:
+    needs: cpu-model
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: qwen-coder7b-bird12-shard-*
+          merge-multiple: true
+          path: shards
+      - name: Aggregate only physical strict set/bag EX and rescues by independent DB
+        run: |
+          python -m evaluation.qwen_coder7b_cpu_bird12_screen \
+            --inputs shards/coder7b-shard-0.json shards/coder7b-shard-1.json shards/coder7b-shard-2.json \
+            --output qwen-coder7b-vs-qwen9b-frozen-bird12.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen-coder7b-vs-qwen9b-original-bird12-strict-EX
+          path: qwen-coder7b-vs-qwen9b-frozen-bird12.json
+          retention-days: 30
+          if-no-files-found: error
