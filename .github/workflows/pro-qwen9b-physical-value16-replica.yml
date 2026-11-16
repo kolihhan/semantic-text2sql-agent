@@ -1,0 +1,114 @@
+name: PRO Qwen3.5-9B second entirely new-DB value16 replicated EX
+
+on:
+  push:
+    branches: [experiment/qwen9b-value16-second-unseen-dbs-20261117]
+    paths:
+      - experiments/qwen9b_physical_value16_replica.py
+      - tests/test_qwen9b_physical_value16_replica.py
+      - .github/workflows/pro-qwen9b-physical-value16-replica.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  original-vs-value:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        shard: [0,1,2,3,4,5,6,7]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+      - name: Test physical evidence scoping, scorer, frozen source and repeatable paired protocol
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_physical_value_grounding.py tests/test_qwen9b_physical_value16_replica.py
+          python -m compileall -q experiments/qwen9b_physical_value16_replica.py
+      - name: Retrieve independently frozen source 16 from four unseen BIRD TRAIN databases
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43926576493
+          github-token: ${{ github.token }}
+          name: qwen9b-second-newdb-physical-value16-source-freeze
+          path: source
+      - name: Verify exact preregistered byte SHA and no model output exposure
+        run: |
+          set -euo pipefail
+          echo "faa4f7ba1de9923cbf8e51a500727dfe4c76a08c3f6366735cf21bff152655b7  source/physical-value16.jsonl" | sha256sum -c -
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          j=json.loads(Path('source/freeze.json').read_text())
+          assert j['status']=='FROZEN_BEFORE_ANY_MODEL_INFERENCE'
+          assert j['questions']==16 and j['physical_databases']==4
+          assert j['excluded_prior_train_source_databases']==28
+          assert j['new_model_inference'] is False
+          print('BIRD_VALUE16_EXACT_SOURCE_SHA_VERIFIED_BEFORE_INFERENCE')
+          PY
+      - name: Start pinned Qwen3.5-9B Ollama CPU
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          ollama pull qwen3.5:9b-q4_K_M
+      - name: Physically execute paired 2-case original and source-value Qwen Guarded SQL
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python -m experiments.qwen9b_physical_value16_replica \
+            --cohort source/physical-value16.jsonl \
+            --meta source/freeze.json --shard "$SHARD" \
+            --db-work original-physical-sqlite \
+            --out "paired-value16-replica-shard-$SHARD.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qwen9b-value16-replica-shard-${{ matrix.shard }}
+          path: paired-value16-replica-shard-${{ matrix.shard }}.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  aggregate:
+    if: always()
+    needs: original-vs-value
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: qwen9b-value16-replica-shard-*
+          path: shards
+          merge-multiple: true
+      - name: Complete all 16 frozen cases or FAIL, no partial gains
+        run: |
+          set -euo pipefail
+          python -m experiments.qwen9b_physical_value16_replica \
+            --inputs shards/paired-value16-replica-shard-*.json \
+            --out physical-value16-replica-complete.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qwen9b-physical-value16-second-newdb-complete-only
+          path: physical-value16-replica-complete.json
+          if-no-files-found: warn
+          retention-days: 30
