@@ -27,6 +27,7 @@ jobs:
           python -m pip install -e '.[dev]'
           python -m pytest -q tests/test_physical_value_grounding.py
           python -m py_compile scripts/freeze_birdtrain_value16_replica.py
+          grep -Fq 'python -m scripts.freeze_birdtrain_value16_replica' .github/workflows/pro-freeze-birdtrain-value16-replica.yml
       - name: Load SHA-checked original BIRD TRAIN and DEV exclusion IDs ONLY
         run: |
           set -euo pipefail
@@ -61,7 +62,7 @@ jobs:
       - name: Freeze new DB-disjoint 16 with publisher source + exact DB evidence, no inference
         run: |
           set -euo pipefail
-          python -m scripts.freeze_birdtrain_value16 \
+          python -m scripts.freeze_birdtrain_value16_replica \
             --train train.json --dev dev.json \
             --prior-train prior/train.jsonl \
             --prior-validation prior/validation.jsonl \
