@@ -1,0 +1,122 @@
+name: Qwen9B prospective DEV32 structural-intent screen
+
+on:
+  push:
+    branches: [experiment/qwen9b-one-pass-semantics-v2dev40]
+    paths: [experiments/qwen9b_onepass_semantic_dev32.py, .github/workflows/qwen9b-onepass-semantic-dev32.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_HF_COMMIT: 3c11fb193e5439b338e23677fa0aae11e8b85db9
+  SOURCE_RAW_SHA256: ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb
+  DB_ZIP_SHA256: cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630
+  MODEL: qwen3.5:9b-q4_K_M
+
+jobs:
+  paired-shards:
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install project
+        run: python -m pip install -e ".[dev]"
+      - name: Download SHA-pinned BIRD DEV and databases
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/bird
+          curl -fL --retry 3 "https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/$SOURCE_HF_COMMIT/data/dev_20251106-00000-of-00001.json?download=true" -o /tmp/bird/source.json
+          echo "$SOURCE_RAW_SHA256  /tmp/bird/source.json" | sha256sum -c -
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
+          echo "$DB_ZIP_SHA256  /tmp/bird/dev.zip" | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          DB_ZIP=$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ZIP"
+          mkdir -p /tmp/bird/databases
+          unzip -q "$DB_ZIP" -d /tmp/bird/databases
+          DB_ROOT=$(find /tmp/bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=/tmp/bird/databases; fi
+          test -d "$DB_ROOT"
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Start SHA-checked Qwen3.5-9B only
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          ollama serve > /tmp/ollama.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 1
+          done
+          ollama pull "$MODEL"
+      - name: Pair baseline and new one-pass intent prompt
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python -m experiments.qwen9b_onepass_semantic_dev32 \
+            --source /tmp/bird/source.json \
+            --database-root "$DB_ROOT" \
+            --manifest manifests/bird-dev500-holdout300-20261116-v2.json \
+            --model "$MODEL" \
+            --shard-index "$SHARD" \
+            --shard-count 8 \
+            --output "qwen9b-onepass-shard-$SHARD.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qwen9b-onepass-shard-${{ matrix.shard }}
+          path: qwen9b-onepass-shard-${{ matrix.shard }}.json
+          if-no-files-found: warn
+
+  aggregate:
+    if: always()
+    needs: paired-shards
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: qwen9b-onepass-shard-*
+          path: shards
+          merge-multiple: true
+      - name: Strict aggregate
+        shell: bash
+        run: |
+          python - <<'PY'
+          import glob, json
+          from pathlib import Path
+          files=sorted(glob.glob("shards/qwen9b-onepass-shard-*.json"))
+          if len(files)!=8: raise SystemExit("INCOMPLETE expected 8 shards; got "+str(len(files)))
+          shards=[json.loads(Path(p).read_text()) for p in files]
+          if any(s.get("status")!="complete" or len(s.get("cases",[]))!=4 for s in shards):
+              raise SystemExit("INCOMPLETE: partial shard(s)")
+          for key in ("all32_ids_sha256","model_digest","source_sha256"):
+              if len({s[key] for s in shards})!=1: raise SystemExit("INVALID: "+key)
+          rows=[r for s in shards for r in s["cases"]]
+          if len(rows)!=32 or len({r["case_id"] for r in rows})!=32:
+              raise SystemExit("INVALID: overlapping or missing cases")
+          a=sum(bool(r["baseline"]["correct"]) for r in rows)
+          b=sum(bool(r["treatment"]["correct"]) for r in rows)
+          w=sum(not r["baseline"]["correct"] and r["treatment"]["correct"] for r in rows)
+          l=sum(r["baseline"]["correct"] and not r["treatment"]["correct"] for r in rows)
+          report={"status":"complete","population":"BIRD prospective DEV500-v2 question-disjoint only","n":32,"model":shards[0]["model"],"digest":shards[0]["model_digest"],"ids_sha256":shards[0]["all32_ids_sha256"],"baseline_correct":a,"treatment_correct":b,"rescues":w,"regressions":l,"net_gain":b-a,"NOT_INDEPENDENT_HOLDOUT":True,"cases":rows}
+          Path("paired-dev32-result.json").write_text(json.dumps(report,indent=2),encoding="utf8")
+          print(json.dumps({k:v for k,v in report.items() if k!="cases"},indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: qwen9b-onepass-dev32-result
+          path: paired-dev32-result.json
+          if-no-files-found: warn
