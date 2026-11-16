@@ -4,7 +4,7 @@
 
 ## Real target and frozen evidence (verified)
 
-**Target:** increase strict BIRD semantic execution-match beyond the historically reproduced **39/100** Qwen3.5-9B Guarded baseline; eventually demonstrate the mechanism on databases/source absent from development. **No SQL training. Qwen-only.** SQL execution success, prompt format, and time-to-valid-SQL are operational/proxy metrics and must never substitute for semantic EX.
+**Target:** increase strict BIRD semantic execution-match beyond the historically reproduced **39/100** Qwen3.5-9B Guarded baseline; eventually demonstrate the mechanism on databases/source absent from development. **Historical policy (superseded for future experiments on 2026-11-16): no SQL training. Qwen-only.** Current owner authorization permits **QLoRA adapters on the unchanged Qwen3.5-9B base, using decontaminated BIRD TRAIN only**, after semantic scoring and holdout gates. It still prohibits swapping the base or inference-time stronger models; stronger-model teacher data require prior explicit approval and disclosure. SQL execution success, prompt format, and time-to-valid-SQL are operational/proxy metrics and must never substitute for semantic EX.
 
 | Evidence | Original → treatment | Decision |
 | --- | --- | --- |

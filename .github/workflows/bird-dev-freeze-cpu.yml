@@ -1,0 +1,109 @@
+name: Freeze BIRD DEV500-HOLDOUT300 (CPU only)
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/bird-dev-freeze-cpu.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  freeze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download and authenticate original pinned BIRD DEV source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp-bird-freeze
+          curl -fL --retry 3 \
+            "https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true" \
+            -o .tmp-bird-freeze/bird_dev.json
+          echo "ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb  .tmp-bird-freeze/bird_dev.json" | sha256sum -c -
+
+      - name: Preflight source version, difficulty and exact historical 100 identities
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          source=Path(".tmp-bird-freeze/bird_dev.json")
+          rows=json.loads(source.read_text(encoding="utf-8"))
+          assert len(rows)==1534, len(rows)
+          expected_levels={"simple","moderate","challenging"}
+          assert all(row.get("difficulty") in expected_levels for row in rows), "Official source difficulty metadata missing"
+          assert len({str(row["question_id"]) for row in rows})==1534, "Nonunique source IDs"
+          old=json.loads(Path("runs/bird-paired-dev-v5/paired.json").read_text(encoding="utf-8"))
+          assert old["status"]=="complete" and old["sample_size"]==100
+          historical_sha=hashlib.sha256(source.read_bytes().replace(b"\n",b"\r\n")).hexdigest()
+          assert historical_sha=="0310b7ca2dfb6247234e2073f93e7a75106ee41ba55231f75d06d2ef68efe2ec", "Historical reference source mismatch"
+          assert old["source_sha256"]==historical_sha, "Historical row source differs"
+          by_id={str(row["question_id"]):row for row in rows}
+          ids=[]
+          for case in old["cases"]:
+              cid=str(case["case_id"])
+              assert cid in by_id, f"missing historical ID {cid}"
+              assert by_id[cid]["db_id"]==case["database_id"], f"historical DB mismatch {cid}"
+              assert by_id[cid]["question"]==case["question"], f"historical question mismatch {cid}"
+              ids.append(cid)
+          assert len(ids)==len(set(ids))==100
+          Path(".tmp-bird-freeze/historical100.json").write_text(json.dumps(ids),encoding="utf-8")
+          print(json.dumps({"status":"PRECHECK_PASS","source_n":len(rows),"historical_n":len(ids),
+                            "difficulty_levels":sorted(expected_levels),
+                            "unique_physical_db":len({r["db_id"] for r in rows})}))
+          PY
+
+      - name: Write immutable question-ID-only stratified manifest (never gold SQL)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/freeze_bird_split.py \
+            --source .tmp-bird-freeze/bird_dev.json \
+            --historical-ids .tmp-bird-freeze/historical100.json \
+            --additional-exposed-ids manifests/bird-known-exposed-extra-20261116.json \
+            --dev-size 500 --holdout-size 300 \
+            --seed bird-metric-gate-20261116-v2 \
+            --output .tmp-bird-freeze/bird_dev500_holdout300_manifest_v2.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          x=json.loads(Path(".tmp-bird-freeze/bird_dev500_holdout300_manifest_v2.json").read_text())
+          assert x["dev_size"]==500 and x["holdout_size"]==300
+          assert x["excluded_additional_exposed_count"] == 126, "expected complete known source cohort union"
+          assert not set(x["dev_case_ids"]) & set(x["holdout_case_ids"])
+          print(json.dumps({"status":"FROZEN","source_sha":x["source_sha256"],
+                            "historical_excluded":x["excluded_historical_count"],
+                            "extra_known_exposed_excluded":x["excluded_additional_exposed_count"],
+                            "dev_n":x["dev_size"],"holdout_n":x["holdout_size"],
+                            "db_dev":len(x["dev_by_db"]),"db_hold":len(x["holdout_by_db"])}))
+          PY
+
+      - name: Upload only manifest, never gold/source SQL
+        uses: actions/upload-artifact@v4
+        with:
+          name: bird-dev500-holdout300-frozen-id-manifest-v2
+          path: .tmp-bird-freeze/bird_dev500_holdout300_manifest_v2.json
+          if-no-files-found: error
+
+      - name: Persist frozen ID manifest to research branch (no question/SQL content)
+        if: startsWith(github.ref_name, 'research/metrics-protocol-')
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p manifests
+          cp .tmp-bird-freeze/bird_dev500_holdout300_manifest_v2.json \
+            manifests/bird-dev500-holdout300-20261116-v2.json
+          git add manifests/bird-dev500-holdout300-20261116-v2.json
+          if git diff --cached --quiet; then
+            echo "Manifest already identical; no commit needed"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "data: freeze question-disjoint BIRD dev500 holdout300 IDs"
+            git push origin "HEAD:${{ github.ref_name }}"
+          fi
