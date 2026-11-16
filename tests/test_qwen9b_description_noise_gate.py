@@ -48,3 +48,18 @@ def test_caps_do_not_drop_table_columns():
     assert out.startswith(HEAD)
     assert counts["retained_descriptions"]==4
     assert counts["original_descriptions"]==16
+
+
+def test_multiline_column_description_is_one_atomic_row():
+    raw=HEAD+(
+        "\nColumn descriptions:\n"
+        "- orders.item_total: total spend in USD\n"
+        "and may contain a newline inside source CSV field\n"
+        "- buyers.age: age of buyer\n"
+        "including a second line of detail"
+    )
+    out,count=prune_descriptions(raw,"What is total spend?")
+    assert out.startswith(HEAD)
+    assert "including a second line" not in out
+    assert "and may contain a newline" in out
+    assert count=={"original_descriptions":2,"retained_descriptions":1}
