@@ -1,0 +1,117 @@
+name: PRO Qwen3.5-9B source-grounded value16 paired strict SQL EX (four NEW DBs)
+
+on:
+  push:
+    branches: [experiment/qwen9b-entity-value-grounding-20261117]
+    paths:
+      - experiments/qwen9b_physical_value16_paired.py
+      - tests/test_qwen9b_physical_value16_paired.py
+      - .github/workflows/pro-qwen9b-value16-paired.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  matched-physical-value:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        shard: [0,1,2,3,4,5,6,7]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Exact source model scorer and prompt contract tests
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_physical_value_grounding.py tests/test_qwen9b_physical_value16_paired.py
+      - name: Retrieve frozen NEW database source cohort (locked before inference)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43920461939
+          github-token: ${{ github.token }}
+          name: qwen9b-newdb-physical-value16-source-freeze
+          path: immutable-source
+      - name: Verify original data SHA, source databases, and no previously seen BIRD examples
+        run: |
+          set -euo pipefail
+          echo "4de8471341b38d0fb00ded1f17f265d33b528ec78b9779eb94937914df196955  immutable-source/physical-value16.jsonl" | sha256sum -c -
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('immutable-source/freeze.json')
+          r=json.loads(p.read_text())
+          assert r["status"]=="FROZEN_BEFORE_ANY_MODEL_INFERENCE"
+          assert r["questions"]==16 and r["physical_databases"]==4
+          assert r["excluded_prior_train_source_databases"]==24
+          assert r["conditioned_on_physical_entity_value_match"] is True
+          assert r["new_model_inference"] is False
+          assert set(r["source_databases"])=={"soccer_2016","university","cs_semester","hockey"}
+          print("PROSPECTIVE_VALUE16_SOURCE_FREEZE_ATTESTED")
+          PY
+      - name: Install and load exact same fixed Qwen3.5-9B Ollama base
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          ollama pull qwen3.5:9b-q4_K_M
+      - name: Same model same question original schema vs source-exact value hints
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python -m experiments.qwen9b_physical_value16_paired \
+            --cohort immutable-source/physical-value16.jsonl \
+            --meta immutable-source/freeze.json \
+            --shard "$SHARD" \
+            --db-work physical-db \
+            --out "value16-paired-shard-$SHARD.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qwen9b-value16-paired-shard-${{ matrix.shard }}
+          path: value16-paired-shard-${{ matrix.shard }}.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  aggregate:
+    if: always()
+    needs: matched-physical-value
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: qwen9b-value16-paired-shard-*
+          path: paired-shards
+          merge-multiple: true
+      - name: Require all frozen 16 original cases and paired EX, no partial score
+        run: |
+          set -euo pipefail
+          python -m experiments.qwen9b_physical_value16_paired \
+            --inputs paired-shards/value16-paired-shard-*.json \
+            --out value16-physical-paired-final.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qwen9b-value16-complete-only
+          path: value16-physical-paired-final.json
+          retention-days: 30
+          if-no-files-found: warn
