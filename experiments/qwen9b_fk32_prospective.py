@@ -15,17 +15,33 @@ from pathlib import Path
 from time import perf_counter
 
 from evaluation.run_bird import _ollama_model_digest
-from experiments.qwen9b_birdtrain_valid64_baseline import gold_score
 from scripts.prepare_birdtrain_qwen9b_sft_source import fetch_manifest,fetch_database
 from semantic_sql.contracts import SQLCandidate
 from semantic_sql.direct import _SYSTEM,_strip_fence
-from semantic_sql.execution import execute_readonly
+from semantic_sql.execution import execute_readonly, SQLExecutionError
 from semantic_sql.inference import run_guarded
 from semantic_sql.providers import OllamaProvider
 
 FROZEN_SHA="ee1b5035302d36a1241952bd2e5acd3dfc2518d1fba2581f557e04e179960535"
 MODEL="qwen3.5:9b-q4_K_M"
 MODEL_DIGEST="56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90"
+def gold_score(database:Path,sql:str,gold_rows:set,gold_bag:Counter)->dict:
+    """Same strict execution-match scorer used in the frozen original baseline."""
+    if not sql:
+        return {"ex":False,"bag":False,"execution_ok":False}
+    try:
+        got=execute_readonly(database,sql,max_rows=50_000)
+        if got.truncated:
+            return {"ex":False,"bag":False,"execution_ok":False}
+        return {
+            "ex":set(got.rows)==gold_rows,
+            "bag":Counter(got.rows)==gold_bag,
+            "execution_ok":True,
+        }
+    except (SQLExecutionError,ValueError):
+        return {"ex":False,"bag":False,"execution_ok":False}
+
+
 N_SHARDS=8
 N_PER_SHARD=4
 PROTOCOL="Qwen9B-BIRD-TRAIN-NOVEL-FK32-v1"
