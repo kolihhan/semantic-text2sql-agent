@@ -1,0 +1,50 @@
+name: PRO Qwen9B Gold-blind BIRD100 description-relevance coverage gate (CPU)
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/qwen9b-relevance-pruned-descriptions-20261116]
+    paths:
+      - .github/workflows/qwen9b-description-noise-coverage.yml
+      - evaluation/qwen9b_description_noise_gate.py
+      - tests/test_qwen9b_description_noise_gate.py
+permissions:
+  contents: read
+jobs:
+  source-only-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Run source-only tests (no model, labels, GPU)
+        run: |
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_qwen9b_description_noise_gate.py
+      - name: Pin public BIRD DEV source bytes plus physical database ZIP
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 'https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true' -o dev.json
+          echo 'ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb  dev.json' | sha256sum -c -
+          curl -fsSL --retry 4 'https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip' -o dev.zip
+          echo 'cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  dev.zip' | sha256sum -c -
+          mkdir -p bird/unpacked bird/databases
+          unzip -q dev.zip -d bird/unpacked
+          DB_ZIP=$(find bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ZIP"
+          unzip -q "$DB_ZIP" -d bird/databases
+          DB_ROOT=$(find bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=bird/databases; fi
+          echo "DB_ROOT=$PWD/$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Quantify exact original100 context changes; NO labels used
+        run: |
+          python -m evaluation.qwen9b_description_noise_gate \
+            --source dev.json --root "$DB_ROOT" \
+            --output qwen9b-desc-bird100-coverage.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: original-qwen9b-bird100-description-prune-source-coverage
+          path: qwen9b-desc-bird100-coverage.json
+          if-no-files-found: error
+          retention-days: 30
