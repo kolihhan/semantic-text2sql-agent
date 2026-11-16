@@ -39,8 +39,9 @@ The frozen-100 historical artifact `runs/qwen9b-frozen100/summary.json`: Direct 
 | --- | --- | --- |
 | Original BIRD DEV frozen100 | Historical matched generation, semantic revision, offline replay and multiple subsequent forensic analyses; **true count not reconstructable from available repo artifacts** | Contaminated development evidence; no new holdout claims |
 | BIRD DEV various 16/20 pilots | Multiple published prompt/retrieval/consensus comparisons; count incomplete | Seen; no score-based re-splitting |
-| New BIRD DEV500 | 0 committed inference runs; ID-only manifest verified in Actions `43833618248` | FROZEN, unused development |
-| New BIRD DEV300 | 0 committed inference runs; ID-only manifest verified in Actions `43833618248` | FROZEN, untouched question-disjoint holdout |
+| New BIRD DEV500-v2 | 0 committed inference runs; Actions `43834589773`; excludes 100+126 known exposures | FROZEN, unused dev; question-disjoint |
+| New BIRD DEV300-v2 | 0 committed inference runs; Actions `43834589773`; excludes 100+126 known exposures | FROZEN, untouched by new inference; not physical-DB independent |
+| BIRD DEV v1 split | Exposure audit found 59 old-pilot overlaps in dev and 23 in holdout | QUARANTINED; never evaluate as an untouched holdout |
 | Spider DEV pilot12 | One reported intervention and repeated post-hoc audits | Seen; exploratory only |
 
 Every future run must append population, manifest SHA, run id, **cumulative exposures**, intervention, hashes, seeds, and whether labels/traces were inspected.
