@@ -85,6 +85,8 @@ def freeze(
     dev_size: int = 500,
     holdout_size: int = 300,
     historical_expected: int = 100,
+    additional_exposed: list[str] | None = None,
+    additional_exposed_sha: str | None = None,
 ) -> dict:
     if len(history) != historical_expected:
         raise ValueError(f"expected exactly {historical_expected} historical IDs; got {len(history)}")
@@ -104,6 +106,12 @@ def freeze(
     missing = set(history) - ids.keys()
     if missing:
         raise ValueError(f"historical IDs absent from source: {len(missing)}")
+    extra = list(additional_exposed or [])
+    if len(extra) != len(set(extra)):
+        raise ValueError("additional exposed IDs contain duplicates")
+    unknown_extra = set(extra) - ids.keys()
+    if unknown_extra:
+        raise ValueError(f"additional exposed IDs absent from source: {len(unknown_extra)}")
     # Freeze policy: remove ALL repeated exact within-database questions from BOTH
     # partitions. Group assignment could also be safe, but removing them avoids
     # dependent paraphrase weights and any overlap with a historical ID. This
@@ -111,7 +119,7 @@ def freeze(
     duplicate_groups = [members for members in semantic_key_groups.values() if len(members) > 1]
     duplicate_ids = {cid for members in duplicate_groups for cid in members}
     historical_set = set(history)
-    excluded_ids = duplicate_ids | historical_set
+    excluded_ids = duplicate_ids | historical_set | set(extra)
     if dev_size + holdout_size > len(ids) - len(excluded_ids):
         raise ValueError("not enough non-duplicate novel DEV questions to meet requested sizes")
     groups: dict[tuple[str, str], list[str]] = defaultdict(list)
@@ -143,6 +151,8 @@ def freeze(
         "seed": seed,
         "source_rows": len(rows),
         "excluded_historical_count": len(history),
+        "excluded_additional_exposed_count": len(set(extra) - historical_set),
+        "additional_exposure_sha256": additional_exposed_sha,
         "excluded_exact_duplicate_question_groups": len(duplicate_groups),
         "excluded_exact_duplicate_question_ids": len(duplicate_ids - historical_set),
         "eligible_novel_rows": len(ids) - len(excluded_ids),
@@ -162,6 +172,8 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--source", type=Path, required=True)
     p.add_argument("--historical-ids", type=Path, required=True)
+    p.add_argument("--additional-exposed-ids", type=Path, default=None,
+                   help="Known previously used BIRD DEV question-ID manifest, separate from original100")
     p.add_argument("--difficulty-map", type=Path, default=None,
                    help="Optional trusted case-ID difficulty map; otherwise use the pinned DEV rows' native difficulty field")
     p.add_argument("--output", type=Path, required=True)
@@ -174,9 +186,12 @@ def main() -> int:
         history = load_history(args.historical_ids)
         difficulties = json.loads(args.difficulty_map.read_text(encoding="utf-8")) if args.difficulty_map else {}
         diff_sha = sha(args.difficulty_map.read_bytes()) if args.difficulty_map else sha(args.source.read_bytes())
+        extra = load_history(args.additional_exposed_ids) if args.additional_exposed_ids else []
+        extra_sha = sha(args.additional_exposed_ids.read_bytes()) if args.additional_exposed_ids else None
         result = freeze(rows, history, difficulties, sha(args.source.read_bytes()),
                         sha(args.historical_ids.read_bytes()), diff_sha,
-                        args.seed, args.dev_size, args.holdout_size)
+                        args.seed, args.dev_size, args.holdout_size,
+                        additional_exposed=extra, additional_exposed_sha=extra_sha)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         with args.output.open("x", encoding="utf-8") as handle:
             json.dump(result, handle, sort_keys=True, indent=2)
