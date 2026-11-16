@@ -1,0 +1,47 @@
+name: PRO BIRD TRAIN clean original SQL for fixed Qwen9B QLoRA (CPU)
+
+on:
+  push:
+    branches: [experiment/qwen9b-bird-train-clean-sft-source-20261116]
+    paths:
+      - scripts/prepare_birdtrain_qwen9b_sft_source.py
+      - tests/test_prepare_birdtrain_qwen9b_sft_source.py
+      - .github/workflows/pro-birdtrain-sft-source-cpu.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prep-train-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Install and test deterministic source isolation
+        run: |
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_prepare_birdtrain_qwen9b_sft_source.py
+      - name: Download pinned BIRD TRAIN original publisher SQL and DEV for exclusion only
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 https://huggingface.co/datasets/Emulated-Inc/text-to-sql-with-evidence-training-pool/resolve/cd2c4ea321075aa53ce7dfe52deaaffa505d046a/raw/bird/train.json -o train.json
+          echo "cd5884489dffd7c76d73509b396bd919fbe8b486efbc4ba2f48f89460de7d69f  train.json" | sha256sum -c -
+          curl -fsSL --retry 5 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o dev.zip
+          echo "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  dev.zip" | sha256sum -c -
+          unzip -p dev.zip dev_20240627/dev.json > dev.json
+          echo "ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03feb  dev.json" | sha256sum -c -
+      - name: Physically compile original TRAIN SQL on original checked publisher SQLite databases
+        run: |
+          python -m scripts.prepare_birdtrain_qwen9b_sft_source \
+            --train train.json --dev dev.json --work source-dbs \
+            --out evidence/birdtrain-qwen9b-original-qlora-source
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen9b-birdtrain-db-disjoint-original-sql-sft-candidates
+          path: evidence/birdtrain-qwen9b-original-qlora-source/
+          if-no-files-found: error
+          retention-days: 30
