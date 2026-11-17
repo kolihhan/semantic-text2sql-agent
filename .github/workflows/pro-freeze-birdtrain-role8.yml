@@ -27,7 +27,7 @@ jobs:
           python -m pip install -e '.[dev]'
           python -m pytest -q tests/test_role_scoped_grounding.py
           python -m py_compile scripts/freeze_birdtrain_role8.py
-          grep -Fq 'python -m scripts.freeze_birdtrain_role8' .github/workflows/pro-freeze-birdtrain-value16-replica.yml
+          grep -Fq 'python -m scripts.freeze_birdtrain_role8' .github/workflows/pro-freeze-birdtrain-role8.yml
       - name: Load SHA-checked original BIRD TRAIN and DEV exclusion IDs ONLY
         run: |
           set -euo pipefail
@@ -65,12 +65,12 @@ jobs:
           repository: kolihhan/semantic-text2sql-agent
           run-id: 43926576493
           github-token: ${{ github.token }}
-          name: qwen9b-third-newdb-role8-source-freeze
+          name: qwen9b-second-newdb-physical-value16-source-freeze
           path: prior-value16-replica
       - name: Freeze 8 new DB-disjoint role-matched source cases (NO Qwen inference)
         run: |
           set -euo pipefail
-          python -m scripts.freeze_birdtrain_value16_replica \
+          python -m scripts.freeze_birdtrain_role8 \
             --train train.json --dev dev.json \
             --prior-train prior/train.jsonl \
             --prior-validation prior/validation.jsonl \
@@ -81,7 +81,7 @@ jobs:
             --out frozen-role8
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: qwen9b-second-newdb-physical-value16-source-freeze
+          name: qwen9b-third-newdb-role8-source-freeze
           path: frozen-role8/
           retention-days: 30
           if-no-files-found: error
