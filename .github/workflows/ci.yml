@@ -24,3 +24,83 @@ jobs:
         run: python -m pytest -q
       - name: Compile
         run: python -m compileall -q src evaluation tests
+
+
+  qwen9b_cpu_single_sql_probe:
+    if: github.event_name == 'pull_request' && github.head_ref == 'research/frozen-dev500-qwen9b-kcache-offline-selectors-20261117'
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Unit test cache manifest, gold blind selectors, oracle upper bound and paired CI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_kcache_protocol.py
+      - name: Retrieve already source-frozen authentic 16 TRAIN SQL prompts, no DEV data
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44053157511
+          github-token: ${{ github.token }}
+          name: qwen9b-count-join-grain16-frozen-only
+          path: bench_source
+      - name: Byte-verify single SQL prompt provenance before model run
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'ca68478128821b253dca9db600b101b9140fa645f2e38ed2e3493603db7efd8e  bench_source/grain16.jsonl' | sha256sum -c -
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          rows=[json.loads(x) for x in Path('bench_source/grain16.jsonl').read_text().splitlines()]
+          assert len(rows)==16 and len({r['source_index'] for r in rows})==16
+          assert all('original_user' in r and 'gold_sql' in r for r in rows)
+          print('SINGLE_GENERATION_BENCH_SOURCE_VERIFIED',len(rows))
+          PY
+      - name: Start original CPU Ollama and pull fixed Qwen3.5-9B base model
+        shell: bash
+        env:
+          OLLAMA_CONTEXT_LENGTH: '8192'
+          OLLAMA_NUM_PARALLEL: '1'
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          for i in {1..120}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:11434/api/tags >/dev/null
+          ollama pull qwen3.5:9b-q4_K_M
+      - name: Physically benchmark eight pure one-shot Qwen SQL generations, separately from Guarded repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m evaluation.qwen9b_kcache speed \
+            --bench-source bench_source/grain16.jsonl \
+            --bench-count 8 \
+            --out real-qwen9b-cpu-single-sql-benchmark.json
+          python - <<'PY'
+          import json
+          x=json.load(open('real-qwen9b-cpu-single-sql-benchmark.json'))
+          assert x['status']=='COMPLETE_SINGLE_GENERATION_CPU_MEASURED'
+          assert x['n']==8 and x['no_Guarded_repair_calls'] and x['no_gold_or_DEV_seen']
+          print('REAL_ONE_SQL_CPU_P50',x['median_wall_s'],
+                'P90',x['p90_wall_s'],
+                'MEAN',x['mean_wall_s'],flush=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qwen9b-original-single-sql-cpu8-authentic-source-benchmark-only
+          path: real-qwen9b-cpu-single-sql-benchmark.json
+          if-no-files-found: warn
+          retention-days: 30
