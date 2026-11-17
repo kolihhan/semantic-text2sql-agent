@@ -1,0 +1,98 @@
+{
+  "date": "2026-11-17",
+  "source": "original GitHub Actions run 37307108955 four physical JSON shard artifacts",
+  "status": "POSTHOC_ROOT_CAUSE_AUDIT_RAW_LABELS_NOT_NEW_INFERENCE",
+  "n": 100,
+  "transition_matrix": [
+    {
+      "direct_executable": true,
+      "guarded_executable": true,
+      "guarded_ex_correct": true,
+      "n": 33
+    },
+    {
+      "direct_executable": true,
+      "guarded_executable": true,
+      "guarded_ex_correct": false,
+      "n": 42
+    },
+    {
+      "direct_executable": false,
+      "guarded_executable": true,
+      "guarded_ex_correct": true,
+      "n": 6
+    },
+    {
+      "direct_executable": false,
+      "guarded_executable": true,
+      "guarded_ex_correct": false,
+      "n": 10
+    },
+    {
+      "direct_executable": false,
+      "guarded_executable": false,
+      "guarded_ex_correct": false,
+      "n": 9
+    }
+  ],
+  "repair_attempts": {
+    "zero": 75,
+    "one": 15,
+    "two": 10
+  },
+  "rescue_repair_attempts": {
+    "one": 6,
+    "two": 0
+  },
+  "newly_executable_but_wrong_repair_attempts": {
+    "one": 9,
+    "two": 1
+  },
+  "all_six_rescues_from_initial_execution_failure": true,
+  "rescue_cases": [
+    {
+      "id": "1150",
+      "database": "thrombosis_prediction",
+      "observed_direct_error": "no such function: YEAR",
+      "repair_mechanism": "SQLite-compatible date/year expression"
+    },
+    {
+      "id": "1182",
+      "database": "thrombosis_prediction",
+      "observed_direct_error": "no such column: P.First_Date",
+      "repair_mechanism": "quote existing space-containing column"
+    },
+    {
+      "id": "179",
+      "database": "financial",
+      "observed_direct_error": "no such column: a.account_id",
+      "repair_mechanism": "fix missing/invalid table alias and JOIN"
+    },
+    {
+      "id": "943",
+      "database": "formula_1",
+      "observed_direct_error": "no such column: races.year",
+      "repair_mechanism": "add missing JOIN to races"
+    },
+    {
+      "id": "1317",
+      "database": "student_club",
+      "observed_direct_error": "near \"s\": syntax error",
+      "repair_mechanism": "escape quote in string literal"
+    },
+    {
+      "id": "648",
+      "database": "codebase_community",
+      "observed_direct_error": "no such column: p.WebsiteUrl",
+      "repair_mechanism": "move website projection to joined users table"
+    }
+  ],
+  "claim": "All 6 historical strict set-EX rescue cases were initially non-executable and corrected in 1 repair attempt. No historical already-executable Direct case changed under Guarded. Thus observed +6pp correctness is wholly from failure-to-executable recovery, NOT evidence for a semantic reviewer improving executable-but-wrong queries.",
+  "unresolved": [
+    "No independent correctness gain on initially executable-but-wrong questions",
+    "Full upstream evaluator parity and clean original 100 Qwen run still blocked",
+    "Root-cause annotations are SQL-error/mechanism descriptions, not double-human-coded semantic labels"
+  ],
+  "no_new_qwen_calls": true,
+  "no_default_change": true
+}
