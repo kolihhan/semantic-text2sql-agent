@@ -1,0 +1,69 @@
+{
+  "date": "2026-11-17",
+  "status": "VERIFIED_COMPLETE_PHYSICAL_NO_STRICT_SEMANTIC_EX_GAIN",
+  "run_id": 44040520571,
+  "aggregate_artifact_id": 14309412158,
+  "source_freeze_artifact_id": 14309376574,
+  "source_sha256": "85c3e3abc45d90f23418dbc14261111abf90feadfef2b155988b77b40a4fe0ca",
+  "n": 8,
+  "physical_dbs": [
+    "app_store",
+    "human_resources",
+    "trains",
+    "beer_factory"
+  ],
+  "excluded_prior_train_dbs": 36,
+  "base_model": "qwen3.5:9b-q4_K_M",
+  "model_digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+  "baseline": {
+    "strict_set_ex": 4,
+    "strict_bag_ex": 4,
+    "executable": 8
+  },
+  "reviewed": {
+    "strict_set_ex": 4,
+    "strict_bag_ex": 4,
+    "executable": 8
+  },
+  "rescues": 0,
+  "regressions": 0,
+  "review_accepted": 3,
+  "reviewer_extra_model_calls": 8,
+  "reviewer_extra_seconds": 222.03,
+  "positive_screen_only": false,
+  "promotion_allowed": false,
+  "new_training": false,
+  "main_failure_mechanisms": [
+    {
+      "case_id": 6706,
+      "database": "human_resources",
+      "source_only_hypothesis": "Physical salary/minsalary are nonnumeric formatted strings; publisher SQL strips prefix and commas, model AVG(e.salary) and subtraction without normalization; reviewer merely added NULLIF denominator",
+      "root_cause_certainty": "inferred from reference SQL transformation; actual data type/values not separately extracted as independent reviewer signal"
+    },
+    {
+      "case_id": 405,
+      "database": "trains",
+      "source_only_hypothesis": "Model compares c.len > 2 where len encodes category 'long'; should count per train with len='long' then >2",
+      "label_warning": "Publisher gold SQL filters direction='west' while user question says east, so exact gold label may conflict with natural language; do not claim reference is uniquely semantically correct"
+    },
+    {
+      "case_id": 1907,
+      "database": "app_store",
+      "source_only_hypothesis": "Publisher casts Sentiment_Polarity as INTEGER before negative threshold; model directly compares stored polarity value without cast",
+      "root_cause_certainty": "SQL text contrast; verify publisher physical type distribution before causal attribution"
+    },
+    {
+      "case_id": 1911,
+      "database": "app_store",
+      "source_only_hypothesis": "Model LIKE '%racing%' vs publisher exact Genres='Racing', reviewer only changed 100→100.0; no EX rescue",
+      "root_cause_certainty": "SQL diff, not isolated causal proof"
+    }
+  ],
+  "next_competing_hypotheses": [
+    "H1: targeted raw SQLite values/types of columns already used by SQL expose casting errors and mistaken categorical-vs-numeric comparisons without misleading entity-value matching",
+    "H0: extra evidence will distract Qwen, increase costs and cause semantic regressions; gate on new physical source DBs"
+  ],
+  "conclusion": "Do not repeat answer-result-only self-critique. It caused 3 harmless revisions but zero EX rescue in physical paired eight-task experiment.",
+  "scope": "Retrospective mechanism diagnostic from already evaluated eight; no tuning to these IDs. New source database families required for any prospective test.",
+  "no_bird_dev_or_hidden": true
+}
