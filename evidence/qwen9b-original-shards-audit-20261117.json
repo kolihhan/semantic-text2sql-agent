@@ -1,0 +1,102 @@
+{
+  "audit_date": "2026-11-17",
+  "source": "original four GitHub Actions ZIP archives",
+  "run_id": 37307108955,
+  "original_source_sha256": "0310b7ca2dfb6247234e2073f93e7a75106d2ef68efe2ec",
+  "model": "qwen3.5:9b-q4_K_M",
+  "model_digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+  "official_bird_evaluator_revision": "483554eae102996f5ec1f4feab4e78ef29c2a394",
+  "original_shards": [
+    {
+      "id": 11347227386,
+      "sha256": "80f7d39c42a928e8800ac94c3487989cd51225a0eddf2a90b137ab495cc70522",
+      "status": "complete",
+      "cases": 25
+    },
+    {
+      "id": 11346868642,
+      "sha256": "f59f268cfed7ad66181b53c8147501cd8ebae1c4e26609564b20401db274feb7",
+      "status": "complete",
+      "cases": 25
+    },
+    {
+      "id": 11346750874,
+      "sha256": "0b9f41371d61cf6de54a5749003ec8b043a85a1f1b2ab27188c72ee69e20329f",
+      "status": "complete",
+      "cases": 25
+    },
+    {
+      "id": 11346641431,
+      "sha256": "b358820975cdd2512e79cd6cc7b0732ae0f258cb8dafa91cd2888163fe100702",
+      "status": "invalid",
+      "cases": 25
+    }
+  ],
+  "checks": {
+    "raw_unique_cases": 100,
+    "physical_databases": 11,
+    "all_100_shared_initial_sql_identical": true,
+    "all_digest_and_source_sha_equal": true,
+    "shard_specific_manifest_hashes": "distinct by design",
+    "aggregate_success": false
+  },
+  "saved_local_labels": {
+    "direct_set_ex": 33,
+    "guarded_set_ex": 39,
+    "rescues": 6,
+    "regressions": 0,
+    "direct_executable": 75,
+    "guarded_executable_raw": 91,
+    "conservative_guarded_executable": 90,
+    "direct_execution_fail_to_guarded_success": 16,
+    "correct_rescues_from_direct_failure": 6
+  },
+  "cost": {
+    "direct_model_calls": 100,
+    "guarded_model_calls": 135,
+    "incremental_calls": 35,
+    "direct_latency_sum_seconds": 10070.160191145,
+    "guarded_latency_sum_seconds": 13132.523114559
+  },
+  "by_database_net_rescues": {
+    "california_schools": 0,
+    "card_games": 0,
+    "codebase_community": 1,
+    "debit_card_specializing": 0,
+    "european_football_2": 0,
+    "financial": 1,
+    "formula_1": 1,
+    "student_club": 1,
+    "superhero": 0,
+    "thrombosis_prediction": 2,
+    "toxicology": 0
+  },
+  "uncertainty": {
+    "exact_two_sided_mcnemar_p": 0.03125,
+    "two_sided_sign_test_by_nonzero_db": 0.0625,
+    "task_bootstrap_95_delta": [
+      0.02,
+      0.11
+    ],
+    "database_cluster_bootstrap_95_delta": [
+      0.02105,
+      0.0991
+    ],
+    "bootstrap_seed": 42,
+    "bootstrap_draws": 20000
+  },
+  "boundaries": {
+    "raw_label_reconstruction": "PASS",
+    "full_upstream_scorer_parity": "NOT_RUN",
+    "clean_end_to_end_model_rerun": "NOT_RUN",
+    "independent_physical_database_validation": "NOT_RUN",
+    "semantic_metric": "UNDEFINED",
+    "promotion_allowed": false
+  },
+  "notes": [
+    "All counts independently recomputed from retrieved original JSON, rather than copied from checked-in aggregate.",
+    "Shard 3 status invalid and GitHub Actions aggregate skipped; do not claim full run succeeded.",
+    "Individual per-shard source-manifest hashes are different because the 25-case shards have separate manifests.",
+    "Bootstrap CIs are conditional descriptive intervals, not independent-database or model-run generalization."
+  ]
+}
