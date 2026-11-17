@@ -149,7 +149,7 @@ def freeze(train_file,dev_file,prior,root,out):
     if len(rows)!=N or len(selected)!=SHARDS:
         raise RuntimeError(f"not enough fresh physical DBs: {selected}, {len(rows)}")
     out.mkdir(parents=True,exist_ok=True)
-    file=out/"semantic-preview8.jsonl"
+    file=out/"column-type8.jsonl"
     file.write_text("".join(json.dumps(r,ensure_ascii=False,separators=(",",":"))+"\n" for r in rows),encoding="utf-8")
     report={
         "status":"FROZEN_BEFORE_ANY_NEW_MODEL_INFERENCE","protocol":PROTOCOL,
@@ -339,7 +339,7 @@ def run_shard(cohort,meta,shard,work):
     for row in rows:
         case=one_case(db,row,provider)
         cases.append(case)
-        print("SEMANTIC_PREVIEW8",shard,row["source_index"],case["baseline"]["ex"],
+        print("COLUMN_TYPE8",shard,row["source_index"],case["baseline"]["ex"],
               case["reviewed"]["ex"],case["review_status"],flush=True)
     return {"status":"COMPLETE_PHYSICAL_PAIRED","protocol":PROTOCOL,
             "shard":shard,"db_id":dbid,
@@ -419,10 +419,10 @@ def main():
         if any(q is None for q in (a.train,a.dev,*prior.values())):
             p.error("source-only requires pinned train/dev plus all six prior source manifests")
         result=freeze(a.train,a.dev,prior,a.work,a.out)
-        print("SEMANTIC_PREVIEW8_SOURCE_FROZEN",json.dumps(result,sort_keys=True),flush=True)
+        print("COLUMN_TYPE8_SOURCE_FROZEN",json.dumps(result,sort_keys=True),flush=True)
     elif a.inputs:
         result=aggregate(a.inputs)
-        print("SEMANTIC_PREVIEW8_PAIRED_COMPLETE",json.dumps({k:v for k,v in result.items() if k!="cases"},sort_keys=True),flush=True)
+        print("COLUMN_TYPE8_PAIRED_COMPLETE",json.dumps({k:v for k,v in result.items() if k!="cases"},sort_keys=True),flush=True)
         a.out.parent.mkdir(parents=True,exist_ok=True)
         a.out.write_text(json.dumps(result,indent=2,sort_keys=True,ensure_ascii=False)+"\n")
     else:
