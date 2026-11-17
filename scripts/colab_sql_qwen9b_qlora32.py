@@ -198,13 +198,23 @@ def main():
         "original_source_sql_not_generated_by_teacher":True},indent=2))
     trainer=SFTTrainer(model=model,args=settings,train_dataset=Dataset.from_list(tokenized),
                         processing_class=tok)
-    # Fail closed before optimizer: trainer construction may alter adapter dtypes.
+    # TRL may cast LoRA weights back to BF16 while wrapping the model.
+    # The optimizer is created later by trainer.train(); restoring ONLY the
+    # trainable LoRA parameters to FP32 here keeps FP16 GradScaler safe.
+    # normalize_t4_trainable_precision rejects trainable Params4bit, unknown
+    # dtypes and zero trainable parameters; frozen base weights are untouched.
     precision_after_trainer=normalize_t4_trainable_precision(
         trainer.model,torch,capability=torch.cuda.get_device_capability(0))
     if precision_after_trainer["converted"]:
-        raise RuntimeError("TRL recast trainable adapter after FP32 preflight; stop before GPU steps")
+        print("SQL_QLORA_TRL_RECAST_TRAINABLES_RESTORED_FP32",
+              json.dumps(precision_after_trainer,sort_keys=True),flush=True)
+    # A second pass MUST be idempotent; no trainable half/BF16 remains.
+    verified_after_trainer=normalize_t4_trainable_precision(
+        trainer.model,torch,capability=torch.cuda.get_device_capability(0))
+    if verified_after_trainer["converted"] or verified_after_trainer["checked"] != precision_after_trainer["checked"]:
+        raise RuntimeError("TRL post-init FP32 trainable dtype verification failed")
     print("SQL_QLORA_T4_TRAINER_FP32_VERIFIED",
-          json.dumps(precision_after_trainer,sort_keys=True),flush=True)
+          json.dumps(verified_after_trainer,sort_keys=True),flush=True)
     started=time.monotonic()
     try:
         trainer.train()
