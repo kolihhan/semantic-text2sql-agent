@@ -1,0 +1,70 @@
+{
+  "date": "2026-11-17",
+  "status": "COMPLETE_PHYSICAL_NO_SEMANTIC_EX_GAIN_REJECTED",
+  "run_id": 44042440721,
+  "aggregate_artifact_id": 14310541441,
+  "n": 8,
+  "source_sha256": "e7e822dbefadeb57dd2ba5a79553d38f5b5148a4fab33b9c0563b2e624ca6d74",
+  "model_digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+  "dbs": [
+    "craftbeer",
+    "cars",
+    "ice_hockey_draft",
+    "food_inspection"
+  ],
+  "prior_train_dbs_excluded": 40,
+  "dev_holdout_accessed": false,
+  "totals": {
+    "base": {
+      "set_ex": 3,
+      "bag_ex": 3,
+      "execution_ok": 7
+    },
+    "reviewed": {
+      "set_ex": 3,
+      "bag_ex": 3,
+      "execution_ok": 7
+    }
+  },
+  "rescues": 0,
+  "regressions": 0,
+  "review_accepted": 0,
+  "extra_model_calls": 7,
+  "extra_seconds": 412.11,
+  "physically_sampled_columns": 30,
+  "observations": [
+    {
+      "db": "craftbeer",
+      "case": 6617,
+      "baseline_executable": false,
+      "reviewer_skipped": true,
+      "reason": "SQL references b2.city and b2.state while beers b2 table does not have these columns"
+    },
+    {
+      "db": "craftbeer",
+      "case": 6613,
+      "baseline_executable": true,
+      "reviewer_status": "abstained"
+    },
+    {
+      "db": "cars",
+      "baseline_correct": 2,
+      "reviewer_accepted": 0
+    },
+    {
+      "db": "ice_hockey_draft",
+      "baseline_correct": 1,
+      "reviewer_accepted": 0
+    },
+    {
+      "db": "food_inspection",
+      "baseline_correct": 0,
+      "reviewer_accepted": 0
+    }
+  ],
+  "claim": "New source-disjoint public BIRD TRAIN 8/4 DBs physically tested, exact original Qwen9B same treatment. Adding only actual SQLite SQL-used column declared types and raw values did NOT improve correct SQL. Do not promote, do not iterate by tweaking prompts on same cases.",
+  "limit": "BIRD TRAIN publisher SQL not independently adjudicated; this is source-local strict EX, not official hidden benchmark.",
+  "next_direction": "Stop generic review calls. Focus mechanistic question-to-relational-plan failures (entity grain, join fanout, aggregation target) with deterministic error predicates and explicit abstention, confirm on independent new DBs.",
+  "no_training": true,
+  "promotion_allowed": false
+}
