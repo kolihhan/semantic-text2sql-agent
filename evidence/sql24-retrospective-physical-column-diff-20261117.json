@@ -1,0 +1,42 @@
+{
+  "date": "2026-11-17",
+  "status": "CPU_RETROSPECTIVE_HEURISTIC_REJECTED_NO_MODEL_RUN",
+  "sources": [
+    {
+      "run_id": 44053157511,
+      "source_artifact_id": 14314153717,
+      "aggregate_artifact_id": 14313764748,
+      "cases": 16
+    },
+    {
+      "run_id": 44042440721,
+      "source_artifact_id": 14310310770,
+      "aggregate_artifact_id": 14310541441,
+      "cases": 8
+    }
+  ],
+  "method": "Join source cases by immutable source_index, parse SQL FROM/JOIN table aliases using a narrow regex, canonicalize only explicit alias.column to physical table.column; compare model SQL refs versus publisher reference SQL refs on already evaluated source. NOT an AST, NOT a reliable adjudicator, publisher SQL is an imperfect reference.",
+  "n": 24,
+  "baseline_set_ex_correct": 10,
+  "baseline_set_ex_wrong": 14,
+  "comparison_coverage": {
+    "wrong_both_nonempty_refsets": 10,
+    "wrong_refsets_differ": 8,
+    "correct_both_nonempty_refsets": 5,
+    "correct_refsets_differ": 4
+  },
+  "rates": {
+    "wrong_mismatch_given_parseable": 0.8,
+    "correct_mismatch_given_parseable": 0.8
+  },
+  "conclusion": "This naive column-set mismatch signal has equal 80% prevalence among physically evaluated correct and wrong SQL when both SQL statements yielded nonempty canonical qualified refs. It cannot predict semantic EX error or justify automatic column repair. Do not supply gold SQL or these labels to inference. Discard this heuristic as a gating mechanism.",
+  "limitations": [
+    "9/24 source pairs do not have two nonempty qualified canonical reference sets; coverage only 15/24",
+    "Nested statements, unaliased columns and ambiguous aliases not fully parsed; regex is approximate, not grammar-aware",
+    "Publisher SQL execution equality may disagree with natural language",
+    "Previously exposed source-only cases; no new heldout result or source-generalization claim"
+  ],
+  "new_model_calls": 0,
+  "qlora_training_steps": 0,
+  "promotion_allowed": false
+}
