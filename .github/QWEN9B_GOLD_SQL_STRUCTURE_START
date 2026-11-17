@@ -1,0 +1,1 @@
+2026-11-15 one-time CPU-only posthoc structural comparison of frozen historical Qwen9B BIRD100 SQL strings versus pinned public gold. No model inference, no model fine-tuning, no runtime prompts changed. Analysis labels are visible; do not optimize to these 100 cases. Check source/data SHA and preserve original invalid shard status in separate replay artifact.

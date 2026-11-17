@@ -1,0 +1,3 @@
+2026-11-15 single CPU-only offline replay of 4 frozen Qwen3.5-9B BIRD100 JSON shards from historical run 37307108955. No model inference/training.
+CI 43679044213 passed. Pinned source SHA ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb; historical CRLF SHA 0310b7ca2dfb6247234e2073f93e7a75106ee41ba55231f75d06d2ef68efe2ec; original DB zip SHA cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630.
+Report exact capped/gold-error cases and re-executed EX, but retain 2026-10-05 failed workflow provenance. No BIRD-prompt tuning or promotion.
