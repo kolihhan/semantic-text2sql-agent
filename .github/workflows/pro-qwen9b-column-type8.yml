@@ -74,7 +74,7 @@ jobs:
           repository: kolihhan/semantic-text2sql-agent
           run-id: 44040520571
           github-token: ${{ github.token }}
-          name: qwen9b-semantic-preview8-40db-excluded-frozen
+          name: qwen9b-semantic-preview8-36db-excluded-frozen
           path: prior-preview
       - name: SHA-freeze 8 numeric-relational cases on 4 newly unused BIRD TRAIN source DBs, exclude 40 prior DBs
         shell: bash
@@ -99,7 +99,7 @@ jobs:
           assert m['excluded_prior_train_dbs']==40 and m['exclude_all_11_dev_dbs']
           assert m['source_sha256']==hashlib.sha256(Path('frozen/column-type8.jsonl').read_bytes()).hexdigest()
           assert m['gold_not_used_for_treatment'] and m['no_training']
-          print('FROZEN_REAL_SEMANTIC_PREVIEW_8',m['source_sha256'],m['source_dbs'])
+          print('FROZEN_RAW_COLUMN_TYPE_8',m['source_sha256'],m['source_dbs'])
           PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
