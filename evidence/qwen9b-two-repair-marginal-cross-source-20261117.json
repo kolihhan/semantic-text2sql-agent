@@ -1,0 +1,64 @@
+{
+  "audit_date": "2026-11-17",
+  "scope": "compare historical marginal 1st/2nd repair contribution, no new inference",
+  "historical_dev100": {
+    "run_id": 37307108955,
+    "n": 100,
+    "model": "qwen3.5:9b-q4_K_M",
+    "repair_distribution": {
+      "0": 75,
+      "1": 15,
+      "2": 10
+    },
+    "rescued_ex_by_final_attempt": {
+      "1": 6,
+      "2": 0
+    },
+    "original_invalid_shard": true,
+    "complete_aggregate": false
+  },
+  "independent_bird_train_validation64": {
+    "run_id": 43892823922,
+    "artifact_id": 14237659639,
+    "artifact_zip_sha256": "ee1152f289f60b006a96d06dcb74265c6bf0c7a6fc88dd40903c992c298d3791",
+    "n": 64,
+    "physical_train_dbs": [
+      "movie_3",
+      "music_tracker",
+      "superstore",
+      "world"
+    ],
+    "source_validation_sha256": "cc112305bc9de33a03cea704f2edecfdfb45e62cc953ae498cea27fbed93b506",
+    "model_digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+    "direct_ex": 27,
+    "guarded_ex": 31,
+    "repair_distribution": {
+      "0": 46,
+      "1": 4,
+      "2": 14
+    },
+    "rescued_ex_by_final_attempt": {
+      "1": 3,
+      "2": 1
+    },
+    "second_repair_rescued_case": {
+      "source_index": 1768,
+      "database": "superstore",
+      "mechanism_observed": "unquoted ProductName/ProductID/CustomerName etc. converted into quoted physical identifiers containing spaces",
+      "was_direct_executable": false,
+      "guarded_ex_correct": true
+    },
+    "source_independent_of_dev100_physical_dbs": true,
+    "corpus_public_not_hidden": true
+  },
+  "decision": "RETAIN max_repairs=2; DO NOT switch to 1 based only on historical DEV100. Second repair did rescue an EX-correct answer on independent BIRD TRAIN VAL64. Expensive retries deserve selective error-driven diagnostic, not blanket removal.",
+  "cost_note": "On historical DEV100, 10 cases used two repairs without EX rescue; on independent TRAIN64, 14 two-repair cases produced one EX rescue. These are small, dataset-dependent and both exposed research cohorts.",
+  "prospective_mechanism": "Test schema-normalized identifier repair as a deterministic, uniquely grounded alternative to an extra Qwen call; must verify failure modes and no regressions on entirely new physical DB sources before promotion.",
+  "inferential_limitations": [
+    "does not establish optimal global max_repairs",
+    "same underlying Qwen weights but public task distributions differ",
+    "error-specific causal mechanism for source index 1768 based on saved SQL diff, not blinded human adjudication"
+  ],
+  "new_model_calls": 0,
+  "default_changed": false
+}
