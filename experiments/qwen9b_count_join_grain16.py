@@ -160,6 +160,9 @@ def load_frozen(cohort,meta):
     if (m.get("status")!="FROZEN_NO_MODEL_INFERENCE" or m.get("protocol")!=PROTOCOL
         or m.get("n")!=N or m.get("shards")!=SHARDS
         or m.get("excluded_prior_train_db_count")!=44
+        or m.get("excluded_dev_db_count")!=11
+        or m.get("question_selection_only_asks_how_many") is not True
+        or m.get("no_qlora") is not True or m.get("no_training") is not True
         or m.get("model_digest")!=MODEL_DIGEST or m.get("gate")!=GATE
         or m.get("source_sha256")!=sha256(raw).hexdigest()):
         raise ValueError("pre-inference SHA/model/source contract failed")
