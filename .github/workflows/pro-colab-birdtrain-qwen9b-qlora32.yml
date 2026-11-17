@@ -1,10 +1,17 @@
-name: PRO Real BIRD TRAIN-only Qwen3.5-9B QLoRA32 via Colab T4
+name: PRO SQL Qwen9B QLoRA32 fixed-T4 precision rerun (training proof only)
 
 on:
   push:
     branches: [experiment/qwen9b-sql-qlora32-train20261116]
     paths:
       - scripts/colab_sql_qwen9b_qlora32.py
+      - .github/workflows/pro-colab-birdtrain-qwen9b-qlora32.yml
+  pull_request:
+    types: [synchronize]
+    branches: [research/sql-qlora32-t4-precision-preflight-20261117]
+    paths:
+      - scripts/colab_sql_qwen9b_qlora32.py
+      - tests/test_colab_sql_qlora32_precision.py
       - .github/workflows/pro-colab-birdtrain-qwen9b-qlora32.yml
   workflow_dispatch:
 
@@ -13,7 +20,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: pro-qwen9b-sql-birdtrain-32-gpu-20261116
+  group: pro-qwen9b-sql-birdtrain32-t4-precision-rerun-20261117
   cancel-in-progress: false
 
 jobs:
@@ -31,6 +38,10 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: '3.12'
+      - name: CPU-test T4 FP32-only trainable parameter preflight
+        run: |
+          python -m pip install -q pytest
+          python -m pytest -q tests/test_colab_sql_qlora32_precision.py
       - name: Recover frozen original BIRD TRAIN-only source
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
@@ -98,7 +109,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for attempt in $(seq 1 45); do
+          for attempt in $(seq 1 1); do
             usage="$(timeout 100 colab --auth=adc usage || true)"
             active="$(printf '%s\n' "$usage" | awk '/^Active assignments:/ {print $3}')"
             if [[ "$active" == "0" ]]; then
@@ -106,7 +117,7 @@ jobs:
               exit 0
             fi
             echo "SQL_QLORA_GPU_SLOT_BUSY_OR_UNDETERMINED_CHECK=$attempt"
-            sleep 40
+            sleep 1
           done
           echo "SQL_QLORA_STOP_NO_AVAILABLE_COLAB_SLOT"
           exit 75
@@ -153,7 +164,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: original-birdtrain-qwen9b-qlora32-t4-checkpoint-if-trained
+          name: original-birdtrain-qwen9b-qlora32-t4-fp32-rerun-checkpoint-if-trained
           path: exported/
           retention-days: 30
           if-no-files-found: warn
