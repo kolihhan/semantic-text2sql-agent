@@ -13,7 +13,7 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: '3.11'
-      - name: CPU proof: joined row count vs distinct parent entities and strict fail-closed source
+      - name: "CPU proof: joined row count vs distinct parent entities and strict fail-closed source"
         shell: bash
         run: |
           set -euo pipefail
