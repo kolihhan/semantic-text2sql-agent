@@ -19,9 +19,9 @@ def cases():
     for n in range(8):
         out.append({
             "source_index":9000+n,"db_id":f"db{n//2}","order":["original","grounded"],
-            "arms":{"original":arm(n>=2),"grounded":arm(True if n in (0,2,3,4,5,6,7) else False)},
+            "arms":{"original":arm(n>=2),"grounded":arm(True if n in (0,2,4,5,6,7) else False)},
         })
-    # 1 rescue on db0, no other changes, so strict independent DB gate fails.
+    # One rescue on db0 and one regression on db1; strict gate must fail.
     return out
 
 
@@ -36,7 +36,6 @@ def shards(records):
 def test_exact_source_and_paired_fails_nonpromotional_screen():
     assert SHARDS==4
     rows=cases()
-    result=aggregate([__import__("pathlib").Path("unused")]) if False else None
     # Use temporary per-shard immutable JSON records like the actual aggregator.
     import json,tempfile
     from pathlib import Path
