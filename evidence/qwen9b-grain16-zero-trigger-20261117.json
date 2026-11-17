@@ -1,0 +1,41 @@
+{
+  "date": "2026-11-17",
+  "status": "VERIFIED_COMPLETE_PHYSICAL_NO_TRIGGERS_NO_SEMANTIC_EX_GAIN",
+  "run_id": 44053157511,
+  "aggregate_artifact_id": 14313764748,
+  "source_frozen_artifact_id": 14314153717,
+  "source_sha256": "ca68478128821b253dca9db600b101b9140fa645f2e38ed2e3493603db7efd8e",
+  "n": 16,
+  "physical_dbs": [
+    "genes",
+    "book_publishing_company",
+    "college_completion",
+    "law_episode"
+  ],
+  "baseline": {
+    "strict_set_ex": 7,
+    "strict_bag_ex": 7,
+    "executable": 15
+  },
+  "grain_guard": {
+    "strict_set_ex": 7,
+    "strict_bag_ex": 7,
+    "executable": 15
+  },
+  "changed_grain_cases": 0,
+  "rescues": 0,
+  "regressions": 0,
+  "reason_counts": {
+    "unsupported_sql_form": 13,
+    "question_entity_not_explicit": 2,
+    "base_not_executable": 1
+  },
+  "new_model_calls": 0,
+  "training_steps": 0,
+  "source_db_exclusions": 44,
+  "dev_dbs_excluded": 11,
+  "conclusion": "Rule never triggered: not an actual accuracy test of the underlying fanout correction mechanism. Do not promote or tune on these exposed 16 cases; need source feature/structural coverage before any costly new physical Qwen run.",
+  "model": "qwen3.5:9b-q4_K_M",
+  "gate_passed": false,
+  "default_changed": false
+}
