@@ -256,7 +256,6 @@ def _source_column_evidence(db,sql,question,max_columns=10):
                 continue
         return {"source":"SQLite read-only SQL-referenced columns only",
                 "columns":results,"sample_limit_per_column":4,
-                "gold_or_publisher_sql_used":False,
                 "column_count":len(results)}
     finally:
         conn.close()
