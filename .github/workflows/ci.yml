@@ -27,7 +27,7 @@ jobs:
 
 
   qwen9b_cpu_single_sql_probe:
-    if: github.event_name == 'pull_request' && github.head_ref == 'research/frozen-dev500-qwen9b-kcache-offline-selectors-20261117'
+    if: github.event_name == 'pull_request' && github.event.action == 'opened' && github.head_ref == 'research/frozen-dev500-qwen9b-kcache-offline-selectors-20261117'
     runs-on: ubuntu-latest
     timeout-minutes: 100
     permissions:
@@ -102,5 +102,119 @@ jobs:
         with:
           name: qwen9b-original-single-sql-cpu8-authentic-source-benchmark-only
           path: real-qwen9b-cpu-single-sql-benchmark.json
+          if-no-files-found: warn
+          retention-days: 30
+
+
+  qwen9b_dev500_k8_cache_pilot:
+    if: github.event_name == 'pull_request' && github.event.action == 'synchronize' && github.head_ref == 'research/frozen-dev500-qwen9b-kcache-offline-selectors-20261117'
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        shard: [0,1]
+    env:
+      OLLAMA_CONTEXT_LENGTH: '8192'
+      OLLAMA_NUM_PARALLEL: '1'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Source/algorithm unit tests and exact immutable existing DEV500 manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_kcache_protocol.py
+          python - <<'PY'
+          from pathlib import Path
+          from evaluation.kcache_protocol import read_frozen_manifest
+          m=read_frozen_manifest(Path('manifests/bird-dev500-holdout300-20261116-v2.json'))
+          assert m['dev_size']==500 and m['holdout_size']==300
+          print('BIRD_DEV500_ALREADY_FROZEN',len(m['dev_case_ids']),
+                'RESERVED_FINAL',len(m['holdout_case_ids']))
+          PY
+      - name: Download and SHA-verify original BIRD DEV question data (no selector gold access)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/bird
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true' \
+            -o /tmp/bird/bird-dev-original.json
+          echo 'ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb  /tmp/bird/bird-dev-original.json' | sha256sum -c -
+      - name: Download the same SHA-frozen physical SQLite BIRD DEV databases
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip' \
+            -o /tmp/bird/dev.zip
+          echo 'cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  /tmp/bird/dev.zip' | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          original=$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$original"
+          mkdir -p /tmp/bird/dbfiles
+          unzip -q "$original" -d /tmp/bird/dbfiles
+          root=$(find /tmp/bird/dbfiles -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          if [ -z "$root" ]; then root=/tmp/bird/dbfiles; fi
+          test -d "$root"
+          echo "DB_ROOT=$root" >> "$GITHUB_ENV"
+      - name: Install original Qwen3.5-9B Ollama CPU runtime with pinned SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          for i in {1..120}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:11434/api/tags >/dev/null
+          ollama pull qwen3.5:9b-q4_K_M
+      - name: "PROSPECTIVE ONLY: 8 one-time candidate samples per manifest-shard question, no oracle"
+        shell: bash
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python -m evaluation.qwen9b_kcache generate \
+            --source /tmp/bird/bird-dev-original.json \
+            --database-root "$DB_ROOT" \
+            --manifest manifests/bird-dev500-holdout300-20261116-v2.json \
+            --shard "$SHARD" --shards 32 --k 8 \
+            --out "k8-dev500-candidate-cache-$SHARD.json"
+      - name: "OFFLINE ONLY: run cached SQLite candidates, vote WITHOUT gold, then label EX"
+        shell: bash
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python -m evaluation.qwen9b_kcache score \
+            --source /tmp/bird/bird-dev-original.json \
+            --database-root "$DB_ROOT" \
+            --manifest manifests/bird-dev500-holdout300-20261116-v2.json \
+            --cache "k8-dev500-candidate-cache-$SHARD.json" \
+            --out "k8-dev500-offline-scored-$SHARD.json"
+          python - <<'PY'
+          import json,glob
+          a=json.load(open(glob.glob('k8-dev500-candidate-cache-*.json')[0]))
+          b=json.load(open(glob.glob('k8-dev500-offline-scored-*.json')[0]))
+          assert a['k']==8 and b['k']==8 and len(a['cases'])==len(b['cases'])
+          assert b['model_calls']==0 and b['selector_never_sees_gold']
+          assert a['no_gold_sql_in_cache'] and a['no_repair']
+          print('K8_FROZEN_CACHE_COMPLETED',a['shard'],len(a['cases']),
+                'OFFLINE_ONLY_SCORED',len(b['cases']),flush=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: k8-bird-dev500-prospective-cache-and-offline-score-shard-${{ matrix.shard }}
+          path: |
+            k8-dev500-candidate-cache-*.json
+            k8-dev500-offline-scored-*.json
           if-no-files-found: warn
           retention-days: 30
