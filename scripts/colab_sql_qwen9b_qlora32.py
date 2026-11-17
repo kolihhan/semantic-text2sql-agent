@@ -74,6 +74,33 @@ def pack(status,error=None):
           "checkpoints":checkpoints,"has_final":has_final,
           "archive_bytes":ARCHIVE.stat().st_size}),flush=True)
 
+def normalize_t4_trainable_precision(model, torch, *, capability):
+    """Keep all T4 trainable LoRA gradients FP32 before FP16 GradScaler sees them.
+
+    PEFT/TRL may construct trainable adapters in BF16 even if the quantized base
+    uses FP16. PyTorch FP16 GradScaler cannot unscale BF16 gradients on T4.
+    Never modify frozen base weights or 4-bit quantized tensors.
+    """
+    if capability >= (8, 0):
+        return {"converted": 0, "checked": 0, "skipped_newer_gpu": True}
+    converted = 0
+    checked = 0
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue
+        checked += 1
+        if param.__class__.__name__ == "Params4bit":
+            raise RuntimeError(f"Trainable quantized parameter is unsafe: {name}")
+        if param.dtype in (torch.float16, torch.bfloat16):
+            param.data = param.data.to(torch.float32)
+            converted += 1
+        if param.dtype != torch.float32:
+            raise RuntimeError(f"Unsupported T4 trainable gradient dtype: {name}: {param.dtype}")
+    if checked == 0:
+        raise RuntimeError("No trainable LoRA parameters found before QLoRA training")
+    return {"converted": converted, "checked": checked, "skipped_newer_gpu": False}
+
+
 def main():
     import torch
     if not torch.cuda.is_available():raise RuntimeError("Physical GPU required")
@@ -147,6 +174,10 @@ def main():
     lora=LoraConfig(r=8,lora_alpha=16,lora_dropout=0.05,bias="none",
                     task_type="CAUSAL_LM",target_modules=["q_proj","v_proj"])
     model=get_peft_model(model,lora)
+    precision_preflight=normalize_t4_trainable_precision(
+        model,torch,capability=torch.cuda.get_device_capability(0))
+    print("SQL_QLORA_T4_TRAINABLE_FP32_PREFLIGHT",
+          json.dumps(precision_preflight,sort_keys=True),flush=True)
     if _configure_trl_legacy_addmm(chunked_logprob,capability=torch.cuda.get_device_capability(0)):
         print("SQL_QLORA_T4_TRL_MIXED_GEMM_FP32_FALLBACK",flush=True)
     settings=SFTConfig(
@@ -167,6 +198,13 @@ def main():
         "original_source_sql_not_generated_by_teacher":True},indent=2))
     trainer=SFTTrainer(model=model,args=settings,train_dataset=Dataset.from_list(tokenized),
                         processing_class=tok)
+    # Fail closed before optimizer: trainer construction may alter adapter dtypes.
+    precision_after_trainer=normalize_t4_trainable_precision(
+        trainer.model,torch,capability=torch.cuda.get_device_capability(0))
+    if precision_after_trainer["converted"]:
+        raise RuntimeError("TRL recast trainable adapter after FP32 preflight; stop before GPU steps")
+    print("SQL_QLORA_T4_TRAINER_FP32_VERIFIED",
+          json.dumps(precision_after_trainer,sort_keys=True),flush=True)
     started=time.monotonic()
     try:
         trainer.train()
