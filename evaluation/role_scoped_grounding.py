@@ -80,7 +80,7 @@ def lexical_role_match(question: str, literal: str, table: str, column: str) -> 
     # overrides more distant question nouns; no hardcoded schema vocabulary.
     mention=re.search(r"(?<!\w)"+re.escape(literal)+r"(?!\w)",question,re.I)
     if mention is not None:
-        prefix=question[:mention.start()].rstrip(" \t\'\\"")
+        prefix=question[:mention.start()].rstrip().rstrip(chr(39)+chr(34)).rstrip()
         head=re.search(r"(?i)\b(?:of|for|named|called|titled)\s+(?:the|an|a)?\s*([a-z]{4,})\s*$",prefix)
         if head is not None:
             roles={norm(head.group(1))}
