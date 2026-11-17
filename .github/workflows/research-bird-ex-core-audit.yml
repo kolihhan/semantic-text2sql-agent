@@ -4,12 +4,17 @@ on:
     paths:
       - 'tests/test_bird_ex_core_parity.py'
       - 'research/frozen100_evidence_gate.py'
+      - 'research/reconstruct_bird100_repair_mechanisms.py'
+      - 'tests/test_reconstruct_bird100_repair_mechanisms.py'
       - '.github/workflows/research-bird-ex-core-audit.yml'
   workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
 jobs:
   ex-core-parity:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -25,3 +30,49 @@ jobs:
             exit 1
           fi
           echo 'Expected BLOCKED result: raw paired cases absent from summary-only JSON'
+
+      - name: Check raw artifact reconstruction fails closed for missing data
+        run: python -m pytest -q tests/test_reconstruct_bird100_repair_mechanisms.py
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 37307108955
+          github-token: ${{ github.token }}
+          name: qwen9b-xiyan-style-shard-0
+          path: original-shards/0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 37307108955
+          github-token: ${{ github.token }}
+          name: qwen9b-xiyan-style-shard-1
+          path: original-shards/1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 37307108955
+          github-token: ${{ github.token }}
+          name: qwen9b-xiyan-style-shard-2
+          path: original-shards/2
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 37307108955
+          github-token: ${{ github.token }}
+          name: qwen9b-xiyan-style-shard-3
+          path: original-shards/3
+      - name: Independently reconstruct full 100 paired cases and six one-step EX rescues
+        run: |
+          set -euo pipefail
+          python -m research.reconstruct_bird100_repair_mechanisms \
+            --shards original-shards/0/qwen9b-shard-0.json \
+                     original-shards/1/qwen9b-shard-1.json \
+                     original-shards/2/qwen9b-shard-2.json \
+                     original-shards/3/qwen9b-shard-3.json \
+            --out ci-results/qwen9b-bird100-raw-repair-audit.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen9b-bird100-raw-root-cause-audit
+          path: ci-results/qwen9b-bird100-raw-repair-audit.json
+          if-no-files-found: error
+          retention-days: 30
