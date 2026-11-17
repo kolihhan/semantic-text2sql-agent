@@ -71,3 +71,22 @@ def test_newer_gpu_does_not_change_adapter_dtype():
     result = normalize_t4_trainable_precision(FakeModel({"adapter": p}), FakeTorch, capability=(8, 0))
     assert result["skipped_newer_gpu"] is True
     assert p.dtype == FakeTorch.bfloat16
+
+def test_trl_post_init_recast_is_restored_then_idempotent():
+    # Reproduces physical run 44035083621: initial LoRA FP32, TRL
+    # internally recasts a subset to BF16 on SFTTrainer construction.
+    params = {
+        "lora_A": FakeParam(FakeTorch.float32),
+        "lora_B": FakeParam(FakeTorch.float32),
+        "frozen_base": FakeParam(FakeTorch.bfloat16, requires_grad=False),
+    }
+    model = FakeModel(params)
+    first = normalize_t4_trainable_precision(model, FakeTorch, capability=(7, 5))
+    assert first["converted"] == 0 and first["checked"] == 2
+    params["lora_B"].data = FakeTensor(FakeTorch.bfloat16)
+    repaired = normalize_t4_trainable_precision(model, FakeTorch, capability=(7, 5))
+    again = normalize_t4_trainable_precision(model, FakeTorch, capability=(7, 5))
+    assert repaired["converted"] == 1 and repaired["checked"] == 2
+    assert again["converted"] == 0 and again["checked"] == 2
+    assert params["lora_A"].dtype == params["lora_B"].dtype == FakeTorch.float32
+    assert params["frozen_base"].dtype == FakeTorch.bfloat16
