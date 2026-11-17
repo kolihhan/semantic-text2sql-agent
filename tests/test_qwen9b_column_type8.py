@@ -34,7 +34,7 @@ def test_authorizer_only_reads_physically_referenced_money_text(tmp_path):
     assert salary["declared_type"]=="TEXT"
     assert all(v["sqlite_type"]=="text" for v in salary["distinct_raw_examples"])
     assert any("USD 2,500" in v["literal"] for v in salary["distinct_raw_examples"])
-    assert evidence["gold_or_publisher_sql_used"] is False
+    assert "gold_or_publisher_sql_used" not in evidence
 
 
 def test_authorizer_catches_categorical_vs_numeric_comparison(tmp_path):
