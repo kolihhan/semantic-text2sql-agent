@@ -1,8 +1,8 @@
-"""Preregistered, gold-blind Qwen3.5-9B semantic review with PHYSICAL SQLite result preview.
+"""Preregistered, gold-blind Qwen3.5-9B semantic reviewer with SQL-referenced raw column physical type/values.
 
 Fixed original Qwen9B first SQL and existing two-repair Guarded baseline.
-Treatment sees only original question/schema/evidence, baseline SQL, actual
-returned columns and three sample rows. Never a gold query, gold label or
+Treatment sees original question/schema, baseline SQL, and actual raw SQLite
+values and declared types of columns the baseline SQL physically references. Never a gold query, gold label or
 stronger model. Tested on four source-disjoint BIRD TRAIN DBs, public only.
 
 No QLoRA, no model change, no DEV/HOLDOUT, no automatic deployment.
@@ -14,6 +14,7 @@ from hashlib import sha256
 import json
 from pathlib import Path
 import re
+import sqlite3
 from time import perf_counter
 
 from evaluation.run_bird import _ollama_model_digest
@@ -31,8 +32,8 @@ from semantic_sql.verifier import verify_sql_preflight
 
 MODEL="qwen3.5:9b-q4_K_M"
 DIGEST="56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90"
-PROTOCOL="QWEN9B-BIRD-TRAIN-NEWDB4X2-ROW-PREVIEW-SEMANTIC-REVIEW-V1"
-SEED="birdtrain-semantic-executable-semantic-review-newdb-20261117"
+PROTOCOL="QWEN9B-BIRD-TRAIN-NEWDB4X2-REFERENCED-COLUMN-EVIDENCE-V1"
+SEED="birdtrain-referenced-column-physical-type-value-v1-20261117"
 N=8
 SHARDS=4
 PER_SHARD=2
@@ -44,23 +45,26 @@ SOURCE_SHA={
  "prior_value16":"4de8471341b38d0fb00ded1f17f265d33b528ec78b9779eb94937914df196955",
  "prior_value16_replica":"faa4f7ba1de9923cbf8e51a500727dfe4c76a08c3f6366735cf21bff152655b7",
  "prior_role8":"3be2fc49ba3cff4171e20afcaf70f1fc698c8be401ac332a29fa1f48b781168f",
+ "prior_preview8":"85c3e3abc45d90f23418dbc14261111abf90feadfef2b155988b77b40a4fe0ca",
 }
 SOURCE_COUNTS={"prior_train":242,"prior_validation":64,"prior_fk32":32,
-               "prior_value16":16,"prior_value16_replica":16,"prior_role8":8}
+               "prior_value16":16,"prior_value16_replica":16,"prior_role8":8,"prior_preview8":8
 SOURCE_COLUMNS={"prior_train":"source_db_id","prior_validation":"source_db_id"}
 MAX_DB_BYTES=96*1024*1024
 QUESTION_SCOPE=re.compile(r"\b(how many|number of|count|average|percentage|ratio|most|least|highest|lowest|biggest|smallest|more than|less than|top)\b",re.I)
 RULE=(
- "You are a conservative SQL semantic auditor. Original author already wrote and "
- "executed an SQLite SELECT. You see only the user's original question, schema, "
- "optional published evidence, that proposed SQL, and exact observed columns and "
- "at most three data rows returned by that SQL. No gold answer is available. "
- "Focus on whether returned columns, entity grain, aggregation denominator, "
- "join scope and literal filters truly answer the wording. Do NOT guess missing "
- "source facts or overgeneralize from three sample rows. If you can identify a "
- "concrete semantic mismatch, output exactly one corrected read-only SQLite SELECT "
- "query with no fences or explanation. Otherwise copy the original SQL verbatim. "
- "Do not introduce extra requested outputs. Preserve database and user intent."
+ "You are a conservative SQL semantic auditor. Original fixed Qwen3.5-9B "
+ "already wrote an executable SQLite SELECT. You receive ONLY the original "
+ "question, schema, the submitted SQL, and sampled RAW stored values plus "
+ "physical SQLite typeof() and declared storage type of columns that the "
+ "SQL itself actually references. These raw values are source evidence, "
+ "NOT a gold answer. Look specifically for arithmetic over formatted TEXT "
+ "money, comparison of categorical TEXT to numeric literals, date encodings, "
+ "aggregation unit and filter scope. Do NOT add unrelated source columns "
+ "or broaden filters just because other values resemble the question. "
+ "If and ONLY if a concrete physical type/value conflict makes the SQL "
+ "semantically wrong, output one corrected read-only SQLite SELECT with "
+ "no fences or explanation. Otherwise repeat the SQL verbatim."
 )
 RULE_SHA=sha256(RULE.encode()).hexdigest()
 GATE={"min_net_set_ex":2,"max_set_regressions":0,"min_database_rescues":2,
@@ -95,8 +99,8 @@ def _prior_exclusion(prior:dict[str,Path], dev:list[dict]):
                 seen.add(normalized(prompt.split("\nSchema context:\n",1)[0].removeprefix("Question: ")))
     # 16+4+4+4+4+4 distinct BIRD TRAIN physical DBs, plus 11 DEV.
     known_dev={r["db_id"] for r in dev}
-    if len(excluded_db-known_dev)!=36:
-        raise ValueError(f"expected 36 previously exposed BIRD TRAIN DBs, got {len(excluded_db-known_dev)}")
+    if len(excluded_db-known_dev)!=40:
+        raise ValueError(f"expected 40 previously exposed BIRD TRAIN DBs, got {len(excluded_db-known_dev)}")
     return excluded_db,seen
 
 def freeze(train_file,dev_file,prior,root,out):
@@ -152,7 +156,7 @@ def freeze(train_file,dev_file,prior,root,out):
         "train_sha":TRAIN_SHA,"dev_sha":DEV_SHA,
         "prior_artifact_shas":SOURCE_SHA,
         "source_sha256":sha256(file.read_bytes()).hexdigest(),
-        "source_dbs":selected,"excluded_prior_train_dbs":36,
+        "source_dbs":selected,"excluded_prior_train_dbs":40,
         "exclude_all_11_dev_dbs":True,"n":N,"shards":SHARDS,
         "selection_seed":SEED,"questions_conditioned_on_numeric_relation":True,
         "publisher_sql_compiler_checked_only":True,
@@ -174,7 +178,7 @@ def load_frozen(path,meta):
         or sha256(raw).hexdigest()!=m.get("source_sha256")
         or m.get("model_digest")!=DIGEST
         or m.get("review_rule_sha256")!=RULE_SHA or m.get("gate")!=GATE
-        or m.get("excluded_prior_train_dbs")!=36):
+        or m.get("excluded_prior_train_dbs")!=40):
         raise RuntimeError("frozen source/model/review contract drift")
     rows=[json.loads(line) for line in raw.decode().splitlines() if line.strip()]
     if len(rows)!=N or len({r["source_index"] for r in rows})!=N:
@@ -354,6 +358,7 @@ def main():
     p.add_argument("--prior-value16",type=Path)
     p.add_argument("--prior-value16-replica",type=Path)
     p.add_argument("--prior-role8",type=Path)
+    p.add_argument("--prior-preview8",type=Path)
     p.add_argument("--cohort",type=Path)
     p.add_argument("--meta",type=Path)
     p.add_argument("--shard",type=int)
