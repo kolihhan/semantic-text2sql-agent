@@ -292,14 +292,14 @@ def one_case(db,row,provider):
     baseline_elapsed=round(perf_counter()-started,2)
     status="no_executable_base"
     after=baseline
-    preview=None
+    source_columns=None
     reviewer_elapsed=0
     if baseline_result["exec"]:
-        preview=_preview(db,baseline)
-        if preview is not None:
+        source_columns=_source_column_evidence(db,baseline,question)
+        if source_columns and source_columns["columns"]:
             review_start=perf_counter()
             revision=_strip_fence(provider.complete_text(system=RULE,
-                         user=_prompt(question,prompt,baseline,preview)))
+                         user=_prompt(question,prompt,baseline,source_columns)))
             reviewer_elapsed=round(perf_counter()-review_start,2)
             if not revision or revision.strip().rstrip(";")==baseline.strip().rstrip(";"):
                 status="reviewer_abstained"
@@ -316,9 +316,11 @@ def one_case(db,row,provider):
       "baseline_sql":baseline,"treatment_sql":after,
       "baseline":baseline_result,"reviewed":tested,
       "review_status":status,
-      "preview_columns":preview["column_names"] if preview else None,
-      "preview_row_count":preview["full_row_count"] if preview else None,
-      "reviewer_extra_calls":int(preview is not None),
+      "evidence_columns":source_columns["column_count"] if source_columns else 0,
+      "evidence_columns_with_raw_text":sum(
+          any(v["sqlite_type"]=="text" for v in col["distinct_raw_examples"])
+          for col in source_columns["columns"]) if source_columns else 0,
+      "reviewer_extra_calls":int(bool(source_columns and source_columns["columns"])),
       "baseline_elapsed_s":baseline_elapsed,"reviewer_elapsed_s":reviewer_elapsed,
       "question":question,
       "source_prompt_sha256":row["prompt_sha256"],
@@ -384,6 +386,7 @@ def aggregate(files):
       "review_accepted":sum(r["review_status"]=="accepted_semantic_revision" for r in rows),
       "review_extra_calls":sum(r["reviewer_extra_calls"] for r in rows),
       "total_review_elapsed_s":round(sum(r["reviewer_elapsed_s"] for r in rows),2),
+      "total_physically_sampled_columns":sum(r["evidence_columns"] for r in rows),
       "positive_screen_only":passed,"promotion_allowed":False,
       "gate":GATE,"cases":rows,
       "limitations":["8 source-conditioned public BIRD TRAIN tasks from four new physical databases",
