@@ -1,0 +1,27 @@
+name: Research BIRD EX core audit (CPU only)
+on:
+  pull_request:
+    paths:
+      - 'tests/test_bird_ex_core_parity.py'
+      - 'research/frozen100_evidence_gate.py'
+      - '.github/workflows/research-bird-ex-core-audit.yml'
+  workflow_dispatch:
+jobs:
+  ex-core-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[dev]'
+      - name: Compare safe uncapped SQL against pinned BIRD core
+        run: python -m pytest -q tests/test_bird_ex_core_parity.py
+      - name: Fail closed on summary-only historical artifact
+        run: |
+          if python research/frozen100_evidence_gate.py runs/qwen9b-frozen100/summary.json; then
+            echo 'ERROR: summary-only artifact should not satisfy raw-case evidence gate'
+            exit 1
+          fi
+          echo 'Expected BLOCKED result: raw paired cases absent from summary-only JSON'
