@@ -97,3 +97,43 @@ def aggregate(shards:list[dict],manifest:dict)->dict:
         "predeclared_gate":delta>=MIN_EFFECT and qci["ci95_lower"]>0 and dbci["ci95_lower"]>0,
         "promotion_allowed":False,"holdout300_unused":True,
         "interpretation":"Same frozen DEV500 candidates; bag plurality is one label-blind sensitivity test. DEV is not independent proof and human semantic score remains undefined."}
+
+
+def main()->None:
+    """Run once against 32 downloaded original frozen K8 candidate-cache files."""
+    import argparse
+    import glob
+    from evaluation.kcache_protocol import source_cases
+    parser=argparse.ArgumentParser()
+    parser.add_argument("--source",type=Path,required=True)
+    parser.add_argument("--db-root",type=Path,required=True)
+    parser.add_argument("--cache-dir",type=Path,required=True)
+    parser.add_argument("--out-dir",type=Path,required=True)
+    parser.add_argument("--manifest",type=Path,default=Path(MANIFEST))
+    args=parser.parse_args()
+    m=read_frozen_manifest(args.manifest)
+    frozen=source_cases(args.source,m,split="dev")
+    originals={str(x["question_id"]):x for x in frozen}
+    paths=sorted(args.cache_dir.glob("k8-dev500-candidate-cache-*.json"))
+    if len(paths)!=32:
+        raise ValueError("exact 32 immutable original candidate caches required")
+    if args.out_dir.exists():
+        raise FileExistsError("refuse to overwrite existing offline selector evidence")
+    parts=[]
+    for path in paths:
+        cache=json.loads(path.read_text("utf-8"))
+        records=score_cache(cache,originals,args.db_root)
+        parts.append(records)
+    complete=aggregate(parts,m)
+    args.out_dir.mkdir(parents=True,exist_ok=False)
+    for part in parts:
+        out=args.out_dir/("bag-selector-scored-shard-"+str(part["shard"])+".json")
+        out.write_text(json.dumps(part,sort_keys=True,indent=2)+"\n")
+    (args.out_dir/"bag-selector-complete-500.json").write_text(
+        json.dumps(complete,sort_keys=True,indent=2)+"\n")
+    print("BIRD_DEV500_ZERO_MODEL_BAG_SELECTOR_COMPLETE",
+          json.dumps(complete,sort_keys=True),flush=True)
+
+
+if __name__=="__main__":
+    main()
