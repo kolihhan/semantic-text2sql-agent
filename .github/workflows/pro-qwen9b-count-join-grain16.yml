@@ -1,14 +1,5 @@
 name: PRO no-train Qwen9B COUNT JOIN entity grain strict EX (16 new TRAIN)
 on:
-  pull_request:
-    types: [opened, synchronize]
-    branches: [main]
-    paths:
-      - src/semantic_sql/grain_guard.py
-      - tests/test_grain_guard.py
-      - experiments/qwen9b_count_join_grain16.py
-      - tests/test_qwen9b_count_join_grain16.py
-      - .github/workflows/pro-qwen9b-count-join-grain16.yml
   workflow_dispatch:
 permissions:
   contents: read
