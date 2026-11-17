@@ -48,7 +48,7 @@ SOURCE_SHA={
  "prior_preview8":"85c3e3abc45d90f23418dbc14261111abf90feadfef2b155988b77b40a4fe0ca",
 }
 SOURCE_COUNTS={"prior_train":242,"prior_validation":64,"prior_fk32":32,
-               "prior_value16":16,"prior_value16_replica":16,"prior_role8":8,"prior_preview8":8
+               "prior_value16":16,"prior_value16_replica":16,"prior_role8":8,"prior_preview8":8}
 SOURCE_COLUMNS={"prior_train":"source_db_id","prior_validation":"source_db_id"}
 MAX_DB_BYTES=96*1024*1024
 QUESTION_SCOPE=re.compile(r"\b(how many|number of|count|average|percentage|ratio|most|least|highest|lowest|biggest|smallest|more than|less than|top)\b",re.I)
