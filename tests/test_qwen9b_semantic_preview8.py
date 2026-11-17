@@ -53,7 +53,7 @@ def test_missing_frozen_source_not_pretended_physical(tmp_path):
 def test_fail_closed_on_partial_aggregate(tmp_path):
     with pytest.raises(ValueError):
         m.aggregate([])
-    with pytest.raises(ValueError):
+    with pytest.raises(FileNotFoundError):
         m.aggregate([tmp_path/"missing.json"]*4)
 
 
