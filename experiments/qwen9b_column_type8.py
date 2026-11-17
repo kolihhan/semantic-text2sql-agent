@@ -204,25 +204,69 @@ def score(db,sql,gold_set,gold_bag):
     except (SQLExecutionError,ValueError):
         return {"ex":False,"bag":False,"exec":False}
 
-def _prompt(question,original_user,sql,preview):
-    # No publisher reference SQL, reference execution, answer or grading in prompt.
+def _ident(value):
+    return '"' + str(value).replace('"','""') + '"'
+
+def _source_column_evidence(db,sql,question,max_columns=10):
+    """SQLite authorizer: only source columns READ by the exact proposed SQL.
+
+    No fuzzy matching of unrelated database values, oracle labels or answers.
+    Fetch <=4 actual stored values and declared storage type of <=10 columns.
+    """
+    conn=sqlite3.connect(f"{Path(db).resolve().as_uri()}?mode=ro",uri=True)
+    try:
+        conn.execute("PRAGMA query_only = ON")
+        used=set()
+        def capture(code,table,column,_db,_trigger):
+            if (code==sqlite3.SQLITE_READ and isinstance(table,str)
+                and isinstance(column,str) and column
+                and not table.startswith("sqlite_")):
+                used.add((table,column))
+            return sqlite3.SQLITE_OK
+        conn.set_authorizer(capture)
+        try:
+            conn.execute("EXPLAIN QUERY PLAN " + sql).fetchall()
+        finally:
+            conn.set_authorizer(None)
+        def rank(pair):
+            table,col=pair
+            q=re.sub(r"[^a-z0-9]","",question.casefold())
+            k=re.sub(r"[^a-z0-9]","",col.casefold())
+            relevant=bool(k and k in q and len(k)>=3)
+            risk=bool(re.search(r"(?i)salary|price|cost|rate|amount|len|length|year|date|score|percent|rating|genre|category|sentiment|polar|profit|duration|unit|size",col))
+            return (-int(relevant),-int(risk),table.casefold(),col.casefold())
+        results=[]
+        for table,col in sorted(used,key=rank)[:max_columns]:
+            try:
+                types={r[1]:str(r[2]) for r in conn.execute("PRAGMA table_info("+_ident(table)+")")}
+                if col not in types:
+                    continue
+                qcol=_ident(col);qtable=_ident(table)
+                samples=conn.execute(
+                    f"SELECT DISTINCT typeof({qcol}), CAST({qcol} AS TEXT) "
+                    f"FROM {qtable} WHERE {qcol} IS NOT NULL LIMIT 4").fetchall()
+                if not samples:
+                    continue
+                results.append({"table":table,"column":col,
+                                "declared_type":types[col],
+                                "distinct_raw_examples":[{"sqlite_type":str(t),
+                                                          "literal":str(v)[:96]}
+                                                         for t,v in samples]})
+            except (sqlite3.Error,ValueError):
+                continue
+        return {"source":"SQLite read-only SQL-referenced columns only",
+                "columns":results,"sample_limit_per_column":4,
+                "gold_or_publisher_sql_used":False,
+                "column_count":len(results)}
+    finally:
+        conn.close()
+
+def _prompt(question,original_user,sql,source_columns):
     return json.dumps({"question":question,
                        "original_question_and_schema":original_user,
                        "baseline_sql":sql,
-                       "physical_sqlite_preview":preview},ensure_ascii=False,sort_keys=True)
-
-def _preview(db,sql):
-    result=execute_readonly(db,sql,max_rows=50000)
-    if result.truncated:
-        return None
-    def trim(x):
-        if x is None or isinstance(x,(int,float,bool)):return x
-        return str(x)[:96]
-    return {"column_names":list(result.columns),
-            "rows": [[trim(v) for v in row] for row in result.rows[:3]],
-            "full_row_count":len(result.rows),
-            "preview_row_limit":3,
-            "not_reference_or_gold":True}
+                       "physical_sqlite_referenced_column_evidence":source_columns},
+                       ensure_ascii=False,sort_keys=True)
 
 def one_case(db,row,provider):
     question=row["question"]
