@@ -78,10 +78,10 @@ def lexical_role_match(question: str, literal: str, table: str, column: str) -> 
     # 'Apricot'", the named value describes the recipe, not ingredients.
     # A directly specified referent head after of/for/named/called/titled
     # overrides more distant question nouns; no hardcoded schema vocabulary.
-    mention=re.search(r"(?<!\\w)"+re.escape(literal)+r"(?!\\w)",question,re.I)
+    mention=re.search(r"(?<!\w)"+re.escape(literal)+r"(?!\w)",question,re.I)
     if mention is not None:
-        prefix=question[:mention.start()].rstrip(" \\t\\'\\\"")
-        head=re.search(r"(?i)\\b(?:of|for|named|called|titled)\\s+(?:the|an|a)?\\s*([a-z]{4,})\\s*$",prefix)
+        prefix=question[:mention.start()].rstrip(" \t\'\\"")
+        head=re.search(r"(?i)\b(?:of|for|named|called|titled)\s+(?:the|an|a)?\s*([a-z]{4,})\s*$",prefix)
         if head is not None:
             roles={norm(head.group(1))}
     column_parts=identifier_tokens(column)
