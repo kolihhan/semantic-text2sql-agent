@@ -73,7 +73,7 @@ jobs:
           SHARD: ${{ matrix.shard }}
         run: |
           set -euo pipefail
-          python -m experiments.qwen9b_physical_value16_replica \
+          python -m experiments.qwen9b_role8_paired \
             --cohort source/role-scoped8.jsonl \
             --meta source/freeze.json --shard "$SHARD" \
             --db-work original-physical-sqlite \
@@ -104,7 +104,7 @@ jobs:
       - name: Complete all 8 frozen cases or FAIL, no partial EX gains
         run: |
           set -euo pipefail
-          python -m experiments.qwen9b_physical_value16_replica \
+          python -m experiments.qwen9b_role8_paired \
             --inputs shards/role8-paired-shard-*.json \
             --out role8-complete.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
