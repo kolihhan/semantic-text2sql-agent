@@ -11,7 +11,7 @@ from hashlib import sha256
 from pathlib import Path
 
 MODEL="56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90"
-SOURCE="0310b7ca2dfb6247234e2073f93e7a75106d2ef68efe2ec"
+SOURCE="0310b7ca2dfb6247234e2073f93e7a75106ee41ba55231f75d06d2ef68efe2ec"
 UPSTREAM="483554eae102996f5ec1f4feab4e78ef29c2a394"
 EXPECTED_SHARD_STATUSES=["complete","complete","complete","invalid"]
 N=100
