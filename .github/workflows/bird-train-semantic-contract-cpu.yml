@@ -1,0 +1,76 @@
+name: BIRD TRAIN242 to independent TRAIN-VAL64 fixed semantic contract (NO LLM)
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  original-train-database-separated-quantifier-validation:
+    if: github.head_ref == 'research/birdtrain-quantifier-contract-probe-20261118'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Install CPU-only source auditor and unit-test locked semantic contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_semantic_contract_selector.py tests/test_train_semantic_contract_probe.py
+          test "$(git rev-parse HEAD:evaluation/semantic_contract_selector.py)" = "c4aa957298cba7a740d12f66bc259d8358a7dea3"
+          echo "ORIGINAL_CONTRACT_RULE_SOURCE_FROZEN_BEFORE_VALIDATION c4aa957298cba7a740d12f66bc259d8358a7dea3"
+      - name: Fetch original publisher source TRAIN242 and independent VAL64 physical databases
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43888747753
+          github-token: ${{ github.token }}
+          name: qwen9b-birdtrain-db-disjoint-original-sql-sft-candidates
+          path: source-locked
+      - name: Fetch ORIGINAL real Qwen9B results on 4 independent BIRD TRAIN validation databases
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43892823922
+          github-token: ${{ github.token }}
+          name: original-qwen9b-birdtrain-val64-complete
+          path: qwen-original
+      - name: TRAIN242 publisher contract safety and independent VAL64 real-model error detection
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.probe_semantic_contract_train \
+            --train source-locked/train.jsonl \
+            --validation source-locked/validation.jsonl \
+            --model-summary qwen-original/original-qwen9b-validation64-summary.json \
+            --out train242-val64-frozen-quantifier-contract.json
+          python - <<'PY'
+          import json
+          x=json.load(open('train242-val64-frozen-quantifier-contract.json'))
+          assert x['status']=='INDEPENDENT_TRAIN_DATABASE_SEPARATED_QUANTIFIER_CONTRACT_DIAGNOSTIC_COMPLETE'
+          assert x['training_reference_safety']['n']==242 and x['training_reference_safety']['dbs']==16
+          assert x['independent_physical_qwen9b_val64']['physical_validation_n']==64
+          assert x['independent_physical_qwen9b_val64']['physical_validation_dbs']==4
+          assert x['new_llm_calls']==0 and not x['bird_dev500_used'] and not x['bird_holdout300_used']
+          print('QUANTIFIER_CONTRACT_FEASIBILITY',
+                json.dumps({
+                  'train':x['training_reference_safety'],
+                  'val':{k:v for k,v in x['independent_physical_qwen9b_val64'].items()
+                         if k!='source_indices_selected_for_diagnostic_not_training'}},
+                sort_keys=True),flush=True)
+          PY
+      - name: Persist aggregate-only original Qwen9B TRAIN/VAL source evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: birdtrain242-to-dbdisjoint-val64-quantifier-contract-feasibility
+          path: train242-val64-frozen-quantifier-contract.json
+          if-no-files-found: warn
+          retention-days: 30
