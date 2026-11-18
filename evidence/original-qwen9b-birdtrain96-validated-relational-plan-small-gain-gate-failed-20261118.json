@@ -1,0 +1,116 @@
+{
+  "date": "2026-11-18",
+  "status": "COMPLETED_REAL_QWEN3_5_9B_GROUNDED_RELATION_PLAN96_POSITIVE_SMALL_BUT_FAILED_PREREGISTERED_PROMOTION",
+  "provenance": {
+    "github_actions": "https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/44316964908",
+    "rejected_algorithm_PR": "https://github.com/kolihhan/semantic-text2sql-agent/pull/111",
+    "complete_source_question_freeze_artifact_id": 14431659821,
+    "complete_paired_strict_EX_final_artifact_id": 14434992228,
+    "final_report_json_sha256": "66af799049d29c0cb61e70e9a0ec49a45acee138a36f3268a6a9ca579255fa3d",
+    "original_source_question_JSONL_SHA256": "cbe11b505524f446b576c60d3b751a5021fd4398deb7c1a7f70b2818e9f73398",
+    "original_BIRD_TRAIN_dataset_SHA256": "cd5884489dffd7c76d73509b396bd919fbe8b486efbc4ba2f48f89460de7d69f",
+    "original_Qwen_model": "qwen3.5:9b-q4_K_M",
+    "original_model_digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+    "github_jobs_success": 14,
+    "independently_verified_physical_SQLite_databases": 12,
+    "trained_new_adapter": false,
+    "stronger_model_or_teacher": false,
+    "used_DEV500": false,
+    "used_HOLDOUT300": false,
+    "used_last_two_protected_TRAIN_databases": false
+  },
+  "algorithm": "Baseline directly generates original Qwen SQL from question plus physical schema; treatment uses SAME Qwen first for six-field relationship and entity-grain JSON (tables, join_keys, answer_unit, aggregation, filters, ordering), checks all table and join-column names exist in actual physical original SQLite catalog, then generates new SQL with same original Qwen using tentative plan as context. On invalid plan, treatment retains original SQL. Both baseline and treatment SQL immutable/uploaded before publisher gold reference opens.",
+  "predeclared_design": {
+    "original_source_question_n": 96,
+    "original_exposed_physical_DB_n": 12,
+    "per_physical_DB": 8,
+    "Qwen_temperature": 0,
+    "seed": 42,
+    "max_SQL_or_plan_tokens": 512,
+    "baseline_calls_per_question": 1,
+    "treatment_calls_per_question": "2 if plan is valid, else 1 planning call plus baseline reused",
+    "cost_matched": false,
+    "preregistered_gate": {
+      "min_net_correct": 8,
+      "min_rescue_databases": 4,
+      "min_db_bootstrap_CI95_lower": 0,
+      "min_scorable": 96
+    }
+  },
+  "original_full_paired_result": {
+    "n_original_source_questions": 96,
+    "n_physically_scorable_reference_queries": 95,
+    "n_reference_source_censored": 1,
+    "censored_source_DB": "movielens",
+    "censor_reason": "publisher reference SQL exceeds bounded row cap (50000) in physical readonly SQLite protocol",
+    "baseline_direct_set_EX_correct": 36,
+    "grounded_plan_direct_set_EX_correct": 39,
+    "strict_set_delta_correct": 3,
+    "strict_set_delta_percent_points": 3.1578947368421053,
+    "set_rescues": 7,
+    "set_regressions": 4,
+    "rescue_physical_databases": 5,
+    "regression_physical_databases": 4,
+    "baseline_direct_bag_EX_correct": 36,
+    "grounded_plan_direct_bag_EX_correct": 37,
+    "strict_bag_delta_correct": 1,
+    "physical_database_cluster_bootstrap_CI95_delta_points_percent": [
+      -3.225806451612903,
+      9.473684210526317
+    ],
+    "source_only_schema_verified_plans": 90,
+    "generated_SQL_different_from_baseline": 84,
+    "total_fixed_model_calls": 282,
+    "baseline_model_calls": 96,
+    "treatment_model_calls": 186,
+    "cumulative_extra_plan_and_new_SQL_CPU_wall_seconds_across_12_workers": 7830.75,
+    "generated_SQL_uploaded_before_gold_reference_download": true,
+    "preregistered_positive_gate": false
+  },
+  "exposure_audit_after_complete_run": {
+    "historical_source_cohorts_checked": 10,
+    "historical_source_artifacts_SHA256_verified": true,
+    "historical_original_question_ID_union": 425,
+    "prior_Question_IDs_excluded_at_freeze": 322,
+    "accidentally_reused_prior_source_question_IDs": [
+      5113,
+      6630
+    ],
+    "overlap_details": [
+      {
+        "source_index": 5113,
+        "db_id": "ice_hockey_draft",
+        "historical_cohort": "column-type8",
+        "paired_result": "baseline correct, plan wrong"
+      },
+      {
+        "source_index": 6630,
+        "db_id": "cookbook",
+        "historical_cohort": "value16_replica",
+        "paired_result": "both baseline and plan correct"
+      }
+    ],
+    "original_96_question_cohort_is_completely_unseen": false,
+    "sensitivity_excluding_both_exposed_source_questions": {
+      "n": 94,
+      "scorable": 93,
+      "baseline_set_correct": 34,
+      "planned_set_correct": 38,
+      "paired_rescues": 7,
+      "paired_regressions": 3,
+      "net": 4,
+      "physical_DB_cluster_bootstrap_CI95_delta_points_percent": [
+        -3.191489361702127,
+        12.087912087912088
+      ],
+      "posthoc_analysis_not_prespecified_proof": true
+    }
+  },
+  "decision": {
+    "status": "DO_NOT_PROMOTE_OR_MERGE_ALGORITHM",
+    "evidence_only_merge_permitted": true,
+    "why": "Although semantic planning increased strict SET EX on physically scored original TRAIN questions by 3/95, it failed the >=8/96 preregistered meaningful-effect gate, had one censored reference query, showed observed regressions and zero-excluding 95% confidence interval was not achieved. Treatment requires substantially more same-model inference compute. The experiment also reused two previously scored source question IDs due incomplete exclusion.",
+    "next_research_constraint": "Do not tune the same plan prompt from these observed outcomes. Exclude all 425 known historical original TRAIN question IDs plus new exposures in the next freeze. Study causal candidate-generation mechanisms beyond a schema-valid JSON plan; keep fixed base model and reserved HOLDOUT300 sealed. Need matched compute and independent source validation before promoting any production Guarded EX gain.",
+    "label_limit": "Published strict BIRD TRAIN source SQL matching, NOT human-adjudicated semantic correctness or BIRD DEV leaderboard score."
+  }
+}
