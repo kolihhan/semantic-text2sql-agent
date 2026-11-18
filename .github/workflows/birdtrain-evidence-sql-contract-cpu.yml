@@ -1,7 +1,7 @@
 name: Original Qwen3.5-9B BIRD TRAIN242 to VAL64 Evidence-SQL contract gate (NO MODEL)
 on:
   pull_request:
-    types: [opened]
+    types: [opened, synchronize]
 permissions:
   contents: read
   actions: read
