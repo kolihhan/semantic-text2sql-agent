@@ -1,0 +1,54 @@
+{
+  "date": "2026-11-18",
+  "status": "SOURCE_DISJOINT_TRAIN242_VAL64_EVIDENCE_SQL_GATE_FAILED",
+  "model": "qwen3.5:9b-q4_K_M",
+  "model_digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+  "original_runs": {
+    "train_source": 43888747753,
+    "real_Qwen_val": 43892823922,
+    "evidence_diagnostic": 44284803868,
+    "final_artifact": 14419190725
+  },
+  "frozen_selector_git_blob": "4f05916216266fb634ca6ce9502750875559ec51",
+  "source_train_sha256": "b6851fb0f2b5027833aff45a0b5e01326359b245be1c812edc66986d0df1d402",
+  "source_val_sha256": "cc112305bc9de33a03cea704f2edecfdfb45e62cc953ae498cea27fbed93b506",
+  "source_train_n": 242,
+  "source_train_databases": 16,
+  "independent_val_n": 64,
+  "independent_val_databases": 4,
+  "original_publisher_train_contract_covered": 73,
+  "publisher_reference_disagree_with_evidence": 4,
+  "publisher_disagreement_source_indices": [
+    2079,
+    2132,
+    2254,
+    2877
+  ],
+  "source_disagreement_warning": "Not gold adjudication; publisher evidence and SQL themselves may conflict.",
+  "actual_model_val64": {
+    "direct_EX_correct": 27,
+    "guarded_EX_correct": 31,
+    "evidence_covered_direct": 27,
+    "evidence_covered_guarded": 27,
+    "wrong_model_sql_flags": {
+      "direct": 1,
+      "guarded": 1
+    },
+    "correct_model_sql_false_flags": 0,
+    "physically_executable_direct_to_guarded_switches": 0,
+    "pair_rescues": 0,
+    "pair_regressions": 0,
+    "new_EX_improvement": 0
+  },
+  "preregistered_positive_gate": false,
+  "next_action": "REJECT this particular explicit evidence-value and division constraint screen. Do not run new Qwen inference, K8 resampling, model swaps, or DEV500 on this rule. Instead search for a substantive candidate-generation mechanism that addresses 215/500 original K8 no-correct-candidate cases and can be validated on source-disjoint BIRD TRAIN databases.",
+  "model_calls": 0,
+  "model_training_steps": 0,
+  "dev500_used": false,
+  "holdout300_used": false,
+  "limitations": [
+    "This test was on previously scored actual Qwen TRAIN-VAL64 outputs, not fresh prospective performance.",
+    "Heterogeneous direct/guarded outputs are not a source for estimating original K8 selector gain.",
+    "Unadjudicated publisher evidence can disagree with both question intent and reference SQL."
+  ]
+}
