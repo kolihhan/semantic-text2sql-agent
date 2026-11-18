@@ -98,11 +98,8 @@ def score_worker(paths: list[Path], source: Path, db_root: Path,
             print("FROZEN_K_PREFIX_CASE",worker,shard,len(results),
                   "query_timeouts",record["candidate_timeouts"],
                   "reference_timeout",record["gold_timeout"],flush=True)
-    if len(results) not in (60,64):
-        # Each of the 8 workers has 62 or 63 manifest cases for 500/8,
-        # but exact membership is verified against the frozen roster.
-        if len(results) not in (62,63):
-            raise ValueError("worker task count differs from original frozen manifest")
+    if len(results) != (63 if worker < 4 else 62):
+        raise ValueError("worker task count differs from original frozen manifest")
     return {
         "status":"SOURCE_LOCKED_K_PREFIX_WORKER_COMPLETE",
         "protocol":PROTOCOL,"worker":worker,"workers":NUM_WORKERS,
