@@ -1,0 +1,156 @@
+name: Original fixed Qwen9B BIRD TRAIN64 entity-count relational physical witness (NO MODEL)
+on:
+  pull_request:
+    types: [opened]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  test-frozen-source-only-mechanism:
+    if: github.head_ref == 'research/birdtrain-entity-key-relational-witness-20261118'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Freeze exact no-gold generator and model/source protocol
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD:evaluation/entity_count_relational_witness.py)" = "26578ca9a318abce17caa842e60ac59b3d173dfa"
+          test "$(git rev-parse HEAD:scripts/audit_birdtrain64_entity_count_witness.py)" = "b0a67197cfeb1ca8b58019c3e861e391bb9c29c1"
+          echo 'ORIGINAL_QWEN_GOLD_BLIND_ENTITY_COUNT_SOURCE_RULES_FROZEN'
+      - name: Run synthetic entity vs joined-row controls, source SHA and safety
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_entity_count_relational_witness.py
+
+  original-source64-physical-workers:
+    needs: test-frozen-source-only-mechanism
+    if: github.head_ref == 'research/birdtrain-entity-key-relational-witness-20261118'
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [0,1,2,3]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e .
+      - name: Original immutable publisher TRAIN source (no use of publisher gold)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43888747753
+          github-token: ${{ github.token }}
+          name: qwen9b-birdtrain-db-disjoint-original-sql-sft-candidates
+          path: original-source
+      - name: Original real fixed Qwen3.5-9B SQL cache only (model unchanged)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43892823922
+          github-token: ${{ github.token }}
+          name: original-qwen9b-birdtrain-val64-complete
+          path: original-qwen
+      - name: Fetch pinned original real SQLite database with binary checksum
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from scripts.prepare_birdtrain_qwen9b_sft_source import fetch_manifest,fetch_database
+          from scripts.audit_birdtrain64_entity_count_witness import DBS,read_source,original_predictions
+          assert len(read_source(Path('original-source/validation.jsonl')))==64
+          assert len(original_predictions(Path('original-qwen/original-qwen9b-validation64-summary.json')))==64
+          db=DBS[int(os.environ["SHARD"])]
+          meta=fetch_manifest()[db]
+          assert meta["size"]<=96*1024*1024
+          p=fetch_database(db,meta,Path('physical-original'))
+          assert p.is_file() and p.stat().st_size==meta["size"]
+          print("ORIGINAL_QWEN_RELATIONAL_ENTITY_COUNT_DB_SHA",db,p.stat().st_size,flush=True)
+          PY
+      - name: Compute SQL entity-count difference solely from original question and actual DB
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          DB=$(python -c 'import os;from scripts.audit_birdtrain64_entity_count_witness import DBS;print(DBS[int(os.environ["SHARD"])])')
+          python -m scripts.audit_birdtrain64_entity_count_witness worker \
+            --source original-source/validation.jsonl \
+            --model original-qwen/original-qwen9b-validation64-summary.json \
+            --database "physical-original/$DB/$DB.sqlite" \
+            --shard "$SHARD" --out "entity-count-worker-$SHARD.json"
+      - name: Preserve only candidate SHA and read-only physical cardinality witness
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: fixed-qwen-entity-count-physical-worker-${{ matrix.shard }}
+          path: entity-count-worker-*.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  full-original-source64-aggregate:
+    needs: original-source64-physical-workers
+    if: github.head_ref == 'research/birdtrain-entity-key-relational-witness-20261118'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43888747753
+          github-token: ${{ github.token }}
+          name: qwen9b-birdtrain-db-disjoint-original-sql-sft-candidates
+          path: original-source
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: fixed-qwen-entity-count-physical-worker-*
+          path: original-source-workers
+          merge-multiple: true
+      - name: Check all exact 64 original question/model identities, count true physical witnesses
+        run: |
+          set -euo pipefail
+          python -m scripts.audit_birdtrain64_entity_count_witness aggregate \
+            --source original-source/validation.jsonl \
+            --inputs original-source-workers/entity-count-worker-0.json \
+                     original-source-workers/entity-count-worker-1.json \
+                     original-source-workers/entity-count-worker-2.json \
+                     original-source-workers/entity-count-worker-3.json \
+            --out fixed-original-qwen9b-entity-count-witness-64.json
+          python - <<'PY'
+          import json
+          r=json.load(open('fixed-original-qwen9b-entity-count-witness-64.json'))
+          assert r['n']==64 and r['real_model_calls']==0 and r['training_steps']==0
+          assert not r['DEV500_used'] and not r['HOLDOUT300_used']
+          assert r['publisher_reference_SQL_read'] is False
+          assert r['model_score_labels_used'] is False
+          print('LOCKED_QWEN_ENTITY_KEY_RELATIONAL_SOURCE_GATE',json.dumps({
+            'direct':r['direct'],'guarded':r['guarded'],
+            'eligible_for_more_validation':r['feasibility_positive'],
+            'threshold':[
+              r['predeclared_min_guarded_changes'],
+              r['predeclared_min_changed_physical_dbs'],
+            ]},sort_keys=True),flush=True)
+          PY
+      - name: Preserve original fixed Qwen source64 no-oracle coverage result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: fixed-qwen9b-BIRD-TRAIN64-entity-key-cardinality-source-gate
+          path: fixed-original-qwen9b-entity-count-witness-64.json
+          if-no-files-found: warn
+          retention-days: 30
