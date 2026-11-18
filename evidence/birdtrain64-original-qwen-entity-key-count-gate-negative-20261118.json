@@ -1,0 +1,69 @@
+{
+  "date": "2026-11-18",
+  "status": "FAILED_PREREGISTERED_RELATIONAL_ENTITY_KEY_SOURCE_FEASIBILITY_GATE",
+  "original_Qwen3_5_9B": {
+    "model_digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+    "source_SHA256": "cc112305bc9de33a03cea704f2edecfdfb45e62cc953ae498cea27fbed93b506",
+    "original_physical_model_run": 43892823922,
+    "original_publisher_train_source_run": 43888747753,
+    "present_audit_action_run": 44300691845,
+    "immutable_aggregate_artifact": 14426460541,
+    "physical_database_ids": [
+      "movie_3",
+      "music_tracker",
+      "superstore",
+      "world"
+    ],
+    "n": 64
+  },
+  "rule_git_blob": "26578ca9a318abce17caa842e60ac59b3d173dfa",
+  "original_source_audit_git_blob": "b0a67197cfeb1ca8b58019c3e861e391bb9c29c1",
+  "mechanism": "Only original prompt explicit How many ENTITY, single scalar COUNT(*) SQL, unique physical entity ID/KEY among referenced tables, proven COUNT(*) different from COUNT(DISTINCT target entity key) with otherwise identical SQL, create non-model source-only alternative.",
+  "source_only": {
+    "guarded_proposals": 1,
+    "guarded_distinct_db": 1,
+    "guarded_database": "superstore",
+    "guarded_source_index": 1780,
+    "direct_proposals": 1,
+    "direct_distinct_db": 1,
+    "direct_database": "superstore",
+    "direct_source_index": 1780,
+    "guarded_why_no_more": {
+      "not_single_simple_scalar_count": 56,
+      "no_unique_entity_key_mapping": 5,
+      "physical_sql_failed_closed": 2,
+      "physical_duplicate_entity_row_witness": 1
+    },
+    "direct_why_no_more": {
+      "not_single_simple_scalar_count": 55,
+      "no_unique_entity_key_mapping": 7,
+      "physical_sql_failed_closed": 1,
+      "physical_duplicate_entity_row_witness": 1
+    }
+  },
+  "frozen_positive_gate": {
+    "minimum_guarded_changed": 4,
+    "minimum_physical_database_diversity": 2
+  },
+  "positive_feasibility": false,
+  "safety": {
+    "github_actions_all_workers": "SUCCESS",
+    "independent_synthetic_tests": "PASS",
+    "no_new_model_calls": true,
+    "no_training": true,
+    "publisher_reference_sql_read": false,
+    "original_model_score_labels_read": false,
+    "bird_DEV500_read": false,
+    "bird_HOLDOUT300_read": false,
+    "protected_two_ood_train_dbs_untouched": true
+  },
+  "honest_result": "This generated only 1 physical alternative candidate, far below predeclared source gate. No strict EX evaluated, no model gain can be claimed.",
+  "next_research_decision": {
+    "reject_auto_SQL_change": true,
+    "merge_to_main": false,
+    "do_not_expand_keyword_or_noun_morphology_based_on_seen_64": true,
+    "do_not_run_new_Qwen_on_this_rule": true,
+    "stop_loss": "Narrow exact-entity SQL repair is underpowered. A substantive next independent lever must target candidate generation of missing correct answers using question/schema/dataset semantics and freeze a >=multiple database, >=64 source question prospective paired evaluation before model calls. Avoid repeated 8-16 sample prompt sweeps.",
+    "fixed_model_policy": "Same Qwen3.5-9B original base. Do not use stronger inference teacher or train SQL QLoRA."
+  }
+}
