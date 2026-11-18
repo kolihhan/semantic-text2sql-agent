@@ -1,0 +1,175 @@
+name: Original fixed Qwen9B BIRD TRAIN64 physical literal counterexamples (NO MODEL)
+on:
+  pull_request:
+    types: [opened, synchronize]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  test-and-freeze-physical-rule:
+    if: github.head_ref == 'research/qwen9b-exact-physical-value-counterexamples-20261118'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Prevent mechanism rewrite after original VAL64 model outcome verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD:evaluation/physical_literal_counterexample.py)" = "49ca98aed40b63f595b5576c9bd10e587ddca8c8"
+          test "$(git rev-parse HEAD:scripts/audit_birdtrain64_physical_literal_counterexample.py)" = "1453f62c7e188d4c66da58a45bd308fb5599dcd5"
+          echo "ORIGINAL_GOLDBLIND_PHYSICAL_COUNTEREXAMPLE_RULES_FROZEN"
+      - name: Test synthetic SQLite correction and model/data fail-closed contracts
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_physical_literal_counterexample.py tests/test_audit_birdtrain64_physical_literal_counterexample.py
+
+  source-locked-four-database-cpu-replay:
+    needs: test-and-freeze-physical-rule
+    if: github.head_ref == 'research/qwen9b-exact-physical-value-counterexamples-20261118'
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [0,1,2,3]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Install existing read-only SQLite validation and source-only checker
+        run: python -m pip install -e '.[dev]'
+      - name: Original publisher TRAIN VAL64 source prompts / reference after proposal
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43888747753
+          github-token: ${{ github.token }}
+          name: qwen9b-birdtrain-db-disjoint-original-sql-sft-candidates
+          path: original-source
+      - name: Original real fixed Qwen3.5-9B baseline SQL, no regeneration
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43892823922
+          github-token: ${{ github.token }}
+          name: original-qwen9b-birdtrain-val64-complete
+          path: original-model
+      - name: Source/model SHA and original Qwen3.5-9B identity preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'cc112305bc9de33a03cea704f2edecfdfb45e62cc953ae498cea27fbed93b506  original-source/validation.jsonl' | sha256sum -c -
+          python - <<'PY'
+          from pathlib import Path
+          from scripts.audit_birdtrain64_physical_literal_counterexample import original_rows, original_model
+          assert len(original_rows(Path('original-source/validation.jsonl')))==64
+          assert len(original_model(Path('original-model/original-qwen9b-validation64-summary.json'))['cases'])==64
+          print('ORIGINAL_SAME_BASE_QWEN9B_DIGEST_AND_TRAIN64_VERIFIED')
+          PY
+      - name: Fetch immutable original physical SQLite TRAIN database for this shard
+        shell: bash
+        env:
+          SHARD: '${{ matrix.shard }}'
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from scripts.prepare_birdtrain_qwen9b_sft_source import fetch_manifest,fetch_database
+          from scripts.audit_birdtrain64_physical_literal_counterexample import DBS
+          name=DBS[int(os.environ["SHARD"])]
+          manifest=fetch_manifest()
+          meta=manifest[name]
+          assert meta["size"]<=96*1024*1024
+          db=fetch_database(name,meta,Path('original-db'))
+          assert db.stat().st_size==meta["size"]
+          print("ORIGINAL_BIRD_TRAIN_DB_SHA_LOCKED",name,db.stat().st_size,flush=True)
+          PY
+      - name: Offline unique physical filter-value counterexamples on 16 original Qwen questions
+        shell: bash
+        env:
+          SHARD: '${{ matrix.shard }}'
+        run: |
+          set -euo pipefail
+          DB_NAME=$(python -c 'import os; from scripts.audit_birdtrain64_physical_literal_counterexample import DBS;print(DBS[int(os.environ["SHARD"])])')
+          python -m scripts.audit_birdtrain64_physical_literal_counterexample score \
+            --source original-source/validation.jsonl \
+            --model original-model/original-qwen9b-validation64-summary.json \
+            --database "original-db/$DB_NAME/$DB_NAME.sqlite" \
+            --shard "$SHARD" --out "literal-counterexample-worker-$SHARD.json"
+          python - <<'PY'
+          import os,json
+          n=int(os.environ["SHARD"])
+          p=json.load(open(f'literal-counterexample-worker-{n}.json'))
+          assert p['n']==16 and p['new_original_Qwen_calls']==0
+          assert p['DEV500_used'] is False and p['HOLDOUT300_used'] is False
+          print("ORIGINAL_LITERAL_COUNTEREXAMPLE_WORKER",n, "guarded_changed",
+                sum(x["guarded"]["changed"] for x in p["cases"]),flush=True)
+          PY
+      - name: Preserve original physical SQL paired evidence after source-only frozen proposal
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: original-Qwen9B-TRAIN-VAL64-literal-worker-${{ matrix.shard }}
+          path: literal-counterexample-worker-*.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  strict-source-locked-aggregate:
+    needs: source-locked-four-database-cpu-replay
+    if: github.head_ref == 'research/qwen9b-exact-physical-value-counterexamples-20261118'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43888747753
+          github-token: ${{ github.token }}
+          name: qwen9b-birdtrain-db-disjoint-original-sql-sft-candidates
+          path: original-source
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: original-Qwen9B-TRAIN-VAL64-literal-worker-*
+          path: original-physical-worker
+          merge-multiple: true
+      - name: Require exact original 4 DB, 64 complete source cases, publisher score only after proposal
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.audit_birdtrain64_physical_literal_counterexample aggregate \
+            --source original-source/validation.jsonl \
+            --inputs original-physical-worker/literal-counterexample-worker-0.json \
+                     original-physical-worker/literal-counterexample-worker-1.json \
+                     original-physical-worker/literal-counterexample-worker-2.json \
+                     original-physical-worker/literal-counterexample-worker-3.json \
+            --out original-TRAIN-VAL64-physical-literal-counterexample-final.json
+          python - <<'PY'
+          import json
+          r=json.load(open('original-TRAIN-VAL64-physical-literal-counterexample-final.json'))
+          assert r['status']=='COMPLETE_FIXED_QWEN64_PHYSICAL_LITERAL_SCREEN'
+          assert r['original_real_model_n']==64 and r['real_model_calls']==0
+          assert r['real_model_training_steps']==0
+          assert not r['DEV500_used'] and not r['HOLDOUT300_used']
+          print("FROZEN_QWEN9B_SOURCE64_PHYSICAL_LITERAL_FINAL",json.dumps(r,sort_keys=True),flush=True)
+          PY
+      - name: Save complete source-only result, no generation or new model
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: original-Qwen9B-BIRD-TRAIN64-unique-literal-counterexample-final
+          path: original-TRAIN-VAL64-physical-literal-counterexample-final.json
+          if-no-files-found: warn
+          retention-days: 30
