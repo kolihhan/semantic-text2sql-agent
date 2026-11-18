@@ -386,9 +386,22 @@ def aggregate(inputs:list[Path],meta:Path,out:Path)->dict:
     diff=sum(r["plan_EX"]-r["base_EX"] for r in usable)
     if diff!=len(rescue)-len(regress):
         raise ValueError("incorrect paired EX transition counts")
-    from evaluation.kcache_protocol import paired_bootstrap
-    ci=paired_bootstrap([{"db_id":r["db_id"],"base":r["base_EX"],"plan":r["plan_EX"]}
-                          for r in usable],"base","plan",cluster=True)
+    import random
+    rng=random.Random(20261118)
+    by_db={db:[int(r["plan_EX"])-int(r["base_EX"]) for r in usable if r["db_id"]==db]
+           for db in m["source_dbs"]}
+    if any(not xs for xs in by_db.values()):
+        raise ValueError("missing physical DB cluster for paired CI")
+    groups=sorted(by_db)
+    draws=[]
+    for _ in range(4000):
+        chosen=[rng.choice(groups) for _ in groups]
+        values=[v for db in chosen for v in by_db[db]]
+        draws.append(sum(values)/len(values))
+    draws.sort()
+    ci={"estimate":diff/len(usable),"ci95_lower":draws[100],
+        "ci95_upper":draws[3899],"n_databases":len(groups),
+        "method":"fixed-seed 4000-round paired physical-DB-cluster bootstrap"}
     accepted=(len(usable)==N and diff>=GATE["min_net_correct"]
               and len({r["db_id"] for r in rescue})>=GATE["min_rescue_databases"]
               and ci["ci95_lower"]>GATE["min_db_bootstrap_CI95_lower"])
