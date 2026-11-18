@@ -1,0 +1,146 @@
+name: BIRD TRAIN source-certified 49 of 51 exposed database families (NO QWEN)
+on:
+  pull_request:
+    types: [opened]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  certify-protected-residual-database-families:
+    if: github.head_ref == 'research/birdtrain-ood-ledger-clean-20261118'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Test actual cross-DB exclusion, SHA-only heldout question IDs, never open publisher SQL
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_birdtrain_residual_db_holdout.py
+          python -m compileall -q scripts/freeze_birdtrain_residual_db_holdout.py
+      - name: Download original pinned BIRD TRAIN source question IDs (NOT DEV/HOLDOUT)
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/Emulated-Inc/text-to-sql-with-evidence-training-pool/resolve/cd2c4ea321075aa53ce7dfe52deaaffa505d046a/raw/bird/train.json' \
+            -o original-bird-train.json
+          echo 'cd5884489dffd7c76d73509b396bd919fbe8b486efbc4ba2f48f89460de7d69f  original-bird-train.json' | sha256sum -c -
+      - name: Publisher-verified 16+4 original physical DBs / TRAIN242 + VAL64
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43888747753
+          github-token: ${{ github.token }}
+          name: qwen9b-birdtrain-db-disjoint-original-sql-sft-candidates
+          path: prior-original
+      - name: Previously used first four FK-source physical DBs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43904889296
+          github-token: ${{ github.token }}
+          name: qwen9b-fk-correction-prospective-source32-frozen
+          path: prior-fk
+      - name: Previously used four value-grounding physical DBs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43920461939
+          github-token: ${{ github.token }}
+          name: qwen9b-newdb-physical-value16-source-freeze
+          path: prior-value
+      - name: Previously used four independent value-grounding replication DBs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43926576493
+          github-token: ${{ github.token }}
+          name: qwen9b-second-newdb-physical-value16-source-freeze
+          path: prior-value-replica
+      - name: Previously used four role-scope physical DBs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44012242171
+          github-token: ${{ github.token }}
+          name: qwen9b-third-newdb-role8-source-freeze
+          path: prior-role
+      - name: Previously used four SQL-result-preview physical DBs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44040520571
+          github-token: ${{ github.token }}
+          name: qwen9b-semantic-preview8-36db-excluded-frozen
+          path: prior-preview
+      - name: Previously used four SQL-type-value physical DBs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44042440721
+          github-token: ${{ github.token }}
+          name: qwen9b-column-type8-40db-excluded-frozen
+          path: prior-column
+      - name: Previously used four COUNT+JOIN grain physical DBs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44053157511
+          github-token: ${{ github.token }}
+          name: qwen9b-count-join-grain16-frozen-only
+          path: prior-grain
+      - name: Previously used latest four physical FK fanout experiment DBs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44289030583
+          github-token: ${{ github.token }}
+          name: qwen9b-fanout-k2-source16-before-model
+          path: prior-fanout
+      - name: Verify all 10 source SHA, original 51 SQLite DBs, reject reused 49 DBs and freeze ONLY final two
+        run: |
+          set -euo pipefail
+          python -m scripts.freeze_birdtrain_residual_db_holdout \
+            --train original-bird-train.json \
+            --prior prior-original/train.jsonl \
+                    prior-original/validation.jsonl \
+                    prior-fk/prospective32.jsonl \
+                    prior-value/physical-value16.jsonl \
+                    prior-value-replica/physical-value16.jsonl \
+                    prior-role/role-scoped8.jsonl \
+                    prior-preview/semantic-preview8.jsonl \
+                    prior-column/column-type8.jsonl \
+                    prior-grain/grain16.jsonl \
+                    prior-fanout/source16.jsonl \
+            --out sealed-residual-db-holdout.json
+          python - <<'PY'
+          import json
+          m=json.load(open('sealed-residual-db-holdout.json'))
+          assert m['status']=='FROZEN_RESIDUAL_BIRD_TRAIN_DATABASE_HOLDOUT_QUESTION_IDENTITIES'
+          assert m['original_train_physical_database_count']==51
+          assert m['verified_historically_exposed_database_count']==49
+          assert m['verified_unexposed_database_count']==2
+          assert m['new_Qwen_inference_calls']==0 and m['new_training_steps']==0
+          assert m['bird_DEV500_used'] is False and m['bird_HOLDOUT300_used'] is False
+          assert m['no_gold_sql_used_to_select'] and m['no_question_text_or_gold_sql_persisted']
+          for record in m['frozen_question_identities']:
+            assert set(record)=={'source_index','source_db_id','question_sha256','evidence_sha256'}
+          print('SOURCE_LOCKED_RESIDUAL_DB_LEDGER',json.dumps({
+            'n_original_dbs':m['original_train_physical_database_count'],
+            'n_historically_exposed':m['verified_historically_exposed_database_count'],
+            'remaining':m['unexposed_database_summaries'],
+            'frozen_question_ids':m['frozen_case_n'],
+            'sealed':True,'base_unchanged':True
+          },sort_keys=True),flush=True)
+          PY
+      - name: Preserve only SHA-locked remaining original DB identities, never publisher SQL
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: original-BIRD-TRAIN49-exposed-2-residual-physical-DB-sealed-manifest
+          path: sealed-residual-db-holdout.json
+          if-no-files-found: warn
+          retention-days: 30
