@@ -1,0 +1,82 @@
+{
+  "status": "COMPLETE_REPRODUCED_52_CASE_ORACLE_GAP_CENSUS",
+  "date": "2026-11-18",
+  "physical_run_id": 44234839555,
+  "final_aggregate_artifact_id": 14396936875,
+  "final_aggregate_sha256": "6c87437e8fa6e2e3995a070b7f9fa1dc2b427bb2f3119e8a204e354e9ecbdbd6",
+  "source_origin": {
+    "fixed_dev500": 500,
+    "physical_databases": 11,
+    "original_qwen_k8_cached_candidates": 4000,
+    "source_sha256": "ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb",
+    "original_model_digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+    "sqlite_timeout_seconds": 8
+  },
+  "target_cohort": "Exactly 52 fixed DEV500 questions for which a correct generated K8 candidate exists (hindsight oracle) but original gold-blind result plurality selects a wrong answer",
+  "replay": {
+    "source_task_count": 52,
+    "replayed": 52,
+    "selection_index_drift": 0,
+    "unscorable_references": 0,
+    "model_calls": 0,
+    "holdout300_used": false
+  },
+  "correct_candidate_counts": {
+    "1": 24,
+    "2": 16,
+    "3": 12
+  },
+  "correct_result_vote_support": {
+    "1": 24,
+    "2": 16,
+    "3": 12
+  },
+  "wrong_selected_vote_support": {
+    "1": 1,
+    "2": 6,
+    "3": 10,
+    "4": 9,
+    "5": 12,
+    "6": 8,
+    "7": 6
+  },
+  "mechanism": {
+    "wrong_result_strictly_more_votes": 45,
+    "incorrect_first_index_tie": 7,
+    "full_dev500_max_tie_break_only_rescue_bound": 7,
+    "full_dev500_max_tie_break_only_rescue_percentage_points": 1.4,
+    "majority_wrong_wrongly_outvotes_correct_fraction_among_gap": 0.8653846153846154,
+    "realized_new_accuracy_gain": 0,
+    "insight": "Tie-break changes alone cannot materially close the 52-case correct-candidate/incorrect-selection gap. Correct candidate support is typically a minority; require question/schema/SQL-grounded independent verification rather than popularity alone."
+  },
+  "source_only_diversity_check": {
+    "correct_not_selected_52_cases_unique_sql_strings": {
+      "3": 1,
+      "4": 6,
+      "5": 3,
+      "6": 6,
+      "7": 12,
+      "8": 24
+    },
+    "interpretation": "SQL text diversity is not execution-result diversity; 24/52 have 8 distinct normalized SQL strings. Do not use this as evidence of candidate correctness."
+  },
+  "next_gate": {
+    "task": "Develop ONE preregistered, gold-blind semantic compatibility/reranking rule from source-disjoint BIRD TRAIN examples, then compare to frozen physical-result plurality and measure marginal improvement and actual CPU cost.",
+    "requirement": "No DEV500 gold/reference SQL or case-specific threshold fitting; select feature/rubric on TRAIN only. Preserve same fixed Qwen3.5-9B. Report paired rescues/regressions and both task/physical-DB cluster uncertainty on an independent, prospectively frozen evaluation. Do not prematurely open reserved HOLDOUT300.",
+    "blocked_actions": [
+      "new SQL QLoRA",
+      "new base model",
+      "new DEV500 K8 candidate rerun",
+      "posthoc tuning on the 52 diagnostic cases",
+      "hidden TEST evaluation"
+    ],
+    "promotion_allowed": false
+  },
+  "limitations": [
+    "This corpus was selected retrospectively by original DEV500 outcome; the diagnostic counts are not a new prospective score, and should not be used as a fitting dataset.",
+    "Publisher reference SQL was used to annotate correct support counts only AFTER original Qwen candidates, execution results, and selector indexes were fixed; gold was not passed to Qwen.",
+    "The original BIRD physical databases are not source-disjoint; the 52 tasks share only 11 total DEV databases with historical exposure.",
+    "The 52/500 theoretical selector gap is an oracle bound, not a score the proposed semantic checker has achieved.",
+    "No benchmark output improvement or training/model claim from this replay."
+  ]
+}
