@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   oracle-gap-original-source-replay:
-    if: github.head_ref == 'research/bird500-oracle-gap-support-census-20261118'
+    if: github.event.action == 'opened' && github.head_ref == 'research/bird500-oracle-gap-support-census-20261118'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
@@ -107,7 +107,7 @@ jobs:
 
   strict-source-only-mechanism-aggregate:
     needs: oracle-gap-original-source-replay
-    if: github.head_ref == 'research/bird500-oracle-gap-support-census-20261118' && needs.oracle-gap-original-source-replay.result == 'success'
+    if: github.event.action == 'opened' && github.head_ref == 'research/bird500-oracle-gap-support-census-20261118' && needs.oracle-gap-original-source-replay.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
