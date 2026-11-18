@@ -1,0 +1,70 @@
+name: BIRD TRAIN242 vs independent VAL64 schema table visibility (fixed Qwen, zero model calls)
+on:
+  pull_request:
+    types: [opened]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  original-source-schema-visibility:
+    if: github.head_ref == 'research/birdtrain-schema-coverage-gate-20261118'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Source-only schema lexical parser unit test
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_train_schema_visibility_audit.py
+      - name: Download exactly original 16-DB TRAIN242 and 4-DB VAL64 source
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43888747753
+          github-token: ${{ github.token }}
+          name: qwen9b-birdtrain-db-disjoint-original-sql-sft-candidates
+          path: source-original
+      - name: Download original real Qwen3.5-9B 64-case physical results (no inference)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43892823922
+          github-token: ${{ github.token }}
+          name: original-qwen9b-birdtrain-val64-complete
+          path: model-original
+      - name: Test original SQL source table observability and real fixed-model source omissions
+        run: |
+          set -euo pipefail
+          python -m scripts.audit_original_train_schema_visibility \
+            --train source-original/train.jsonl \
+            --validation source-original/validation.jsonl \
+            --model-summary model-original/original-qwen9b-validation64-summary.json \
+            --out train242-val64-original-qwen9b-schema-visibility.json
+          python - <<'PY'
+          import json
+          p=json.load(open('train242-val64-original-qwen9b-schema-visibility.json'))
+          assert p['status']=='COMPLETE_ORIGINAL_BIRD_TRAIN_TO_INDEPENDENT_VAL_SCHEMA_VISIBILITY_DIAGNOSTIC'
+          assert p['original_train_source']['n']==242
+          assert p['independent_original_validation_source']['n']==64
+          assert p['independent_real_Qwen3_5_9B']['original_direct_ex_correct']==27
+          assert p['independent_real_Qwen3_5_9B']['original_guarded_ex_correct']==31
+          assert p['new_model_calls']==0 and p['new_training_steps']==0
+          assert not p['DEV500_used'] and not p['HOLDOUT300_used']
+          print('SCHEMA_TABLE_OMISSION_GATE',json.dumps({
+            'train':p['original_train_source'],
+            'val':p['independent_original_validation_source'],
+            'model':p['independent_real_Qwen3_5_9B'],
+            'gate':p['schema_recall_gate_passed']},sort_keys=True))
+          PY
+      - name: Preserve source-only numeric evidence, never expose model input text
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: original-BIRD-TRAIN242-VAL64-Qwen9B-schema-visibility-gate
+          path: train242-val64-original-qwen9b-schema-visibility.json
+          if-no-files-found: warn
+          retention-days: 30
