@@ -7,7 +7,7 @@ permissions:
   actions: read
 jobs:
   certify-protected-residual-database-families:
-    if: github.head_ref == 'research/birdtrain-residual-ood-holdout-20261118'
+    if: github.head_ref == 'research/birdtrain-ood-ledger-clean-20261118'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
