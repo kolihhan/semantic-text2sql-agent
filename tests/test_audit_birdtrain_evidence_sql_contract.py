@@ -48,5 +48,5 @@ def test_validate_physical_db_disjointness_before_model_score():
 def test_validate_exact_frozen_qwen_model_digest():
     rows=[_row(i,f"val{i%4}",_prompt("Item kind = 'First Class'"),
                "SELECT 1") for i in range(64)]
-    with pytest.raises(ValueError,match="identity"):
+    with pytest.raises(ValueError,match="fixed-model"):
         independent_original_model64(rows,{"n":64,"model_digest":"switched"},set())
