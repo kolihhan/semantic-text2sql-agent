@@ -1,0 +1,108 @@
+{
+  "date": "2026-11-18",
+  "status": "FAILED_PREREGISTERED_FANOUT_GENERATION_SCREEN",
+  "run": "https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/44289030583",
+  "PR": "https://github.com/kolihhan/semantic-text2sql-agent/pull/104",
+  "source_artifact": 14420113552,
+  "scored_aggregate_artifact": 14420473856,
+  "original_model_worker_artifacts": [
+    14420603351,
+    14419729872,
+    14419694342,
+    14420473776
+  ],
+  "model": "qwen3.5:9b-q4_K_M",
+  "model_digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+  "original_BIRD_TRAIN_SHA": "cd5884489dffd7c76d73509b396bd919fbe8b486efbc4ba2f48f89460de7d69f",
+  "frozen_source_SHA": "62eb19b49d43f5e40a5fc2c79d095b9a6294caea781aeebf6b71cda57df5c04c",
+  "protocol": "BIRD-TRAIN-QWEN35-9B-ORIGINAL-K2-VS-PHYSICAL-FK-MULTIPLICITY-K2-V1",
+  "source": {
+    "n": 16,
+    "physical_DBS": 4,
+    "database_names": [
+      "books",
+      "restaurant",
+      "movie",
+      "app_store"
+    ],
+    "excluded_historically_recorded_source_question_ids": 322,
+    "detected_FK_fanout_source_cases": 16,
+    "source_DB_reuse_beyond_three_checked_manifests_uncertain": true,
+    "BIRD_DEV500_accessed": false,
+    "BIRD_HOLDOUT300_accessed": false
+  },
+  "paired_equal_budget": {
+    "control_candidate_count": 2,
+    "intervention_candidate_count": 2,
+    "common_first_Qwen_candidate_reused": true,
+    "total_original_Qwen_calls": 48,
+    "question_number": 16,
+    "baseline_first_correct": 12,
+    "baseline_second_candidate_set_EX_correct": 8,
+    "intervention_second_candidate_set_EX_correct": 7,
+    "second_candidate_rescues": 2,
+    "second_candidate_regressions": 3,
+    "second_candidate_net": -1,
+    "second_rescue_db_count": 2,
+    "second_regression_db_count": 2,
+    "rescue_source_index_db": [
+      [
+        "books",
+        4501
+      ],
+      [
+        "app_store",
+        1859
+      ]
+    ],
+    "regression_source_index_db": [
+      [
+        "restaurant",
+        1281
+      ],
+      [
+        "restaurant",
+        1250
+      ],
+      [
+        "movie",
+        444
+      ]
+    ],
+    "baseline_pass2_oracle_upper_bound": 13,
+    "intervention_pass2_oracle_upper_bound": 13,
+    "oracle_availability_net": 0,
+    "baseline_goldblind_plurality_selected_set_EX_correct": 12,
+    "intervention_goldblind_plurality_selected_set_EX_correct": 12,
+    "selected_EX_net": 0,
+    "candidate_query_timeouts": 0,
+    "no_retraining": true,
+    "no_stronger_teacher_or_model": true
+  },
+  "measured_generation_wall_seconds_original_CPU": {
+    "shared_first_candidates": 377.167,
+    "control_second_candidates": 148.004,
+    "physical_FK_second_candidates": 481.452,
+    "total": 1006.623,
+    "treatment_second_minus_control_second": 333.448,
+    "treatment_second_to_control_second_ratio": 3.253,
+    "caveat": "Summed original per-generation wall-time, execution order/cold caches and prompt length confound pure model compute comparisons. CPU runner wall is not billing or aggregate elapsed time."
+  },
+  "preregistered_positive_gate": {
+    "min_candidate2_net": 2,
+    "max_candidate2_regressions": 1,
+    "min_rescue_dbs": 2,
+    "min_oracle_pass2_net": 2,
+    "observed_pass": false
+  },
+  "research_decision": {
+    "do_not_merge": true,
+    "do_not_run_DEV500_or_HOLDOUT300_on_this_mechanism": true,
+    "do_not_retry_same_fanout_prompt_on_exposed_cases": true,
+    "model_stays_fixed": true,
+    "no_new_adapters": true,
+    "reason": "Original Qwen3.5-9B with measured SQLite FK cardinality created two rescues and three regressions, worsening standalone second candidate 8/16→7/16 without any improvement in pass@2 candidate availability or label-blind selection; materially higher measured second-call wall-time.",
+    "next_leverage": "Design substantive failure-revealing semantic tests/counterexamples rather than broad FK stats or lexical rules. Demonstrate candidate generation and selection on unexposed BIRD TRAIN questions with a preregistered controlled budget before further expensive Qwen runs."
+  },
+  "disclaimer": "Source-public BIRD TRAIN conditional n=16; 4 physical DBs potentially seen historically; not independent full generalization. Strict set equality uses bounded 8-second read-only SQLite results, not official BIRD leaderboard evaluator or human semantic adjudication. No new official benchmark improvement; pass@2 oracle only theoretical available-candidate rate."
+}
