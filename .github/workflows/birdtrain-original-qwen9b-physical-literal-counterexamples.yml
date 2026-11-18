@@ -1,7 +1,7 @@
 name: Original fixed Qwen9B BIRD TRAIN64 physical literal counterexamples (NO MODEL)
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened]
 permissions:
   contents: read
   actions: read
