@@ -1,0 +1,95 @@
+{
+  "date": "2026-11-18",
+  "protocol": "FROZEN-500-ORIGINAL-K8-EXACT-DISTINCT-PROGRAM-VOTE-V1",
+  "conclusion": "FAILED_PREREGISTERED_DEV500_SOURCE_AND_PHYSICAL_EX_PROMOTION",
+  "provenance": {
+    "original_k8_generation_runs": [
+      44086713331,
+      44093103960
+    ],
+    "original_source_only_census_run": 44306745677,
+    "original_source_only_artifact_id": 14427957741,
+    "original_full_physical_paired_action_run": 44306745677,
+    "original_full_physical_paired_artifact_id": 14429210759,
+    "rejected_algorithm_PR": "https://github.com/kolihhan/semantic-text2sql-agent/pull/109",
+    "model": "qwen3.5:9b-q4_K_M",
+    "exact_original_model_digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+    "original_frozen_DEV_source_sha256": "ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb",
+    "original_frozen_manifest_git_blob_sha1": "692fc84b881746d32f70469d03c7026fcc67291a",
+    "original_physical_bird_dev_zip_sha256": "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630",
+    "new_model_calls": 0,
+    "new_training_steps": 0,
+    "final_holdout300_used": false,
+    "protected_two_unseen_train_databases_used": false
+  },
+  "census_before_gold": {
+    "n_questions": 500,
+    "original_unchanged_k8_sql_candidates": 4000,
+    "original_physical_db_count": 11,
+    "duplicate_program_questions": 375,
+    "questions_with_all_8_sql_identical": 27,
+    "mean_unique_SQL_programs_per_8_candidates": 5.176,
+    "original_non_label_sqlite_score_metadata_available": 484,
+    "duplicate_programs_with_disagreeing_physical_result_signatures": 167,
+    "physical_database_clusters_in_ambiguous_duplicates": 11,
+    "predeclared_coverage_gate": {
+      "at_least_cases": 80,
+      "at_least_databases": 5,
+      "passes": true
+    },
+    "prohibited_information_not_read": [
+      "original publisher EX score",
+      "gold answer for selection",
+      "gold SQL for selector"
+    ]
+  },
+  "paired_real_physical_original_sql": {
+    "frozen_original_questions": 500,
+    "original_database_clusters": 11,
+    "physical_bounded_readonly_SQL_seconds": 8,
+    "max_result_rows": 50000,
+    "reference_scorable_questions": 499,
+    "censored_reference_source_case_ids": [
+      "1126"
+    ],
+    "baseline_execution_result_plurality": {
+      "strict_set_EX_correct": 233,
+      "strict_bag_EX_correct": 216
+    },
+    "treatment_exact_distinct_SQL_program_vote": {
+      "strict_set_EX_correct": 223,
+      "strict_bag_EX_correct": 206
+    },
+    "changed_selected_candidate_cases": 24,
+    "paired_set_rescues": 2,
+    "paired_set_regressions": 12,
+    "paired_net_correct": -10,
+    "paired_net_rate_pp": -2.004,
+    "rescue_databases": 2,
+    "paired_question_bootstrap_CI95_delta_pp": [
+      -3.406813627254509,
+      -0.6012024048096192
+    ],
+    "paired_11_physical_db_cluster_bootstrap_CI95_delta_pp": [
+      -3.112033195020747,
+      -0.998003992015968
+    ],
+    "positive_gate": {
+      "minimum_net_correct": 25,
+      "require_positive_db_cluster_lower_95CI": true,
+      "minimum_rescue_physical_databases": 3,
+      "require_all_500_references_scorable": true,
+      "passes": false
+    }
+  },
+  "inference_only_selector_definition": "Both unchanged original 8 Qwen model samples undergo identical physical SQLite execution. Baseline gives one vote to each physically executable SQL sample. Treatment collapses only conservative exact SQL program duplicates (whitespace/case outside SQL quoted literals, one trailing semicolon), then gives one vote per distinct program and selects highest-frequency output-result set; deterministic earliest-index tie. No reference/EX/labels in either selector. No SQL regeneration.",
+  "judgment": "The widespread SQL repetition is real but is not sufficient evidence that the repeated result is wrong. Removing model sample consensus weighting reduced matched strict set EX by 10/499 and bag EX by 10/499. Selection-only changes cannot reach 215/500 original K8 questions that had no correct SQL candidate. Do not promote, retune based on DEV500 labels, claim independent out-of-database improvement, or run HOLDOUT300.",
+  "limitations": [
+    "Full 500 original DEV case IDs verified, but 1 expensive original publisher reference SQL (#1126) timed out under frozen 8s SQLite evaluation and was censored: strict EX denominators are 499, NOT 500.",
+    "All 11 BIRD DEV physical databases had been used in earlier experiments; these are not independent DB-level generalization results.",
+    "Previously existing 4,000 original Qwen SQL candidates reused; no new correct candidate generated.",
+    "Original DEV500 outcomes are historically exposed and cannot establish unbiased independent effect estimation.",
+    "Physically bounded execution and result-row limit may differ from a separate official leaderboard evaluator."
+  ],
+  "next_research_focus": "Stop source posthoc majority-vote changes and small heuristic patch loops. Investigate a distinct model-fixed candidate-generation capability on adequately sized predeclared TRAIN data, ideally source-shift or independent DBs; keep original two protected BIRD TRAIN DBs and BIRD DEV HOLDOUT300 sealed. Only then revisit final strict EX."
+}
