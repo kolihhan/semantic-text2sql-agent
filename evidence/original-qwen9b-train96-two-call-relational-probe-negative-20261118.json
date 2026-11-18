@@ -1,0 +1,83 @@
+{
+  "date": "2026-11-18",
+  "status": "COMPLETE_ORIGINAL_QWEN9B_TRAIN96_TWO_CALL_RELATION_PROBE_NEGATIVE",
+  "original_actions_url": "https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/44333082630",
+  "source_question_cohort_artifact_id": 14440501690,
+  "final_scored_artifact_id": 14443339328,
+  "original_final_JSON_SHA256": "b4cf003543cd26813653961970725cf9721c3eb6008c1ac74d0d5efe475a0513",
+  "rejected_algorithm_PR": "https://github.com/kolihhan/semantic-text2sql-agent/pull/113",
+  "fixed_original_Qwen": "qwen3.5:9b-q4_K_M",
+  "fixed_original_model_digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+  "model_switched": false,
+  "teacher_used": false,
+  "trained_new_model_or_adapter": false,
+  "original_source": {
+    "source_question_count": 96,
+    "physical_database_count": 12,
+    "historical_training_source_ids_excluded": 519,
+    "historical_ten_SHA_pinned_cohort_question_union": 425,
+    "last_plan_question_source_size": 96,
+    "overlap_between_ten_and_plan96": 2,
+    "protected_final_two_train_DBs_used": false,
+    "DEV500_used": false,
+    "HOLDOUT300_used": false,
+    "publisher_gold_read_only_after_model_candidate_artifact_upload": true
+  },
+  "compared_arms": {
+    "baseline": "Two independent same-Qwen original direct SQL generations at temp0.7, seeds42/43, max384; original K2 tie selects first generated SQL. Second SQL and oracle@2 are diagnostics, not deployed.",
+    "treatment": "Same original Qwen first generates read-only SQLite relation sample query. Its actual physical column names and at most five sample rows are shown to original same Qwen for final SQL. Both arms use exactly two Qwen calls per source question.",
+    "baseline_model_calls": 192,
+    "treatment_model_calls": 192,
+    "baseline_cumulative_wall_seconds": 4320.51,
+    "treatment_cumulative_wall_seconds": 7952.59
+  },
+  "paired_physical_strict_ex": {
+    "original_source_n": 96,
+    "scorable_n": 91,
+    "publisher_reference_censored_n": 5,
+    "censored_database": "retail_world",
+    "censored_source_indices": [
+      5002,
+      4745,
+      4868,
+      4897,
+      4697
+    ],
+    "control_selected_SET_correct": 51,
+    "treatment_selected_SET_correct": 48,
+    "control_selected_BAG_correct": 47,
+    "treatment_selected_BAG_correct": 48,
+    "control_second_candidate_SET_correct": 48,
+    "hindsight_oracle_at2_SET_correct": 53,
+    "hindsight_oracle_at2_is_not_deployable": true,
+    "SET_rescues": 5,
+    "SET_regressions": 8,
+    "SET_net": -3,
+    "SET_delta_percentage_points": -3.2967032967032965,
+    "physical_relation_probe_SQL_executable_n": 75,
+    "treatment_final_SQL_executable_n": 82,
+    "control_second_SQL_executable_n": 75,
+    "DB_cluster_bootstrap_n": 12,
+    "DB_cluster_paired_bootstrap_rounds": 4000,
+    "DB_cluster_delta_CI95_percentage_points": [
+      -12.087912087912088,
+      6.593406593406594
+    ]
+  },
+  "preregistered_gate": {
+    "min_SET_net_rescues": 8,
+    "min_distinct_rescue_dbs": 4,
+    "all_96_original_reference_SQL_scorable": true,
+    "database_cluster_CI95_lower_bound_positive": true,
+    "passed": false,
+    "reason": "Actual net SET -3 < +8; 5/96 source reference SQL censored; paired database-bootstrap CI includes zero"
+  },
+  "decision": {
+    "rejected_production_promotion": true,
+    "rejected_PR_closed_without_merging_algorithm": true,
+    "this_record_evidence_only": true,
+    "why": "Correct question/source-identity controls, actual fixed-Qwen calls and physical SQLite observations did not improve strict SET EX; also consumed about 1.84x aggregate Qwen inference wall time for same number of calls.",
+    "boundaries": "Previously visited physical source databases; unique 96 question IDs after 519 historical exclusions. No independent OOD DB confirmation; no BIRD DEV/leaderboard gain; no attempt to retune on source outcomes.",
+    "next": "Do not repeat free-form plans, generic database preview, FK fanout or posthoc vote weights. Seek a qualitatively different, grounded semantic candidate-generation lever with preregistered out-of-source paired evaluation, matching inference budget, and strict execution correctness under unchanged original Qwen3.5-9B."
+  }
+}
