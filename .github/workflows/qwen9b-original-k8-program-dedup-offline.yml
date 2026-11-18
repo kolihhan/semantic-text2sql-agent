@@ -1,0 +1,245 @@
+name: Original fixed Qwen9B K8 DEV500 exact-program deduplicated vote (ZERO MODEL)
+on:
+  pull_request:
+    types: [opened, synchronize]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  original-source-census:
+    if: github.head_ref == 'research/k8-mode-collapse-distinct-program-vote-20261118'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Freeze gold-blind exact SQL voting before all source-500 EX outcomes
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD:evaluation/k8_program_diversity_vote.py)" = "432af6d23f7da2ce30f23e62017da65f455f11bc"
+          test "$(git rev-parse HEAD:experiments/qwen9b_k8_distinct_program_selector.py)" = "9e57c909d313910eda6f325bc2e91a4eae11f47a"
+          echo 'SELECTOR_GIT_BLOB_LOCKED_BEFORE_PHYSICAL_QWEN_CACHE_REPLAY'
+      - name: Verify synthetic original-model no-gold decisions and readonly SQLite
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_k8_program_diversity_vote.py
+      - name: Download original frozen DEV500 manifest (IDs only; preserve protected HOLDOUT300)
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 \
+            'https://raw.githubusercontent.com/kolihhan/semantic-text2sql-agent/53aa2f6861f19e6e11e91eca64f47dd75daee181/manifests/bird-dev500-holdout300-20261116-v2.json' \
+            -o original-dev500-v2.json
+          python - <<'PY'
+          from pathlib import Path
+          from evaluation.k8_program_diversity_vote import read_frozen_manifest
+          assert len(read_frozen_manifest(Path('original-dev500-v2.json')))==500
+          print('ORIGINAL_DEV500_K8_FROZEN_500_NO_HOLDOUT_TEST',flush=True)
+          PY
+      - name: Original 2 immutable K8 source shards, no model calls
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44086713331
+          github-token: ${{ github.token }}
+          pattern: k8-bird-dev500-prospective-cache-and-offline-score-shard-*
+          path: original-caches
+          merge-multiple: true
+      - name: Remaining 30 original immutable K8 shards, NO REGENERATION
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44093103960
+          github-token: ${{ github.token }}
+          pattern: k8-bird-dev500-prospective-cache-and-offline-score-shard-*
+          path: original-caches
+          merge-multiple: true
+      - name: Certify all 500 original question IDs, 4000 Qwen SQLs and non-label mode-collapse opportunity
+        run: |
+          set -euo pipefail
+          python -m experiments.qwen9b_k8_distinct_program_selector census \
+            --cache-dir original-caches \
+            --manifest original-dev500-v2.json \
+            --out source-only-k8-mode-collapse-census.json
+          python - <<'PY'
+          import json
+          d=json.load(open('source-only-k8-mode-collapse-census.json'))
+          assert d['n']==500 and d['original_model_calls_reused']==4000
+          assert d['new_model_calls']==0 and not d['HOLDOUT300_used']
+          assert d['source_only_positive_gate'], 'predeclared opportunity coverage gate failed; stop'
+          print('PREDECLARED_MODE_COLLAPSE_SOURCE_GATE_PASSED',json.dumps(d,sort_keys=True),flush=True)
+          PY
+      - name: Immutable no-EX census evidence and source opportunity gate
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: original-Qwen9B-K8-DEV500-program-mode-collapse-source-census
+          path: source-only-k8-mode-collapse-census.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  original-model-source-physical-workers:
+    needs: original-source-census
+    if: github.head_ref == 'research/k8-mode-collapse-distinct-program-vote-20261118'
+    runs-on: ubuntu-latest
+    timeout-minutes: 160
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        worker: [0,1,2,3,4,5,6,7]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e .
+      - name: Pinned original DEV500-only ID manifest
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 \
+            'https://raw.githubusercontent.com/kolihhan/semantic-text2sql-agent/53aa2f6861f19e6e11e91eca64f47dd75daee181/manifests/bird-dev500-holdout300-20261116-v2.json' \
+            -o original-dev500-v2.json
+          python - <<'PY'
+          from pathlib import Path
+          from evaluation.k8_program_diversity_vote import read_frozen_manifest
+          assert len(read_frozen_manifest(Path('original-dev500-v2.json')))==500
+          PY
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44086713331
+          github-token: ${{ github.token }}
+          pattern: k8-bird-dev500-prospective-cache-and-offline-score-shard-*
+          path: original-caches
+          merge-multiple: true
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44093103960
+          github-token: ${{ github.token }}
+          pattern: k8-bird-dev500-prospective-cache-and-offline-score-shard-*
+          path: original-caches
+          merge-multiple: true
+      - name: Download pinned original physical DEV SQLite zip (not original Qwen model)
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/bird
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip' \
+            -o /tmp/bird/dev.zip
+          echo 'cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  /tmp/bird/dev.zip' | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          original=$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$original"
+          mkdir -p /tmp/bird/dbfiles
+          unzip -q "$original" -d /tmp/bird/dbfiles
+          root=$(find /tmp/bird/dbfiles -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          if [ -z "$root" ]; then root=/tmp/bird/dbfiles; fi
+          test -d "$root"
+          echo "DB_ROOT=$root" >> "$GITHUB_ENV"
+      - name: Choose both execution-result selectors BEFORE downloading original publisher SQL
+        env:
+          WORKER: '${{ matrix.worker }}'
+        run: |
+          set -euo pipefail
+          python -m experiments.qwen9b_k8_distinct_program_selector choose \
+            --cache-dir original-caches \
+            --manifest original-dev500-v2.json \
+            --db-root "$DB_ROOT" \
+            --worker "$WORKER" \
+            --out "sealed-k8-program-worker-$WORKER.json"
+          python - <<'PY'
+          import glob,json
+          d=json.load(open(glob.glob('sealed-k8-program-worker-*.json')[0]))
+          assert d['status']=='ORIGINAL_K8_GOLD_BLIND_CHOICES_SEALED'
+          assert d['publisher_SQL_reference_read'] is False
+          assert d['model_calls']==0 and d['HOLDOUT300_used'] is False
+          print('K8_GOLD_BLIND_CHOICE_FROZEN',d['worker'],d['n'],flush=True)
+          PY
+      - name: Commit the immutable gold-blind decision artifact before reference-source retrieval
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: original-K8-gold-blind-program-choice-worker-${{ matrix.worker }}
+          path: sealed-k8-program-worker-*.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Only NOW download and SHA-verify publisher DEV source for strict set/bag EX scoring
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true' \
+            -o /tmp/bird/bird-dev-original.json
+          echo 'ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb  /tmp/bird/bird-dev-original.json' | sha256sum -c -
+      - name: Score strict set/bag EX only after both original K8 vote decisions sealed
+        env:
+          WORKER: '${{ matrix.worker }}'
+        run: |
+          set -euo pipefail
+          python -m experiments.qwen9b_k8_distinct_program_selector score \
+            --manifest original-dev500-v2.json \
+            --source /tmp/bird/bird-dev-original.json \
+            --db-root "$DB_ROOT" \
+            --choices "sealed-k8-program-worker-$WORKER.json" \
+            --out "scored-k8-program-worker-$WORKER.json"
+      - name: Preserve every complete original-cache physically paired EX worker
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: original-K8-distinct-program-paired-EX-worker-${{ matrix.worker }}
+          path: scored-k8-program-worker-*.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  aggregate-original-model-500-only:
+    needs: original-model-source-physical-workers
+    if: github.head_ref == 'research/k8-mode-collapse-distinct-program-vote-20261118'
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e .
+      - name: Pinned original no-HOLDOUT-used manifest
+        run: |
+          curl -fsSL --retry 5 \
+            'https://raw.githubusercontent.com/kolihhan/semantic-text2sql-agent/53aa2f6861f19e6e11e91eca64f47dd75daee181/manifests/bird-dev500-holdout300-20261116-v2.json' \
+            -o original-dev500-v2.json
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: original-K8-distinct-program-paired-EX-worker-*
+          path: scored-original
+          merge-multiple: true
+      - name: Require all 500 original Qwen source IDs; true 11-DB clustered CI and stop-loss
+        run: |
+          set -euo pipefail
+          python -m experiments.qwen9b_k8_distinct_program_selector aggregate \
+            --manifest original-dev500-v2.json \
+            --inputs scored-original/scored-k8-program-worker-0.json \
+                     scored-original/scored-k8-program-worker-1.json \
+                     scored-original/scored-k8-program-worker-2.json \
+                     scored-original/scored-k8-program-worker-3.json \
+                     scored-original/scored-k8-program-worker-4.json \
+                     scored-original/scored-k8-program-worker-5.json \
+                     scored-original/scored-k8-program-worker-6.json \
+                     scored-original/scored-k8-program-worker-7.json \
+            --out original-qwen9b-K8-DEV500-distinct-program-strict-paired-final.json
+          python - <<'PY'
+          import json
+          d=json.load(open('original-qwen9b-K8-DEV500-distinct-program-strict-paired-final.json'))
+          assert d['n']==500 and d['new_Qwen_calls']==0 and not d['HOLDOUT300_used']
+          assert d['physical_db_cluster_CI95']['database_clusters']==11
+          print('FROZEN_ORIGINAL_QWEN9B_K8_DISTINCT_PROGRAM_PAIRED_FINAL',json.dumps(d,sort_keys=True),flush=True)
+          PY
+      - name: Persist all original 500 paired result and explicit censoring
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: original-Qwen9B-K8-DEV500-distinct-program-paired-final
+          path: original-qwen9b-K8-DEV500-distinct-program-strict-paired-final.json
+          if-no-files-found: warn
+          retention-days: 30
