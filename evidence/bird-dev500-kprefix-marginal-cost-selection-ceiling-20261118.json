@@ -1,0 +1,117 @@
+{
+  "date": "2026-11-18",
+  "status": "VERIFIED_PHYSICAL_DEV500_BOUNDED_KPREFIX_COST_AND_SELECTION_CEILING",
+  "physical_source": {
+    "fixed_source_sha256": "ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb",
+    "original_qwen_digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+    "model_generation_runs": [
+      44086713331,
+      44093103960
+    ],
+    "bounded_prefix_run": 44222560767,
+    "certified_aggregate_run": 44223938142,
+    "certified_aggregate_artifact": 14391538256,
+    "certified_aggregate_json_sha256": "04feef5aadadf46dc5d162b6cd9b2da2c619b675d718c8e2ce66adbb317f0b29",
+    "original_cached_candidates": 4000,
+    "exact_dev_questions": 500,
+    "physical_databases": 11,
+    "sqlite_per_query_limit_seconds": 8,
+    "reference_timeout_all_eight_candidates_invalid_case_id": "1126",
+    "holdout300_used": false,
+    "new_model_calls_for_this_cost_audit": 0
+  },
+  "physically_observed_prefix_frontier": [
+    {
+      "k": 1,
+      "correct": 203,
+      "strict_set_ex": 0.406,
+      "original_model_calls": 500,
+      "cumulative_generation_wall_hours": 10.788,
+      "delta_correct_vs_k1": 0
+    },
+    {
+      "k": 2,
+      "correct": 213,
+      "strict_set_ex": 0.426,
+      "original_model_calls": 1000,
+      "cumulative_generation_wall_hours": 12.691,
+      "delta_correct_vs_k1": 10
+    },
+    {
+      "k": 4,
+      "correct": 225,
+      "strict_set_ex": 0.45,
+      "original_model_calls": 2000,
+      "cumulative_generation_wall_hours": 16.658,
+      "delta_correct_vs_k1": 22
+    },
+    {
+      "k": 8,
+      "correct": 233,
+      "strict_set_ex": 0.466,
+      "original_model_calls": 4000,
+      "cumulative_generation_wall_hours": 24.369,
+      "delta_correct_vs_k1": 30
+    }
+  ],
+  "marginal_k4_to_k8": {
+    "rescues": 13,
+    "regressions": 5,
+    "net_correct": 8,
+    "percentage_point_change": 1.6,
+    "changed_selected_candidate": 53,
+    "exact_mcnemar_two_sided_p": 0.09625244140625,
+    "paired_question_bootstrap_ci95": [
+      0,
+      0.032
+    ],
+    "paired_database_cluster_bootstrap_ci95": [
+      0.0019801980198019802,
+      0.030737704918032786
+    ],
+    "extra_generation_cpu_hours": 7.7110475,
+    "extra_generation_calls": 2000,
+    "additional_cpu_hours_per_net_correct": 0.96388,
+    "db_delta_net": {
+      "card_games": 0,
+      "codebase_community": 3,
+      "formula_1": 3,
+      "thrombosis_prediction": 0,
+      "student_club": 1,
+      "toxicology": 0,
+      "superhero": -1,
+      "european_football_2": 1,
+      "financial": 1,
+      "california_schools": 0,
+      "debit_card_specializing": 0
+    }
+  },
+  "structural_decomposition_at_k8": {
+    "pass8_hindsight_oracle_correct": 285,
+    "deployed_plurality_correct": 233,
+    "correct_candidate_exists_but_plurality_fails": 52,
+    "oracle_selector_only_theoretical_headroom_percentage_points": 10.4,
+    "no_correct_candidate_among_eight": 215,
+    "no_correct_candidate_rate": 0.43,
+    "non_executing_all_eight_candidates_cases": 28,
+    "claim_boundary": "Oracle uses publisher answer after generation and is NOT deployable. The 52/500 oracle-selector gap is only a bound, not a realized gain. 215/500 had no correct sampled candidate and require candidate-generation/reasoning changes, not just choosing a different sampled answer."
+  },
+  "decision": {
+    "preferred_cost_sensitive_exploratory_baseline": "K4 on fixed Qwen3.5-9B, same SQLite-result plurality",
+    "accuracy_oriented_exploratory_baseline": "K8 for no-cost-constraint maximum observed DEV accuracy only",
+    "reason": "K4 captures 22/30 of the observed K8 net gain over K1; K8 adds eight net correct for +7.71 measured original Qwen CPU-hours with task-level CI including zero and two-sided exact McNemar p>0.05.",
+    "next_research_question": "Can a preregistered, gold-blind selector recover part of the 52/500 oracle selection gap without increasing original Qwen calls or tuning on DEV500?",
+    "validation_gate": "Freeze selector features and thresholds on disjoint TRAIN source; reserve independent final evaluation. A source-local DEV500 comparison is diagnostic, not out-of-source proof.",
+    "promotion_allowed": false,
+    "rerun_4000_Qwen_calls": false
+  },
+  "limitations": [
+    "Original Qwen generations were physically produced once, 32 immutable cache shards. Cumulative wall-summed CPU generation hours include first-call warmup overhead and are NOT financial cost estimates.",
+    "Original results use a special uniformly 8-second-bounded SQLite set-result comparison, not the old unbounded BIRD official evaluator.",
+    "All 11 physical DEV databases have appeared in previous project evaluations, so this is not database-disjoint generalization.",
+    "500 DEV examples are not 500 independent source databases; cluster bootstrap only has 11 DB units.",
+    "One publisher/reference query hit the bounded time limit, but every model candidate for that question was nonexecuting; it is certified wrong without inferring a gold result.",
+    "K4 vs K8 source-data selection is exploratory and may reflect tuning on DEV; do not directly promote to final test or claim a broader semantic breakthrough.",
+    "HOLDOUT300 was not read or modified; SQL QLoRA remains paused."
+  ]
+}

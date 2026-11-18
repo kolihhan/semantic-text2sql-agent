@@ -1,0 +1,80 @@
+name: BIRD DEV500 K-Prefix Certified All-Invalid Reference Timeout Aggregate
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  aggregate-unchanged-physical-workers:
+    if: github.head_ref == 'research/bird-kprefix-gold1126-only-recovery-20261118'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Test source-only correctness-certification contract
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_k8_prefix_frontier.py tests/test_k8_reference_timeout_certification.py tests/test_kcache_protocol.py
+      - name: Download exact original EIGHT physical CPU worker outputs, no candidate/gold reruns
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44222560767
+          github-token: ${{ github.token }}
+          pattern: frozen-bird-dev500-prefix-worker-*
+          path: original-parts
+          merge-multiple: true
+      - name: Validate reference-timeout is exactly one all-invalid task, no guessed gold
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,glob
+          from pathlib import Path
+          from evaluation.kcache_protocol import read_frozen_manifest
+          m=read_frozen_manifest(Path('manifests/bird-dev500-holdout300-20261116-v2.json'))
+          paths=sorted(glob.glob('original-parts/prefix-frontier-worker-*.json'))
+          assert len(paths)==8
+          parts=[json.load(open(p)) for p in paths]
+          rows=[x for p in parts for x in p['cases']]
+          assert len(rows)==500 and len(set(x['case_id'] for x in rows))==500
+          assert set(x['case_id'] for x in rows)==set(m['dev_case_ids'])
+          unscorable=[x for x in rows if not x['gold_scorable']]
+          assert len(unscorable)==1
+          x=unscorable[0]
+          assert x['case_id']=='1126' and x['db_id']=='european_football_2'
+          assert x['candidate_executed']==0 and x['gold_timeout'] is True
+          assert all(not x['k'+str(k)+'_set_ex'] for k in (1,2,4,8))
+          assert not x['pass8_oracle_set']
+          assert all(p['model_calls']==0 and p['holdout300_used'] is False for p in parts)
+          print('ONLY_TIMEOUT_GOLD_ALL_EIGHT_ORIGINAL_QWEN_CANDIDATES_INVALID',flush=True)
+          PY
+      - name: Aggregate all frozen DEV500 outcomes WITHOUT rerunning any SQL or model
+        run: |
+          set -euo pipefail
+          python -m evaluation.k8_prefix_frontier aggregate \
+            --manifest manifests/bird-dev500-holdout300-20261116-v2.json \
+            --inputs original-parts/prefix-frontier-worker-*.json \
+            --out original-Qwen9B-DEV500-8s-Kprefix-certified-complete.json
+          python - <<'PY'
+          import json
+          d=json.load(open('original-Qwen9B-DEV500-8s-Kprefix-certified-complete.json'))
+          assert d['status']=='COMPLETE_K_PREFIX_BOUNDED_DEV500_WITH_CERTIFIED_CANDIDATE_FAILURE'
+          assert d['n']==500 and d['new_model_inference_calls']==0 and d['holdout300_unused']
+          assert d['candidate_failure_certified_reference_timeouts']==1 and d['unscorable_count']==0
+          assert all(d['scores'][str(k)]['n']==500 for k in (1,2,4,8))
+          print('ORIGINAL_QWEN9B_SOURCE_LOCKED_KPREFIX_500_RESCUED',
+                json.dumps(d,sort_keys=True),flush=True)
+          PY
+      - name: Persist aggregate-only original model score and cost frontier
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: original-Qwen9B-DEV500-uniform-8s-K1-K2-K4-K8-certified-aggregate
+          path: original-Qwen9B-DEV500-8s-Kprefix-certified-complete.json
+          if-no-files-found: warn
+          retention-days: 30
