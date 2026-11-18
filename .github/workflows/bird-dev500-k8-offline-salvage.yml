@@ -1,0 +1,168 @@
+name: BIRD DEV500 K8 one-shard offline salvage
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  score-shard7-and-aggregate:
+    if: github.head_ref == 'research/bird-dev500-k8-salvage-shard7-20261118'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6
+        with:
+          python-version: '3.11'
+      - name: Install existing scorer only (NO Ollama or model inference)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_kcache_protocol.py tests/test_offline_bag_selector.py
+      - name: Fetch the original complete first two immutable K8 source artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44086713331
+          github-token: ${{ github.token }}
+          pattern: k8-bird-dev500-prospective-cache-and-offline-score-shard-*
+          path: all-shards
+          merge-multiple: true
+      - name: Fetch original 30 physical cached source artifacts from cancelled run
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44093103960
+          github-token: ${{ github.token }}
+          pattern: k8-bird-dev500-prospective-cache-and-offline-score-shard-*
+          path: all-shards
+          merge-multiple: true
+      - name: Fail closed unless exactly the missing offline score is shard 7
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from evaluation.kcache_protocol import read_frozen_manifest, candidate_seed
+          from evaluation.qwen9b_kcache import validate_cache
+          root=Path("all-shards")
+          m=read_frozen_manifest(Path("manifests/bird-dev500-holdout300-20261116-v2.json"))
+          files=sorted(root.glob("k8-dev500-candidate-cache-*.json"))
+          scores=sorted(root.glob("k8-dev500-offline-scored-*.json"))
+          assert len(files)==32 and len(scores)==31, (len(files),len(scores))
+          assert sorted(int(x.stem.split("-")[-1]) for x in files)==list(range(32))
+          assert sorted(set(range(32))-set(int(x.stem.split("-")[-1]) for x in scores))==[7]
+          seen=set(); calls=0
+          for p in files:
+              x=json.loads(p.read_text())
+              shard=int(p.stem.split("-")[-1])
+              assert x["status"]=="CANDIDATE_CACHE_COMPLETE"
+              assert x["shard"]==shard and x["shards"]==32 and x["k"]==8
+              assert x["source_sha256"]=="ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb"
+              assert x["model_digest"]=="56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90"
+              assert x["no_gold_sql_in_cache"] and x["no_repair"]
+              for case in x["cases"]:
+                  assert case["case_id"] not in seen
+                  seen.add(case["case_id"])
+                  assert len(case["samples"])==8
+                  assert [s["index"] for s in case["samples"]]==list(range(8))
+                  assert all(s["seed"]==candidate_seed(case["case_id"],i) for i,s in enumerate(case["samples"]))
+                  calls+=8
+          assert seen==set(m["dev_case_ids"]) and len(seen)==500 and calls==4000
+          print("PRESERVED_EXACT_ORIGINAL_CANDIDATES",len(seen),calls,
+                "OFFLINE_MISSING_ONLY_SHARD_7")
+          PY
+      - name: Get same immutable original BIRD DEV source data
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/bird
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true' \
+            -o /tmp/bird/bird-dev-original.json
+          echo 'ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb  /tmp/bird/bird-dev-original.json' | sha256sum -c -
+      - name: Get original SHA-locked physical BIRD DEV SQLite databases
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip' \
+            -o /tmp/bird/dev.zip
+          echo 'cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  /tmp/bird/dev.zip' | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          original=$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$original"
+          mkdir -p /tmp/bird/dbfiles
+          unzip -q "$original" -d /tmp/bird/dbfiles
+          root=$(find /tmp/bird/dbfiles -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          if [ -z "$root" ]; then root=/tmp/bird/dbfiles; fi
+          test -d "$root"
+          echo "DB_ROOT=$root" >> "$GITHUB_ENV"
+      - name: Score only the existing 16 original Qwen K8 candidates of shard 7
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m evaluation.qwen9b_kcache score \
+            --source /tmp/bird/bird-dev-original.json \
+            --database-root "$DB_ROOT" \
+            --manifest manifests/bird-dev500-holdout300-20261116-v2.json \
+            --cache all-shards/k8-dev500-candidate-cache-7.json \
+            --out all-shards/k8-dev500-offline-scored-7.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path("all-shards/k8-dev500-offline-scored-7.json")
+          data=json.loads(p.read_text())
+          assert data["status"]=="SCORED_FROM_IMMUTABLE_CACHE_ONLY"
+          assert data["model_calls"]==0 and data["selector_never_sees_gold"]
+          assert data["shard"]==7 and len(data["cases"])==16
+          print("ONLY_MISSING_SHARD_7_SCORED",len(data["cases"]),flush=True)
+          PY
+      - name: Aggregate same 32 source-pinned shards and strict full DEV500
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m evaluation.qwen9b_kcache aggregate \
+            --inputs all-shards/k8-dev500-offline-scored-*.json \
+            --out k8-dev500-original-qwen-fully-recovered.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          x=json.loads(Path("k8-dev500-original-qwen-fully-recovered.json").read_text())
+          assert x["status"]=="COMPLETE_FROZEN_DEV500_KCACHE_OFFLINE_ANALYSIS"
+          assert x["results"]["n"]==500 and x["results"]["k"]==8
+          assert not x["holdout300_used"]
+          print("BIRD_DEV500_RESTORED_STRICT_SET_EX",json.dumps(x["results"],sort_keys=True))
+          PY
+      - name: One-cache zero-LLM bag-versus-set selection ablation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m evaluation.offline_bag_selector \
+            --source /tmp/bird/bird-dev-original.json \
+            --db-root "$DB_ROOT" --cache-dir all-shards \
+            --out-dir bag-analysis
+          python - <<'PY'
+          import json
+          x=json.load(open("bag-analysis/bag-selector-complete-500.json"))
+          assert x["n"]==500 and x["k"]==8 and x["model_calls"]==0
+          assert x["holdout300_unused"]
+          print("BIRD_DEV500_BAG_VS_SET_SAME_CACHE",json.dumps(x,sort_keys=True))
+          PY
+      - name: Upload aggregate-only results, no question/DB/SQL contents
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: BIRD-DEV500-K8-ORIGINAL-QWEN-ONE-SHARD-SALVAGE-FINAL
+          path: |
+            k8-dev500-original-qwen-fully-recovered.json
+            bag-analysis/bag-selector-complete-500.json
+            all-shards/k8-dev500-offline-scored-7.json
+          if-no-files-found: warn
+          retention-days: 30

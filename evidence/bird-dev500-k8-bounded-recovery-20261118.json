@@ -1,0 +1,73 @@
+{
+  "status": "SOURCE_ONLY_BOUNDED_SENSITIVITY_NOT_OFFICIAL_FULL_500_EX",
+  "date": "2026-11-18",
+  "orig_Qwen_run": {
+    "first_two": 44086713331,
+    "remaining": 44093103960,
+    "remaining_run_conclusion": "cancelled",
+    "immutable_candidate_shards": 32,
+    "complete_unbounded_score_shards": 31,
+    "raw_Qwen_calls": 4000
+  },
+  "bounded_diagnostic": {
+    "run": 44220936891,
+    "artifact": 14390473081,
+    "source_shard": 7,
+    "query_seconds": 8,
+    "student_model_calls": 0,
+    "original_candidates": 128,
+    "query_timeouts": 4,
+    "affected_tasks": 2,
+    "affected_databases": [
+      "card_games",
+      "formula_1"
+    ],
+    "gold_timeouts": 0,
+    "uncensored_tasks": 14
+  },
+  "source": {
+    "manifest": "manifests/bird-dev500-holdout300-20261116-v2.json",
+    "original_dev_questions": 500,
+    "scored_without_timeouts": 498,
+    "censored_task_count": 2,
+    "held_out_questions_unused": 300,
+    "original_source_sha256": "ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb",
+    "model_digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+    "unique_candidate_seeds": 4000
+  },
+  "conservative_bounded_summary": {
+    "first_sample_set_ex_correct": 204,
+    "selected_k8_set_ex_correct_lower_bound": 234,
+    "oracle_pass_k_set_lower_bound": 286,
+    "total_questions": 500,
+    "complete_pair_rescues": 36,
+    "complete_pair_regressions": 6,
+    "known_pair_net_gain": 30,
+    "minimum_pair_uplift_percentage_points": 6,
+    "first_sql_accuracy_percent": 40.8,
+    "selected_k8_lower_bound_accuracy_percent": 46.8,
+    "censored_cases_original_first_sql_correct": 0,
+    "censored_cases_bounded_selected_sql_correct": 0,
+    "selected_k8_censored_upper_bound_correct": 236,
+    "selected_k8_upper_bound_accuracy_percent": 47.2
+  },
+  "descriptive_bootstrap": {
+    "method": "task-paired and 11 DB-cluster bootstrap on 500 conservative binary labels; 4000 draws with seed 20261117; this is not an uncertainty interval for the missing SQL outcomes",
+    "task_ci95": [
+      0.036,
+      0.086
+    ],
+    "db_cluster_ci95": [
+      0.032846715328467155,
+      0.0842911877394636
+    ]
+  },
+  "limits": [
+    "This combines the original unbounded scorer for 484 tasks and a separate 8s bounded probe for 16 tasks: original strictly uniform full500 main metric remains BLOCKED.",
+    "Only 2 cases include censored candidate outcomes; both have observed incorrect original first SQL and observed incorrect bounded K8 chosen SQL.",
+    "The censored timeouts may alter candidate voting or oracle correctness. Until uniform execution semantics are defined, do not treat this summary as official complete DEV500 score.",
+    "All BIRD DEV physical databases were historically exposed; a positive paired effect is not source-independent generalization.",
+    "K8 uses eight original-model SQL generations rather than one, so latency/cost must be included before promotion.",
+    "No new model inference, QLoRA training, stronger teacher, or HOLDOUT300 exposure occurred in bounded probe."
+  ]
+}
