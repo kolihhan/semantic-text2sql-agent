@@ -73,7 +73,7 @@ def test_cannot_relax_49_used_or_51_original_source_databases():
 def test_unverified_previous_database_fails_closed():
     manifest,used,train=artificial()
     with pytest.raises(ValueError,match="absent from pinned original"):
-        make_report(train,used|{"FORGED_DB"},used,{})
+        make_report(train,manifest,used|{"FORGED_DB"},{})
 
 
 def test_unusable_too_large_db_is_flagged_not_replaced():
