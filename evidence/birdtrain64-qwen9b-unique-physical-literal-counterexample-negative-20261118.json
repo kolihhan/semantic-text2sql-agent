@@ -1,0 +1,109 @@
+{
+  "date": "2026-11-18",
+  "status": "SOURCE_LOCKED_REAL_QWEN9B_BIRD_TRAIN_VAL64_UNIQUE_PHYSICAL_LITERAL_GATE_FAILED",
+  "original_experiment": {
+    "pr": "https://github.com/kolihhan/semantic-text2sql-agent/pull/105",
+    "action": "https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/44293490876",
+    "final_artifact_id": 14422198041,
+    "worker_artifact_ids": [
+      14422611662,
+      14423260411,
+      14422881301,
+      14421798342
+    ],
+    "physical_rule_git_blob_sha": "49ca98aed40b63f595b5576c9bd10e587ddca8c8",
+    "audit_git_blob_sha": "1453f62c7e188d4c66da58a45bd308fb5599dcd5",
+    "original_model_name": "qwen3.5:9b-q4_K_M",
+    "original_model_digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+    "original_model_run": 43892823922,
+    "original_publisher_source_run": 43888747753,
+    "original_validation_sha256": "cc112305bc9de33a03cea704f2edecfdfb45e62cc953ae498cea27fbed93b506",
+    "n": 64,
+    "physical_source_dbs": [
+      "movie_3",
+      "music_tracker",
+      "superstore",
+      "world"
+    ],
+    "physical_dbs_disjoint_from_prior_fk_fanout_train16": true,
+    "new_model_calls": 0,
+    "new_training_steps": 0,
+    "dev500_used": false,
+    "holdout300_used": false,
+    "sql_scoring_timeout_seconds": 8
+  },
+  "mechanism": "Gold-blind read-only SQL parameter counterexample: only a single simple WHERE column='value' anchored to source question/external evidence and absent in physical column may be substituted with a unique Unicode NFKC/case/punctuation-normalized matching real stored value. No fuzzy substitution, source SQL, oracle model, teacher, training, or candidate reranking.",
+  "synthetic_pytests_success": 17,
+  "original_model_direct": {
+    "baseline_source_strict_set_EX_correct": 27,
+    "proposed_strict_set_EX_correct": 27,
+    "triggered_substitutions": 2,
+    "rescued": 0,
+    "regressed": 0,
+    "both_wrong": 2,
+    "already_correct_and_still_correct": 0,
+    "physical_bounded_vs_original_source_label_mismatches": 0,
+    "censored_source_gold": 0,
+    "changed_SQL_nonexecuting": 0
+  },
+  "original_model_guarded": {
+    "baseline_source_strict_set_EX_correct": 31,
+    "proposed_strict_set_EX_correct": 31,
+    "triggered_substitutions": 3,
+    "rescued": 0,
+    "regressed": 0,
+    "both_wrong": 2,
+    "already_correct_and_still_correct": 1,
+    "physical_bounded_vs_original_source_label_mismatches": 0,
+    "censored_source_gold": 0,
+    "changed_SQL_nonexecuting": 0
+  },
+  "changed_model_cases": [
+    {
+      "db": "movie_3",
+      "source_index": 6855,
+      "direct": true,
+      "guarded": true,
+      "source_ex_after_edit": false
+    },
+    {
+      "db": "movie_3",
+      "source_index": 7059,
+      "direct": true,
+      "guarded": true,
+      "source_ex_after_edit": false
+    },
+    {
+      "db": "movie_3",
+      "source_index": 6864,
+      "direct": false,
+      "guarded": true,
+      "source_ex_after_edit": true
+    }
+  ],
+  "predeclared_positive_gate": {
+    "min_guarded_changed": 3,
+    "min_guarded_rescues": 2,
+    "max_guarded_regressions": 0,
+    "min_guarded_rescue_databases": 2,
+    "max_original_bounded_score_disagreement": 0,
+    "observed_result": false
+  },
+  "research_decision": {
+    "action": "DO_NOT_MERGE_OR_PROMOTE",
+    "reason": "A conservative physically unique literal replacement did synthesize three valid alternative guarded SQLs, but two wrong source examples stayed wrong and one already correct stayed correct. No strict EX gain, no evidence that the mechanism addresses question-to-entity/relationship or aggregate intent.",
+    "stop": [
+      "Do not tune normalization against exposed VAL64 or two source failures",
+      "Do not rerun fixed Qwen9B on DEV500/HOLDOUT300 for this rule",
+      "Do not treat physically existing values as semantic correctness evidence",
+      "Do not switch original base model or train Text2SQL adapter"
+    ],
+    "next_priority": "A semantic discriminant with concrete question-linked invariants or two-candidate result witnesses, validated on genuinely unseen TRAIN data; stop cheap micro-heuristics that cannot identify target entity or relation."
+  },
+  "limits": [
+    "Retrospective publicly exposed original BIRD TRAIN VAL64 source; four databases disjoint from prior TRAIN16 but reused historically in other studies, not independent prospective generalization.",
+    "Source publisher SQL reference may disagree with question intent; this is strict SQL result match, not human-adjudicated semantic correctness.",
+    "Any changed SQL is executed against the original data with 8-second bounded worker cap; unchanged original source 27/64 and 31/64 labels are reused only after verifying all changed SQL source baselines match their bounded outcomes.",
+    "Not a new Qwen inference EX score and not a Kaggle leaderboard submission."
+  ]
+}
