@@ -27,8 +27,8 @@ COUNT_QUESTION = re.compile(
 )
 AVERAGE_QUESTION = re.compile(
     r"^\s*(?:on\s+average\b|(?:what\s+is|what\s+was|"
-    r"calculate|compute|find|give|show)\b.{0,55}\b"
-    r"(?:average|mean)\b)", re.I
+    r"calculate|compute|find|give|show)\s+(?:the\s+)?"
+    r"(?:overall\s+)?(?:average|mean)\b)", re.I
 )
 COUNT_OUTPUT = re.compile(r"\b(?:COUNT|SUM)\s*\(", re.I)
 AVERAGE_OUTPUT = re.compile(r"\bAVG\s*\(|\b(?:AVG|AVERAGE)_[A-Za-z0-9_]+\b|"
@@ -49,8 +49,8 @@ def contract_for_question(question: str) -> str:
     if COUNT_QUESTION.search(q):
         # A compound request for both a count and a list needs a richer
         # multi-output contract. Do not force one aggregate-only SQL.
-        if re.search(r"\b(?:list|show|give)\s+(?:those|their|the|all)\s+"
-                     r"(?:names|titles|identifiers|ids)\b",q,re.I):
+        if re.search(r"\b(?:list|show|give)\b.{0,55}"
+                     r"\b(?:names|titles|identifiers|ids)\b",q,re.I):
             return "abstain"
         return "cardinality"
     return "abstain"
@@ -90,7 +90,7 @@ def compatibility(question: str, sql: str) -> int:
     if contract=="abstain":
         return 0
     projection=_outer_projection(sql)
-    if not projection or not re.match(r"^\s*(?:DISTINCT\s+)?",projection,re.I):
+    if not projection:
         return 0
     if contract=="cardinality":
         return 1 if COUNT_OUTPUT.search(projection) else -1
