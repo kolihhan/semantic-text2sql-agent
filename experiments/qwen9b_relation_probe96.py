@@ -163,7 +163,7 @@ def checked_source(src:Path,meta:Path)->tuple[list[dict],dict]:
     return rows,r
 
 
-def execute(db:Path,sql:str,max_rows:int=MAX_ROWS,limit:float=SQL_SECONDS)->dict:
+def execute(db:Path,sql:str,max_rows:int=MAX_ROWS,limit:float=SQL_SECONDS,preview:bool=False)->dict:
     start=time.monotonic()
     conn=None
     try:
@@ -173,7 +173,7 @@ def execute(db:Path,sql:str,max_rows:int=MAX_ROWS,limit:float=SQL_SECONDS)->dict
         cur=conn.execute(query)
         columns=[str(x[0]) for x in (cur.description or ())]
         rows=cur.fetchmany(max_rows+1)
-        if len(rows)>max_rows:raise ValueError("row_cap")
+        if len(rows)>max_rows and not preview:raise ValueError("row_cap")
         encoded=[json.dumps(list(row),ensure_ascii=False,default=str,
                             separators=(",",":")) for row in rows]
         a=sha256(json.dumps(sorted(set(encoded))).encode()).hexdigest()
@@ -216,7 +216,7 @@ def infer(src:Path,manifest:Path,dbroot:Path,shard:int,out:Path)->dict:
         base2,t2=generate(q2,_SYSTEM,user)
         # Exactly 2 treatment calls with original Qwen, no gold or stronger model.
         probe,tp=generate(q1,PROBE_SYSTEM,user)
-        observed=execute(dpath,probe,max_rows=5,limit=5.)
+        observed=execute(dpath,probe,max_rows=5,limit=5.,preview=True)
         # No full-data-probe "zero rows means no answer" inference.
         fact={
             "SQL":probe[:1200],
