@@ -1,0 +1,68 @@
+{
+  "date": "2026-11-18",
+  "status": "SOURCE_LOCKED_INDEPENDENT_TRAIN_SCHEMA_TABLE_VISIBILITY_GATE_FAILED",
+  "original_source_evidence": {
+    "train_source_run": 43888747753,
+    "train_source_artifact": 14234409041,
+    "original_real_model_val_run": 43892823922,
+    "original_real_model_val_artifact": 14237659639,
+    "audit_run": 44275255898,
+    "audit_aggregate_artifact": 14413823200,
+    "same_fixed_model": "qwen3.5:9b-q4_K_M",
+    "fixed_base_model_digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+    "train_source_sha256": "b6851fb0f2b5027833aff45a0b5e01326359b245be1c812edc66986d0df1d402",
+    "independent_validation_source_sha256": "cc112305bc9de33a03cea704f2edecfdfb45e62cc953ae498cea27fbed93b506",
+    "original_train_dbs": 16,
+    "original_validation_dbs": 4,
+    "physical_db_overlap": 0,
+    "new_qwen_calls": 0,
+    "new_training_steps": 0,
+    "bird_dev500_read": false,
+    "bird_holdout300_read": false
+  },
+  "train242": {
+    "total": 242,
+    "reference_sql_requires_prompt_invisible_table_count": 6,
+    "missing_table_rate": 0.024793388429752067,
+    "source_db_counts": {
+      "movielens": 3,
+      "olympics": 2,
+      "public_review_platform": 1
+    },
+    "sql_table_parser_abstained": 0
+  },
+  "independent_val64": {
+    "total": 64,
+    "reference_sql_requires_prompt_invisible_table_count": 2,
+    "missing_table_rate": 0.03125,
+    "affected_db": "movie_3",
+    "source_cases": [
+      6835,
+      6958
+    ],
+    "source_sql_table_parser_abstained": 0,
+    "real_qwen_direct_correct": 27,
+    "real_qwen_guarded_correct": 31,
+    "original_model_sql_explicit_table_absent_prompt": 0,
+    "actual_model_wrong_on_both_omission_cases_direct": 2,
+    "actual_model_wrong_on_both_omission_cases_guarded": 2
+  },
+  "preregistered_necessary_information_gate": {
+    "minimum_required_train_missing_table_rate": 0.05,
+    "minimum_required_independent_val_missing_table_rate": 0.05,
+    "source_table_omission_gate_passed": false,
+    "stop_loss": "DO NOT run full new Qwen inference solely to fix missing table inclusion. Isolated omissions are 2.5-3.1% of source tasks and the specific mechanism cannot explain the large original DEV500 K8 candidate-availability ceiling."
+  },
+  "next_high_value_mechanism": {
+    "primary_research_direction": "Question-to-table/column/value binding and JOIN/filter semantics WITHIN already visible schema, not just adding missing tables or token keywords.",
+    "protocol": "Use unseen source-independent BIRD TRAIN physical DB tasks; freeze meaningful semantic mechanism and error detection gate before original fixed Qwen3.5-9B prospective matched experiments. No stronger model, teacher replacement, DEV500 tuning, or HOLDOUT300 peeking.",
+    "risk": "Original model SQL references only prompt-visible tables on all 64 independent source examples; errors can arise even with table visibility, from wrong column/entity/join/aggregation semantics."
+  },
+  "limits": [
+    "This is original publisher reference SQL table coverage from a conservative FROM/JOIN lexical parser, not gold adjudication or full SQL AST proof.",
+    "Two omitted-table validation cases were both wrong, but n=2 does not identify causality or generalizable gains.",
+    "The original valuation models direct and guarded have different tools/repair behavior, so 27/64 and 31/64 cannot be attributed to a table visibility intervention.",
+    "No model improvement was physically tested or demonstrated.",
+    "One-off original TRAIN cohort and independent four DB validation do not establish broad transfer."
+  ]
+}
