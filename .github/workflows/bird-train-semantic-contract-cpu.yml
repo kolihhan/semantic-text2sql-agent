@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   original-train-database-separated-quantifier-validation:
-    if: github.head_ref == 'research/birdtrain-quantifier-contract-probe-20261118'
+    if: github.event.action == 'opened' && github.head_ref == 'research/birdtrain-quantifier-contract-probe-20261118'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
