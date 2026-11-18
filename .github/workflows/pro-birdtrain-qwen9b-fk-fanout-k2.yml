@@ -1,0 +1,200 @@
+name: PRO original fixed Qwen9B BIRD TRAIN K2 physical FK multiplicity generation
+on:
+  pull_request:
+    types: [opened]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  freeze-original-train-source:
+    if: github.head_ref == 'research/qwen9b-physical-fanout-k2-gen-20261118'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Verify source identity, no-model SQL and physical FK cardinality implementation
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_qwen9b_physical_fk_fanout_k2.py
+          python -m compileall -q experiments/qwen9b_physical_fk_fanout_k2.py
+      - name: Fetch pinned public BIRD TRAIN original source (NOT DEV or HOLDOUT)
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/Emulated-Inc/text-to-sql-with-evidence-training-pool/resolve/cd2c4ea321075aa53ce7dfe52deaaffa505d046a/raw/bird/train.json' \
+            -o train.json
+          echo 'cd5884489dffd7c76d73509b396bd919fbe8b486efbc4ba2f48f89460de7d69f  train.json' | sha256sum -c -
+      - name: Original previously scored TRAIN242 and disjoint TRAIN-VAL64 source exclusion
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43888747753
+          github-token: ${{ github.token }}
+          name: qwen9b-birdtrain-db-disjoint-original-sql-sft-candidates
+          path: prior-original
+      - name: Original already scored 16 source questions exclusion (no reuse)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44053157511
+          github-token: ${{ github.token }}
+          name: qwen9b-count-join-grain16-frozen-only
+          path: prior-grain16
+      - name: Freeze exactly sixteen previously unseen TRAIN questions on four DBs with physical FK fanout
+        run: |
+          set -euo pipefail
+          python -m experiments.qwen9b_physical_fk_fanout_k2 freeze \
+            --train train.json \
+            --prior-train prior-original/train.jsonl \
+            --prior-val prior-original/validation.jsonl \
+            --prior-grain prior-grain16/grain16.jsonl \
+            --work origin-sqlite \
+            --out frozen
+          python - <<'PY'
+          import json
+          m=json.load(open("frozen/freeze.json"))
+          assert m["status"]=="SOURCE_QUESTION_FROZEN_BEFORE_MODEL_OR_EX"
+          assert m["n"]==16 and len(m["physical_databases"])==4
+          assert m["cases_with_measurable_fk_fanout"]>=8
+          assert m["new_model_calls"]==0
+          assert m["not_dev_score"] and m["holdout300_unused"]
+          print("ORIGINAL_FANOUT_K2_PRE_QWEN_FREEZE",json.dumps({
+              k:v for k,v in m.items() if k!="prior_source_sha256"
+          },sort_keys=True),flush=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen9b-fanout-k2-source16-before-model
+          path: frozen/
+          if-no-files-found: error
+          retention-days: 30
+
+  original-qwen-physical-k2:
+    needs: freeze-original-train-source
+    if: github.head_ref == 'research/qwen9b-physical-fanout-k2-gen-20261118'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        shard: [0,1,2,3]
+    env:
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_CONTEXT_LENGTH: '8192'
+      OLLAMA_NUM_PARALLEL: '1'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: qwen9b-fanout-k2-source16-before-model
+          path: frozen
+      - name: Fetch pinned original physical TRAIN SQLite source for THIS DB worker
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          from scripts.prepare_birdtrain_qwen9b_sft_source import fetch_manifest,fetch_database
+          from experiments.qwen9b_physical_fk_fanout_k2 import checked_rows
+          rows,m=checked_rows(Path('frozen/source16.jsonl'),Path('frozen/freeze.json'))
+          shard=int(os.environ["SHARD"])
+          case=rows[shard*4]
+          assert all(r['db_id']==case['db_id'] for r in rows[shard*4:(shard+1)*4])
+          metadata=fetch_manifest()[case['db_id']]
+          assert metadata['size']<=96*1024*1024
+          p=fetch_database(case['db_id'],metadata,Path('physical-sqlite'))
+          assert p.is_file()
+          print("ORIGINAL_BIRD_TRAIN_DB_BYTES_VERIFIED",case["db_id"],p.stat().st_size,flush=True)
+          PY
+      - name: Install and pull immutable original Qwen3.5-9B Ollama CPU (NO TRAIN/TEACHER)
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          for i in {1..60}; do curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break; sleep 2; done
+          curl -fsS http://127.0.0.1:11434/api/tags >/dev/null
+          ollama pull qwen3.5:9b-q4_K_M
+      - name: Exactly three real Qwen calls per source case, compare two equal-budget candidate pools
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python -m experiments.qwen9b_physical_fk_fanout_k2 infer \
+            --source frozen/source16.jsonl --meta frozen/freeze.json \
+            --shard "$SHARD" --db-root physical-sqlite \
+            --out "generated-$SHARD.json"
+      - name: Gold-blind K2 selectors, then physical bounded SQL scoring from immutable source
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python -m experiments.qwen9b_physical_fk_fanout_k2 score \
+            --source frozen/source16.jsonl --meta frozen/freeze.json \
+            --samples "generated-$SHARD.json" --db-root physical-sqlite \
+            --shard "$SHARD" --out "scored-$SHARD.json"
+      - name: Preserve original model candidate SQL caches and physical scored worker
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen9b-fanout-k2-source-physical-worker-${{ matrix.shard }}
+          path: |
+            generated-*.json
+            scored-*.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  aggregate-source-correctness:
+    needs: original-qwen-physical-k2
+    if: github.head_ref == 'research/qwen9b-physical-fanout-k2-gen-20261118'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: qwen9b-fanout-k2-source16-before-model
+          path: frozen
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: qwen9b-fanout-k2-source-physical-worker-*
+          path: scored
+          merge-multiple: true
+      - name: Aggregate exactly 16 original Qwen3.5-9B two-candidate arms and strict EX
+        run: |
+          set -euo pipefail
+          python -m experiments.qwen9b_physical_fk_fanout_k2 aggregate \
+            --source frozen/source16.jsonl --meta frozen/freeze.json \
+            --inputs scored/scored-0.json scored/scored-1.json scored/scored-2.json scored/scored-3.json \
+            --out fanout-k2-final.json
+          python - <<'PY'
+          import json
+          r=json.load(open('fanout-k2-final.json'))
+          assert r['n']==16 and r['model_digest']=='56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90'
+          assert r['calls_total_real_original_qwen']==48
+          assert r['per_arm_candidate_budget']==2 and r['common_first_candidate_shared']
+          assert r['holdout300_unused'] and r['dev500_unused']
+          print('ORIGINAL_SAME_MODEL_PHYSICAL_FANOUT_K2_RESULTS',json.dumps(r,sort_keys=True),flush=True)
+          PY
+      - name: Preserve complete bounded strict EX and candidate availability evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen9b-BIRD-TRAIN16-fanout-K2-equal-budget-source-final
+          path: fanout-k2-final.json
+          if-no-files-found: warn
+          retention-days: 30
