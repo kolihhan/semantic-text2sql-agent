@@ -1,0 +1,159 @@
+name: Original-Qwen9B-BIRD500-K-Prefix-Frontier-CPU
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  physical-prefix-workers:
+    if: github.head_ref == 'research/bird-dev500-kcache-prefix-frontier-20261118'
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        worker: [0,1,2,3,4,5,6,7]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Test gold-blind voting, 8s timeout and frozen source manifest
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_k8_prefix_frontier.py tests/test_bounded_shard7_probe.py tests/test_kcache_protocol.py
+      - name: Fetch FIRST TWO original K8 caches, no model calls
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44086713331
+          github-token: ${{ github.token }}
+          pattern: k8-bird-dev500-prospective-cache-and-offline-score-shard-*
+          path: all-shards
+          merge-multiple: true
+      - name: Fetch REMAINING THIRTY original K8 caches, no model calls
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44093103960
+          github-token: ${{ github.token }}
+          pattern: k8-bird-dev500-prospective-cache-and-offline-score-shard-*
+          path: all-shards
+          merge-multiple: true
+      - name: Freeze exact 500 source and 4000 original samples
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from evaluation.kcache_protocol import read_frozen_manifest,candidate_seed
+          manifest=read_frozen_manifest(Path('manifests/bird-dev500-holdout300-20261116-v2.json'))
+          paths=sorted(Path('all-shards').glob('k8-dev500-candidate-cache-*.json'))
+          assert len(paths)==32
+          seen=set()
+          for path in paths:
+              x=json.loads(path.read_text())
+              assert x['status']=='CANDIDATE_CACHE_COMPLETE'
+              assert x['k']==8 and x['no_gold_sql_in_cache'] and x['no_repair']
+              assert x['model_digest']=='56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90'
+              assert x['shard']==int(path.stem.split('-')[-1]) and x['shards']==32
+              for c in x['cases']:
+                  assert c['case_id'] not in seen
+                  seen.add(c['case_id'])
+                  assert len(c['samples'])==8
+                  assert all(s['index']==i and s['seed']==candidate_seed(c['case_id'],i)
+                             for i,s in enumerate(c['samples']))
+          assert len(seen)==500 and seen==set(manifest['dev_case_ids'])
+          print('ORIGINAL_IMMUTABLE_QWEN_K8_CANDIDATES_500x8',flush=True)
+          PY
+      - name: Download original SHA-locked BIRD DEV source
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/bird
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true' \
+            -o /tmp/bird/bird-dev-original.json
+          echo 'ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb  /tmp/bird/bird-dev-original.json' | sha256sum -c -
+      - name: Download SHA-locked BIRD DEV physical SQLite databases
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip' \
+            -o /tmp/bird/dev.zip
+          echo 'cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  /tmp/bird/dev.zip' | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          original=$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$original"
+          mkdir -p /tmp/bird/dbfiles
+          unzip -q "$original" -d /tmp/bird/dbfiles
+          root=$(find /tmp/bird/dbfiles -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          if [ -z "$root" ]; then root=/tmp/bird/dbfiles; fi
+          test -d "$root"
+          echo "DB_ROOT=$root" >> "$GITHUB_ENV"
+      - name: K1/K2/K4/K8 original-cache physical SQLite voting, one uniformly bounded pass
+        env:
+          WORKER: ${{ matrix.worker }}
+        run: |
+          set -euo pipefail
+          python -m evaluation.k8_prefix_frontier score \
+            --worker "$WORKER" \
+            --source /tmp/bird/bird-dev-original.json \
+            --db-root "$DB_ROOT" --cache-dir all-shards \
+            --manifest manifests/bird-dev500-holdout300-20261116-v2.json \
+            --out "prefix-frontier-worker-$WORKER.json"
+      - name: Preserve source-locked aggregate-only worker outcomes
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: frozen-bird-dev500-prefix-worker-${{ matrix.worker }}
+          path: prefix-frontier-worker-${{ matrix.worker }}.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  strict-complete-500:
+    needs: physical-prefix-workers
+    if: github.head_ref == 'research/bird-dev500-kcache-prefix-frontier-20261118' && needs.physical-prefix-workers.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Install CPU scoring only
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_k8_prefix_frontier.py
+      - name: Download eight original-source-matched numeric worker scores
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: frozen-bird-dev500-prefix-worker-*
+          path: all-parts
+          merge-multiple: true
+      - name: Aggregate strict 500-case K1/K2/K4/K8 plus paired task and DB-cluster CIs
+        run: |
+          set -euo pipefail
+          python -m evaluation.k8_prefix_frontier aggregate \
+            --manifest manifests/bird-dev500-holdout300-20261116-v2.json \
+            --inputs all-parts/prefix-frontier-worker-*.json \
+            --out frozen-DEV500-bounded-K-prefix-frontier.json
+          python - <<'PY'
+          import json
+          a=json.load(open('frozen-DEV500-bounded-K-prefix-frontier.json'))
+          assert a['n']==500 and a['new_model_inference_calls']==0 and a['holdout300_unused']
+          assert a['status']=='COMPLETE_K_PREFIX_BOUNDED_DEV500',a['status']
+          assert all(a['scores'][str(k)]['n']==500 for k in (1,2,4,8))
+          print('DEV500_ORIGINAL_QWEN_UNIFORM_BOUNDED_K_FRONTIER',json.dumps(a,sort_keys=True),flush=True)
+          PY
+      - name: Preserve final numeric-only bounds and cost frontier
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: original-Qwen9B-DEV500-uniform-bounded-K1-K2-K4-K8-frontier
+          path: frozen-DEV500-bounded-K-prefix-frontier.json
+          if-no-files-found: warn
+          retention-days: 30
