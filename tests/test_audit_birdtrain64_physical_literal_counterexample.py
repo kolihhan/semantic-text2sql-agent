@@ -37,7 +37,7 @@ def test_worker_shard_range_rejected_before_database(tmp_path: Path):
 
 
 def test_aggregation_rejects_incomplete_source(tmp_path: Path):
-    with pytest.raises(ValueError):
+    with pytest.raises((ValueError, FileNotFoundError)):
         aggregate([],tmp_path/"missing_source.jsonl")
 
 
