@@ -125,16 +125,35 @@ def aggregate(parts: list[dict], manifest: dict) -> dict:
         raise ValueError("missing or repeated source DEV500 questions")
     if any(x["goldblind_selection"] is not True for x in rows):
         raise ValueError("oracle leaked into selector")
-    nonscorable=[x["case_id"] for x in rows if not x["gold_scorable"]]
+    nonscorable=[x for x in rows if not x["gold_scorable"]]
+    # A reference query can exceed the evaluation budget even when ALL model
+    # candidates fail to produce ANY executable output. In that one case,
+    # every selected answer is necessarily wrong under the bounded protocol
+    # regardless of the reference result; this is a conservative logical
+    # zero, NOT a guessed oracle answer or a missing-data imputation.
+    def provable_failed_candidate_case(x: dict) -> bool:
+        return (x.get("gold_timeout") is True and
+                x.get("candidate_executed") == 0 and
+                x.get("goldblind_selection") is True and
+                x.get("pass8_oracle_set") is False and
+                all(x.get(f"k{k}_set_ex") is False for k in K_VALUES))
+    proven_zero=[x for x in nonscorable if provable_failed_candidate_case(x)]
+    unresolved=[x for x in nonscorable if not provable_failed_candidate_case(x)]
+    status=("BLOCKED_REFERENCE_SQL_TIMEOUT" if unresolved else
+            "COMPLETE_K_PREFIX_BOUNDED_DEV500_WITH_CERTIFIED_CANDIDATE_FAILURE"
+            if proven_zero else "COMPLETE_K_PREFIX_BOUNDED_DEV500")
     result={
-        "status": "COMPLETE_K_PREFIX_BOUNDED_DEV500" if not nonscorable else "BLOCKED_REFERENCE_SQL_TIMEOUT",
+        "status": status,
         "protocol":PROTOCOL,"n":500,"n_physical_databases":len(set(x["db_id"] for x in rows)),
         "k_candidates_original":8,"original_model_inference_calls_reused":4000,
         "new_model_inference_calls":0,"source_sha256":SOURCE_SHA256,
         "model_digest":MODEL_DIGEST,"query_timeout_s":SQL_TIMEOUT,
         "candidate_timeouts":sum(x["candidate_timeouts"] for x in rows),
         "reference_timeouts":sum(x["gold_timeout"] for x in rows),
-        "unscorable_count":len(nonscorable),
+        "unscorable_count":len(unresolved),
+        "reference_timeout_count":len(nonscorable),
+        "candidate_failure_certified_reference_timeouts":len(proven_zero),
+        "candidate_failure_certified_case_ids":[x["case_id"] for x in proven_zero],
         "holdout300_unused":True,"no_new_QLoRA":True,
         "scores":{},"disclaimer":(
             "Uniform 8s bounded original DEV500 physical SQLite metric, "
@@ -144,7 +163,10 @@ def aggregate(parts: list[dict], manifest: dict) -> dict:
             "No untouched final holdout or external generalization claimed."
         )
     }
-    if nonscorable:
+    if unresolved:
+        # Never label a sample if its gold result is unknown AND some model
+        # candidate could be correct. The all-invalid exception above is safe
+        # because there is no executable answer to compare to any reference.
         return result
     def rate(key):return sum(int(x[key]) for x in rows)/len(rows)
     for k in K_VALUES:
