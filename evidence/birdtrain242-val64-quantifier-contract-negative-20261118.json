@@ -1,0 +1,69 @@
+{
+  "date": "2026-11-18",
+  "status": "INDEPENDENT_ORIGINAL_TRAIN_VAL64_POSITIVE_FEASIBILITY_GATE_FAILED",
+  "source": {
+    "train_source_run": 43888747753,
+    "train_source_artifact": 14234409041,
+    "original_real_qwen_val64_run": 43892823922,
+    "real_model_validation_artifact": 14237659639,
+    "evaluation_run": 44240806295,
+    "source_only_aggregate_artifact": 14399785803,
+    "original_qwen_digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+    "frozen_semantic_selector_blob_sha": "c4aa957298cba7a740d12f66bc259d8358a7dea3",
+    "train_source_sha256": "b6851fb0f2b5027833aff45a0b5e01326359b245be1c812edc66986d0df1d402",
+    "validation_source_sha256": "cc112305bc9de33a03cea704f2edecfdfb45e62cc953ae498cea27fbed93b506",
+    "training_n": 242,
+    "training_physical_dbs": 16,
+    "validation_n": 64,
+    "validation_physical_dbs": 4,
+    "training_validation_db_overlap": 0,
+    "dev500_used": false,
+    "holdout300_used": false,
+    "new_model_inference_calls": 0,
+    "qlora_training_steps": 0
+  },
+  "frozen_hypothesis": "A direct natural-language cardinality request should favor outer SQL COUNT/SUM projection; a direct average request should favor AVG/ratio/named avg projection. Gate changes only where the original executable candidate violates the contract and an executable alternative matches. Train on original publisher TRAIN242 only; test on real original model VAL64 four disjoint TRAIN physical DBs.",
+  "train_reference_audit": {
+    "direct_count_question_cases": 47,
+    "direct_mean_question_cases": 11,
+    "total_covered": 58,
+    "publisher_count_contract_mismatch": 2,
+    "publisher_mean_contract_mismatch": 1,
+    "note": "These are warning flags, not verified erroneous publisher references. Rule is unsafe to impose as a universal hard constraint."
+  },
+  "independent_original_qwen_val64": {
+    "question_contract_counts": {
+      "abstain": 51,
+      "cardinality": 12,
+      "mean": 1
+    },
+    "correct_original_direct": 27,
+    "correct_original_guarded": 31,
+    "flagged_correct_model_sql": 0,
+    "flagged_wrong_model_sql": 0,
+    "physically_executable_candidate_pair_switches": 0,
+    "candidate_pair_rescues": 0,
+    "candidate_pair_regressions": 0,
+    "net_correct_gain": 0,
+    "predeclared_positive_feasibility_gate": false
+  },
+  "decision": {
+    "no_further_full_dev500_scoring_for_this_rule": true,
+    "no_promotion": true,
+    "reason": "The frozen question→SQL operation cue has zero actionable disagreement and zero error discrimination in independent real same-model Qwen VAL64 (even with 13 covered questions). TRAIN242 original publisher SQL itself has three source-compatibility warnings. Full DEV500 reexecution would be wasteful.",
+    "next_priority": "Need an independent, higher-information semantic verifier (values, table/column/entity relationships, aggregate grain, or model-based candidate critique) with a separate truly unseen TRAIN DB/model evaluation. Do not add more keywords or change gate based on already-opened VAL64 results.",
+    "avoid": [
+      "retraining or stronger model substitution without owner consent",
+      "DEV500 retrospective label-tuned reranking",
+      "using HOLDOUT300 during selector research",
+      "repeating K8 original model generation",
+      "claiming old 52-case oracle gap as a new gain"
+    ]
+  },
+  "limitations": [
+    "Validation is only 64 tasks across four separate source TRAIN physical databases; zero triggers does not disprove semantic reranking generally.",
+    "VAL64 compared existing heterogeneous direct and guarded Qwen pipeline results, not an actual frozen K8 generated candidate set.",
+    "The rule addresses only cardinality and average operation intent; question/table/value semantic mismatch and multi-hop relation errors are not covered.",
+    "Some publisher reference SQL may not satisfy natural-language intent; training-reference contract violations are unadjudicated flags."
+  ]
+}
