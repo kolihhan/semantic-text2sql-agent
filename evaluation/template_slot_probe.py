@@ -19,7 +19,7 @@ from pathlib import Path
 
 PROTOCOL = "blind-template-slot-4call-v1"
 CASE_KEYS = {"case_hash", "db_id", "baseline", "template"}
-CANDIDATE_KEYS = {"id", "valid", "signature"}
+CANDIDATE_KEYS = {"id", "valid", "signature", "set_hash"}
 SOURCE_KEYS = {"protocol", "manifest_sha256", "model_digest", "cases"}
 
 
@@ -34,9 +34,9 @@ def _candidate(value: dict, expected_id: str) -> dict:
         raise ValueError("candidate identity or validity differs from sealed protocol")
     sig = value["signature"]
     if value["valid"]:
-        if not isinstance(sig, str) or not sig:
+        if not isinstance(sig, str) or not sig or not isinstance(value["set_hash"], str) or not value["set_hash"]:
             raise ValueError("valid candidate needs physical result signature")
-    elif sig is not None:
+    elif sig is not None or value["set_hash"] is not None:
         raise ValueError("invalid candidate must have null result signature")
     return dict(value)
 
@@ -47,11 +47,11 @@ def _choose(candidates: list[dict]) -> dict:
         raise ValueError("each arm must use exactly four candidates")
     support = Counter(c["signature"] for c in candidates if c["valid"])
     if not support:
-        return {"chosen_id": candidates[0]["id"], "signature": None, "votes": 0}
+        return {"chosen_id": candidates[0]["id"], "signature": None, "set_hash": None, "votes": 0}
     max_votes = max(support.values())
     chosen = next(c for c in candidates
                   if c["valid"] and support[c["signature"]] == max_votes)
-    return {"chosen_id": chosen["id"], "signature": chosen["signature"], "votes": max_votes}
+    return {"chosen_id": chosen["id"], "signature": chosen["signature"], "set_hash": chosen["set_hash"], "votes": max_votes}
 
 
 def seal_choices(source: dict) -> dict:
@@ -128,7 +128,7 @@ def score_sealed(sealed: dict, references: dict) -> dict:
         raise ValueError("all sealed cases must be scored, no silent filtering")
     scores = {name: 0 for name in ("A", "B", "C")}
     oracle = {name: 0 for name in ("A", "B")}
-    rescue = regression = 0
+    rescue = regression = bc_rescue = bc_regression = 0
     covered = scorable = 0
     by_db: dict[str, dict] = {}
     for row in sealed["cases"]:
@@ -142,15 +142,17 @@ def score_sealed(sealed: dict, references: dict) -> dict:
         db_counts["n"] += 1
         flags = {}
         for arm in scores:
-            hit = row["choices"][arm]["signature"] == g
+            hit = row["choices"][arm]["set_hash"] == g
             flags[arm] = hit
             scores[arm] += int(hit)
             db_counts[arm] += int(hit)
         for arm in oracle:
-            oracle[arm] += int(any(c["valid"] and c["signature"] == g
+            oracle[arm] += int(any(c["valid"] and c["set_hash"] == g
                                    for c in row["arm_candidates"][arm]))
         rescue += int(not flags["A"] and flags["B"])
         regression += int(flags["A"] and not flags["B"])
+        bc_rescue += int(not flags["C"] and flags["B"])
+        bc_regression += int(flags["C"] and not flags["B"])
     return {
         "protocol": PROTOCOL, "manifest_sha256": sealed["manifest_sha256"],
         "selections_sha256": signature, "source_sha256": sealed["source_sha256"],
@@ -160,6 +162,8 @@ def score_sealed(sealed: dict, references: dict) -> dict:
         "oracle_at_least_one_correct": oracle,
         "B_vs_A_rescues": rescue, "B_vs_A_regressions": regression,
         "B_vs_A_net": rescue-regression,
+        "B_vs_C_rescues": bc_rescue, "B_vs_C_regressions": bc_regression,
+        "B_vs_C_net": bc_rescue-bc_regression,
         "by_database": by_db,
         "warning": "Not a model run. Candidate generation, physical bounded SQL execution, and an independent source-disjoint prospective test are still required.",
     }
