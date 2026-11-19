@@ -1,0 +1,186 @@
+name: Physical Qwen3.5-9B four-call cross-DB structural template pilot
+on:
+  push:
+    branches: [research/template-slot-blind-ab-20261119]
+    paths:
+      - experiments/template_binding_pilot.py
+      - evaluation/template_slot_probe.py
+      - tests/test_template_binding_pilot.py
+      - tests/test_template_slot_probe.py
+      - .github/workflows/qwen9b-fourcall-template-binding-pilot.yml
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  blind-source-freeze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e ".[dev]" "scikit-learn>=1.5,<2"
+      - run: python -m pytest -q tests/test_template_binding_pilot.py tests/test_template_slot_probe.py
+      - name: Source original immutable BIRD TRAIN242 + validation64
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: qwen9b-birdtrain-db-disjoint-original-sql-sft-candidates
+          run-id: 43888747753
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          path: source
+      - name: Freeze four original target questions without publisher SQL labels
+        run: |
+          set -euo pipefail
+          python -m experiments.template_binding_pilot freeze \
+            --train source/train.jsonl --validation source/validation.jsonl --out frozen.json
+          python - <<'PY'
+          import json
+          d=json.load(open("frozen.json"))
+          assert d["n"]==4 and d["source_disjoint_in_train"]
+          assert d["validation_original_labels_discarded"]
+          assert len({x["target_db"] for x in d["cases"]})==4
+          for row in d["cases"]:
+              assert "gold" not in row and "reference_sql" not in row
+              assert row["source_db"]!=row["target_db"]
+          print("NO_GOLD_FOUR_DB_CROSS_SOURCE_FROZEN", d["manifest_sha256"],flush=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: source-blind-qwen9b-template-four
+          path: frozen.json
+          if-no-files-found: error
+          retention-days: 14
+
+  original-physical-fourcall:
+    needs: blind-source-freeze
+    runs-on: ubuntu-latest
+    timeout-minutes: 170
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        index: [0, 1, 2, 3]
+    env:
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_CONTEXT_LENGTH: '8192'
+      OLLAMA_NUM_PARALLEL: '1'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: source-blind-qwen9b-template-four
+          path: frozen
+      - name: Download original physical target SQLite with pinned source checksum
+        env:
+          IDX: ${{ matrix.index }}
+        run: |
+          python - <<'PY'
+          import json,os
+          from pathlib import Path
+          from scripts.prepare_birdtrain_qwen9b_sft_source import fetch_manifest,fetch_database
+          data=json.load(open('frozen/frozen.json'))
+          row=data['cases'][int(os.environ['IDX'])]
+          db=row['target_db']
+          source=fetch_manifest()[db]
+          assert source['size']<=96*1024*1024
+          f=fetch_database(db,source,Path('physical'))
+          print('PINNED_PHYSICAL_TARGET',db,f.stat().st_size,flush=True)
+          PY
+      - name: Install original Ollama Qwen3.5-9B q4 and verify model SHA
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          for i in {1..60}; do curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break; sleep 2; done
+          curl -fsS http://127.0.0.1:11434/api/tags >/dev/null
+          ollama pull qwen3.5:9b-q4_K_M
+      - name: Generate 4 original Qwen direct SQL + 1 Qwen binding, seal blind choices
+        env:
+          IDX: ${{ matrix.index }}
+        run: |
+          set -euo pipefail
+          python -m experiments.template_binding_pilot infer \
+            --frozen frozen/frozen.json --dbroot physical \
+            --index "$IDX" --out "generated-$IDX.json"
+          python - <<'PY'
+          import glob,json
+          files=glob.glob("generated-*.json")
+          assert len(files)==1
+          d=json.load(open(files[0]))
+          assert d["n_model_calls_unique"]==5
+          assert d["n_model_calls_per_arm"]==4
+          assert d["no_target_gold_read"] and d["holdout300_unused"]
+          print('REAL_QWEN9B_FOUR_CALL_CANDIDATES_SEALED',d["case_id"],flush=True)
+          PY
+      - name: Upload model SQL + sealed label-blind choices BEFORE any target gold fetched
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen9b-template-blind-generated-${{ matrix.index }}
+          path: generated-*.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: ONLY NOW download target original publisher SQL for scoring
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: qwen9b-birdtrain-db-disjoint-original-sql-sft-candidates
+          run-id: 43888747753
+          repository: kolihhan/semantic-text2sql-agent
+          github-token: ${{ github.token }}
+          path: source
+      - name: Physical SQLite set-EX with original 8s read-only SQL limit
+        env:
+          IDX: ${{ matrix.index }}
+        run: |
+          set -euo pipefail
+          python -m experiments.template_binding_pilot score \
+            --frozen frozen/frozen.json --generated "generated-$IDX.json" \
+            --validation source/validation.jsonl --dbroot physical \
+            --out "scored-$IDX.json"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: qwen9b-template-physical-score-${{ matrix.index }}
+          path: scored-*.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  strict-aggregate:
+    needs: original-physical-fourcall
+    if: always() && needs.original-physical-fourcall.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: qwen9b-template-physical-score-*
+          merge-multiple: true
+          path: scored
+      - name: Check four distinct physical database results and paired EX
+        run: |
+          python -m experiments.template_binding_pilot aggregate \
+            --parts scored/scored-0.json scored/scored-1.json scored/scored-2.json scored/scored-3.json \
+            --out qwen9b-template-fourcase-ex.json
+          python - <<'PY'
+          import json
+          r=json.load(open("qwen9b-template-fourcase-ex.json"))
+          assert r["n"]==4 and r["n_db"]==4 and r["original_Qwen_model_calls_unique"]==20
+          assert r["no_dev500"] and r["no_holdout300"]
+          print("PHYSICAL_TEMPLATE_FOUR_CALL_FINAL",json.dumps(r,sort_keys=True),flush=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen9b-template-fourcall-physical-aggregate
+          path: qwen9b-template-fourcase-ex.json
+          if-no-files-found: error
+          retention-days: 14
