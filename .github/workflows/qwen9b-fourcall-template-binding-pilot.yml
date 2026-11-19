@@ -1,13 +1,6 @@
 name: Physical Qwen3.5-9B four-call cross-DB structural template pilot
 on:
-  push:
-    branches: [research/template-slot-blind-ab-20261119]
-    paths:
-      - experiments/template_binding_pilot.py
-      - evaluation/template_slot_probe.py
-      - tests/test_template_binding_pilot.py
-      - tests/test_template_slot_probe.py
-      - .github/workflows/qwen9b-fourcall-template-binding-pilot.yml
+  workflow_dispatch:
 permissions:
   contents: read
   actions: read
