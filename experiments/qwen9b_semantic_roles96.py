@@ -4,7 +4,7 @@ Control: two Qwen direct SQL attempts, fixed seeds 42/43; treatment: two
 independent same-model SQL attempts with explicit entity-grain/relation/ratio
 invariants. Exactly TWO Qwen calls per arm, matched compute and same schema. No teacher, training, gold in prompt,
 DEV500/HOLDOUT300, or the 2 protected BIRD TRAIN physical databases.
-Compare deployable first-control vs final-treatment strict physical SET/BAG EX;
+Compare first direct SQL vs first constrained SQL strict physical SET/BAG EX;
 also report control second candidate and oracle@2 as candidate-headroom bounds.
 Historical source IDs: 10 original cohorts plus both old 96-question experiments.
 """
@@ -58,29 +58,6 @@ SEMANTIC_SYSTEM=(
     "filter or select an identifier when a display name is requested. "
     "Use SQLite syntax and actual schema columns; output exactly one SQL SELECT and nothing else."
 )
-
-# Retained historical control text solely for source audit; never used in inference.
-PROBE_SYSTEM=(
-    "Generate ONE read-only SQLite SELECT *probe*, NOT the final answer. "
-    "Find the relation, target entity keys, and filter semantics needed to "
-    "answer the question. Project up to 5 representative physical rows. "
-    "Use only actual schema columns, and finish with LIMIT 5. "
-    "Do not calculate the final aggregate. Return SQL only."
-)
-FINAL_EVIDENCE=(
-    "\nRelational evidence from a real, read-only SQLite probe "
-    "(only a small sample; not proof of completeness). The probe SQL may "
-    "contain errors or inspect an irrelevant relation, so defer to the user "
-    "question and physical schema:\n"
-    "{observation}\n"
-    "Now produce ONE final read-only SQLite SELECT. "
-    "Use the observed relation roles, join cardinality and entity keys "
-    "only if relevant to the question. Check which entity is being counted "
-    "or averaged, who initiated vs received the relation, AND/OR/NOT "
-    "scope, numeric denominators, sorting/ties, and required output columns. "
-    "Do not mention the probe or explanations. SQL only."
-)
-
 
 def source_freeze(trainfile:Path,source_dir:Path,previous96:Path,second96:Path,outdir:Path)->dict:
     original=load_checked(trainfile,TRAIN_SHA)
