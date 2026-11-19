@@ -1,8 +1,5 @@
 name: CPU-only BIRD TRAIN48 Schema Identifier Boundary Audit
 on:
-  push:
-    branches: [research/schema-token-linking-cpu-audit-20261119]
-    paths: [.github/workflows/cpu-schema-identifier-birdtrain48.yml]
   workflow_dispatch:
 permissions:
   contents: read
@@ -105,7 +102,7 @@ jobs:
           assert x['n']==48 and x['no_Qwen_calls'] and x['no_training']
           assert x['promotion_allowed'] is False
           assert x['no_DEV500_or_HOLDOUT300'] and x['no_new_EX_score']
-          assert x['counts']['scored']+x['counts']['parse_failed']==48
+          assert x['counts']['scored']+x['counts'].get('parse_failed',0)==48
           print('FINAL_SCHEMA_TOKEN_BOUNDARY_COVERAGE',json.dumps({k:v for k,v in x.items() if k!='case_details'},sort_keys=True),flush=True)
           PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
