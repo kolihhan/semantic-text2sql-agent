@@ -7,7 +7,7 @@ from evaluation.template_slot_probe import PROTOCOL, seal_choices, score_sealed
 
 
 def candidate(i, sig):
-    return {"id": i, "valid": sig is not None, "signature": sig}
+    return {"id": i, "valid": sig is not None, "signature": sig, "set_hash": sig}
 
 
 def sample(template="new"):
@@ -35,12 +35,14 @@ def test_tie_first_template_correct_and_position_control_not_correct():
     assert score["final_correct"] == {"A": 0, "B": 1, "C": 0}
     assert score["oracle_at_least_one_correct"] == {"A": 0, "B": 1}
     assert (score["B_vs_A_rescues"], score["B_vs_A_regressions"]) == (1, 0)
+    assert score["B_vs_C_net"] == 1
 
 
 def test_majority_wrong_can_hide_correct_template():
     source = sample("correct")
     for x in source["cases"][0]["baseline"]:
         x["signature"] = "wrong"
+        x["set_hash"] = "wrong"
     sealed = seal_choices(source)
     assert sealed["cases"][0]["choices"]["B"]["chosen_id"] == "c1"
     score = score_sealed(sealed, refs(source, "correct"))
@@ -81,7 +83,19 @@ def test_tied_earliest_valid_and_all_invalid():
     for x in source["cases"][0]["baseline"]:
         x["valid"] = False
         x["signature"] = None
+        x["set_hash"] = None
     source["cases"][0]["template"] = candidate("template", None)
     row = seal_choices(source)["cases"][0]
     assert all(row["choices"][arm]["signature"] is None for arm in ("A", "B", "C"))
     assert row["choices"]["B"]["chosen_id"] == "template"
+
+
+def test_distinct_physical_signature_and_set_hash():
+    # SQL result signature includes column count, gold uses just the result-set hash.
+    source = sample("wrong")
+    source["cases"][0]["template"]["signature"] = "sha256(columns-plus-set)"
+    source["cases"][0]["template"]["set_hash"] = "sha256(set-only)"
+    sealed = seal_choices(source)
+    result = score_sealed(sealed, refs(source, "sha256(set-only)"))
+    assert result["final_correct"]["B"] == 1
+    assert result["final_correct"]["A"] == 0
