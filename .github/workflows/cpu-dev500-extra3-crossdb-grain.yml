@@ -43,6 +43,7 @@ jobs:
           test -n "$DB_ROOT"
           echo "BIRD_DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
       - name: Seal three source-only count/percent target hypotheses before gold
+        # The source-first artifact contains the full question, whose SHA is derived before gold.
         shell: bash
         run: |
           set -euo pipefail
