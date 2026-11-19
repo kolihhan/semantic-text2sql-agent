@@ -1,11 +1,6 @@
 name: Original Qwen9B BIRD TRAIN96 equal-K2 direct vs semantic-role SQL
 on:
-  push:
-    branches: [research/template-slot-blind-ab-20261119]
-    paths:
-      - experiments/qwen9b_semantic_roles96.py
-      - tests/test_qwen9b_semantic_roles96.py
-      - .github/workflows/qwen9b-matched-role-grain96.yml
+  workflow_dispatch:
 permissions:
   contents: read
   actions: read
