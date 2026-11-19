@@ -1,0 +1,79 @@
+{
+  "date": "2026-11-19",
+  "status": "POST_BLIND_FIVE_PREDECLARED_SQL_REWRITE_PHYSICAL_SET_MATCH_COMPLETE_NOT_PROMOTABLE",
+  "source_first_action": "https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/44555827205",
+  "postblind_action": "https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/44557368301",
+  "source_first_artifact": 14546155987,
+  "postblind_artifact": 14545991824,
+  "model": "Qwen3.5-9B original fixed",
+  "new_model_calls": 0,
+  "new_training_steps": 0,
+  "new_guarded_run": false,
+  "publisher_reference_first_opened_after_source_first": true,
+  "original_dev500_ex_reference": "233/499 original K8 selected; independent frozen postblind five only",
+  "five_original_sql_set_match": {
+    "correct": 0,
+    "total": 5
+  },
+  "five_only_count_distinct_sql_set_match": {
+    "correct": 1,
+    "total": 5
+  },
+  "paired_wrong_to_right": 1,
+  "paired_right_to_wrong": 0,
+  "per_question": [
+    {
+      "case": "109",
+      "db": "financial",
+      "entity": "clients",
+      "physical_original_count": 25,
+      "physical_distinct_count": 25,
+      "original_set_match": false,
+      "distinct_set_match": false,
+      "mechanism": "No actual joined-count duplication; DISTINCT does not fix original SQL"
+    },
+    {
+      "case": "1028",
+      "db": "european_football_2",
+      "entity": "matches wins",
+      "physical_original_count": 11,
+      "physical_distinct_count": 11,
+      "original_set_match": false,
+      "distinct_set_match": false,
+      "mechanism": "Match-grain correct for win count; wrong result likely season/filter"
+    },
+    {
+      "case": "1256",
+      "db": "thrombosis_prediction",
+      "entity": "patients",
+      "physical_original_count": 208,
+      "physical_distinct_count": 25,
+      "original_set_match": false,
+      "distinct_set_match": true,
+      "mechanism": "Actual overcount of repeating patient lab records; one source-only count replacement matches publisher result"
+    },
+    {
+      "case": "1289",
+      "db": "thrombosis_prediction",
+      "entity": "patients",
+      "physical_original_count": 0,
+      "physical_distinct_count": 0,
+      "original_set_match": false,
+      "distinct_set_match": false,
+      "mechanism": "Filter/clinical threshold mismatch persists regardless of count grain"
+    },
+    {
+      "case": "1441",
+      "db": "student_club",
+      "entity": "members",
+      "physical_original_count": 8,
+      "physical_distinct_count": 8,
+      "original_set_match": false,
+      "distinct_set_match": false,
+      "mechanism": "No joined-count duplication; missing major/college filter may be stronger cause"
+    }
+  ],
+  "counterfactual_caveat": "The five SQLs are original first K8 candidates with only COUNT(*) changed. This is NOT paired full Guarded selected SQL and not BIRD official 500-case EX improvement.",
+  "cross_database_same_grain_mechanism_confirmed": false,
+  "conclusion": "Falsifies universal JOIN COUNT(*)→COUNT DISTINCT heuristic. One true same-DB rescue only, cannot meet crossDB rule. Do not ship rewrite. Expose remaining81 as review queue, HOLDOUT300 sealed."
+}
