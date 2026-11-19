@@ -1,0 +1,127 @@
+name: Source-first three-DB entity/denominator hypotheses, physical postblind (NO QWEN)
+on:
+  push:
+    branches: [research/dev500-81-count-grain-stoploss-20261119]
+    paths: [.github/workflows/cpu-dev500-three-entity-grain-followup.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  schema_and_original_sql_first:
+    runs-on: ubuntu-latest
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: 'Source-first physical-only: no reference SQL downloaded to this job'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m compileall -q scripts/dev500_3db_question_first_entity_grain.py scripts/postblind_bird_dev500_count_probe5.py
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44555827205
+          github-token: ${{ github.token }}
+          name: BIRD-DEV500-QWEN9B-ORIGINAL-81-PHYSICAL-SOURCE-FIRST-EVIDENCE
+          path: already_frozen_81
+      - name: Pin BIRD physical SQLite DB original bytes, without accessing publisher SQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bird"
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o "$RUNNER_TEMP/bird/dev.zip"
+          echo "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  $RUNNER_TEMP/bird/dev.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/bird/dev.zip" -d "$RUNNER_TEMP/bird/unpacked"
+          DB_ZIP=$(find "$RUNNER_TEMP/bird/unpacked" -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ZIP"
+          mkdir -p "$RUNNER_TEMP/bird/databases"
+          unzip -q "$DB_ZIP" -d "$RUNNER_TEMP/bird/databases"
+          DB_ROOT=$(find "$RUNNER_TEMP/bird/databases" -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ROOT"
+          echo "BIRD_DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Seal three source-only count/percent target hypotheses before gold
+        # The source-first artifact contains the full question, whose SHA is derived before gold.
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.dev500_3db_question_first_entity_grain source \
+            --original-81-source-first already_frozen_81/original-81-source-first-physical-schema.json \
+            --db-root "$BIRD_DB_ROOT" \
+            --out frozen-3db-entity-source.json
+          python - <<'PY'
+          import json
+          d=json.load(open('frozen-3db-entity-source.json'))
+          assert len(d['cases'])==3 and {x['db'] for x in d['cases']}=={'toxicology','codebase_community','european_football_2'}
+          assert d['no_publisher_SQL_read'] and d['new_model_calls']==0
+          print('THREE_ENTITY_DB_SOURCE_FROZEN_BEFORE_GOLD')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: BIRD-DEV500-THREE-ENTITY-UNIT-SOURCE-FIRST
+          path: frozen-3db-entity-source.json
+          if-no-files-found: error
+          retention-days: 60
+  postblind_frozen_source_comparison:
+    needs: schema_and_original_sql_first
+    runs-on: ubuntu-latest
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: BIRD-DEV500-THREE-ENTITY-UNIT-SOURCE-FIRST
+          path: source_sealed
+      - name: Verify already sealed source-only experiment before opening gold SQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('source_sealed/frozen-3db-entity-source.json'))
+          assert d['n']==3 and d['no_publisher_SQL_read']
+          assert {x['case_id'] for x in d['cases']}=={'219','571','1080'}
+          print('SAFE_TO_OPEN_PUBLIC_PUBLISHER_REFERENCE_SQL')
+          PY
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true' \
+            -o original-bird-dev.json
+          echo 'ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb  original-bird-dev.json' | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/bird"
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o "$RUNNER_TEMP/bird/dev.zip"
+          echo "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  $RUNNER_TEMP/bird/dev.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/bird/dev.zip" -d "$RUNNER_TEMP/bird/unpacked"
+          DB_ZIP=$(find "$RUNNER_TEMP/bird/unpacked" -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ZIP"
+          mkdir -p "$RUNNER_TEMP/bird/databases"
+          unzip -q "$DB_ZIP" -d "$RUNNER_TEMP/bird/databases"
+          DB_ROOT=$(find "$RUNNER_TEMP/bird/databases" -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ROOT"
+          echo "BIRD_DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Compare original same-model SQL and sole count-grain variant with actual publisher results
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.dev500_3db_question_first_entity_grain score \
+            --sealed source_sealed/frozen-3db-entity-source.json \
+            --official-dev original-bird-dev.json --db-root "$BIRD_DB_ROOT" \
+            --out postblind-3db-entity.json
+          python - <<'PY'
+          import json
+          d=json.load(open('postblind-3db-entity.json'))
+          assert d['n']==3 and len(d['case_results'])==3
+          assert d['source_frozen_before_reference'] and d['new_model_calls']==0
+          assert d['not_prospective_Guarded_EX'] and d['HOLDOUT300_untouched']
+          print('EXTRA3_POSTBLIND_ORIGINAL_SOURCE_SCORED',d['paired_scorable'],d['rescues'],d['regressions'])
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: BIRD-DEV500-THREE-ENTITY-UNIT-POSTBLIND-DIAGNOSTIC
+          path: postblind-3db-entity.json
+          if-no-files-found: error
+          retention-days: 60
