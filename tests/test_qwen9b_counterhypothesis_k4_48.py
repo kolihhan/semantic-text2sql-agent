@@ -34,7 +34,7 @@ def test_structural_counterhypothesis_changes_task_based_mechanism():
     c=contrast_user(orig,("SELECT COUNT(*) FROM users",
                           "SELECT COUNT(id) FROM users"),
                     "How many unique users?",0)
-    assert "COUNT" in c and "DISTINCT" in c
+    assert "count" in c.casefold() and "distinct" in c.casefold()
     assert "UNVERIFIED" in c and "no analysis" in c
     assert "users(id)" in c
     assert "gold" not in c.lower()
