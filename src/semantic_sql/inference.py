@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypedDict
 
-from .contracts import AgentResult, SQLCandidate, StageRecord, VerificationResult
+from .contracts import AgentResult, SQLCandidate, StageRecord, VerificationIssue, VerificationResult
 from .direct import _strip_fence, generate_direct_sql
 from .execution import SQLExecutionError, execute_readonly
 from .providers import ModelProvider
