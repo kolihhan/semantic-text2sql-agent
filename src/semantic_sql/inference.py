@@ -10,6 +10,7 @@ from .direct import _strip_fence, generate_direct_sql
 from .execution import SQLExecutionError, execute_readonly
 from .providers import ModelProvider
 from .verifier import verify_sql_preflight
+from .grain_guard_inference import apply_entity_grain_guard
 
 
 GUARDED_TREATMENT_ID = "langgraph_preflight_plus_internal_cot_repair_v1"
@@ -32,6 +33,7 @@ class GuardedContext:
     max_repairs: int = 2
     max_rows: int = 100
     semantic_revision: bool = False
+    grain_guard: bool = False
 
 
 class GuardedState(TypedDict, total=False):
@@ -41,6 +43,7 @@ class GuardedState(TypedDict, total=False):
     candidate: SQLCandidate | None
     verification: VerificationResult | None
     semantic_revised: bool
+    grain_checked: bool
     stages: tuple[StageRecord, ...]
     result: AgentResult | None
 
@@ -159,13 +162,15 @@ def _verify_route(state: GuardedState, runtime) -> str:
     if state["verification"].ok:
         if runtime.context.semantic_revision and not state.get("semantic_revised", False):
             return "semantic_revision"
+        if runtime.context.grain_guard and not state.get("grain_checked", False):
+            return "grain_guard"
         return "execute"
     if state["candidate"].attempt < runtime.context.max_repairs:
         return "repair"
     return "refuse"
 
 
-def _build_guarded_graph(*, semantic_revision: bool = False):
+def _build_guarded_graph(*, semantic_revision: bool = False, grain_guard: bool = False):
     from langgraph.graph import END, START, StateGraph
 
     graph = StateGraph(GuardedState, context_schema=GuardedContext)
@@ -174,6 +179,8 @@ def _build_guarded_graph(*, semantic_revision: bool = False):
     graph.add_node("repair", _repair)
     if semantic_revision:
         graph.add_node("semantic_revision", _semantic_revise)
+    if grain_guard:
+        graph.add_node("grain_guard", apply_entity_grain_guard)
     graph.add_node("execute", _execute)
     graph.add_node("refuse", _refuse)
     graph.add_edge(START, "generate")
@@ -181,10 +188,14 @@ def _build_guarded_graph(*, semantic_revision: bool = False):
     routes = {"execute": "execute", "repair": "repair", "refuse": "refuse"}
     if semantic_revision:
         routes["semantic_revision"] = "semantic_revision"
+    if grain_guard:
+        routes["grain_guard"] = "grain_guard"
     graph.add_conditional_edges("verify", _verify_route, routes)
     graph.add_edge("repair", "verify")
     if semantic_revision:
         graph.add_edge("semantic_revision", "verify")
+    if grain_guard:
+        graph.add_edge("grain_guard", "execute")
     graph.add_edge("execute", END)
     graph.add_edge("refuse", END)
     return graph.compile()
@@ -195,15 +206,17 @@ def run_guarded(
     schema_context: str, evidence: str | None = None,
     initial_candidate: SQLCandidate | None = None, max_repairs: int = 2,
     max_rows: int = 100, semantic_revision: bool = False,
+    grain_guard: bool = False,
 ) -> AgentResult:
     database = Path(database)
-    output = _build_guarded_graph(semantic_revision=semantic_revision).invoke(
+    output = _build_guarded_graph(semantic_revision=semantic_revision, grain_guard=grain_guard).invoke(
         {
             "question": question,
             "schema_context": schema_context,
             "evidence": evidence,
             "candidate": initial_candidate,
             "semantic_revised": False,
+            "grain_checked": False,
             "stages": (),
         },
         config={"recursion_limit": 2 * max(0, max_repairs) + 10},
@@ -213,6 +226,7 @@ def run_guarded(
             max_repairs=max_repairs,
             max_rows=max_rows,
             semantic_revision=semantic_revision,
+            grain_guard=grain_guard,
         ),
     )
     result = output["result"] if isinstance(output, dict) else output.result
