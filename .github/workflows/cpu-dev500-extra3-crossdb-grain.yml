@@ -15,7 +15,7 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: '3.11'
-      - name: Source-first physical-only: no reference SQL downloaded to this job
+      - name: 'Source-first physical-only: no reference SQL downloaded to this job'
         shell: bash
         run: |
           set -euo pipefail
