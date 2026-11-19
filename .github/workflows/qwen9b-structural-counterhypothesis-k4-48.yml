@@ -1,9 +1,6 @@
 name: Original fixed Qwen9B TRAIN48 equal-K4 structural SQL counterhypotheses
 # One-time full real-model A/B after all CPU guardrail tests passed on this branch.
 on:
-  push:
-    branches: [research/qwen9b-structural-counterhypothesis-k4-48-20261119]
-    paths: [.github/workflows/qwen9b-structural-counterhypothesis-k4-48.yml]
   workflow_dispatch:
 permissions:
   contents: read
