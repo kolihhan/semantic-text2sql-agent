@@ -1,0 +1,41 @@
+{
+  "status": "RETROSPECTIVE_CPU_SQL_RETRIEVAL_PROXY_DIAGNOSTIC_NOT_EX_GAIN",
+  "date": "2026-11-19",
+  "source": {
+    "repository": "kolihhan/semantic-text2sql-agent",
+    "run_id": 43888747753,
+    "artifact_id": 14234409041,
+    "zip_sha256": "28242f0b8a9f02ad1f7b911e8c048f7c84046410521b6ce9b297755b8ee2a8d0",
+    "original_train_sql_queries": 242,
+    "previously_seen_validation_queries": 64,
+    "validation_physical_dbs": 4,
+    "source_train_sha256": "b6851fb0f2b5027833aff45a0b5e01326359b245be1c812edc66986d0df1d402",
+    "source_validation_sha256": "cc112305bc9de33a03cea704f2edecfdfb45e62cc953ae498cea27fbed93b506"
+  },
+  "methods": {
+    "plain_question_TFIDF": {
+      "top1_exact_coarse_sql_operations": 10,
+      "top1_sql_result_kind_equal_label_reference": 39
+    },
+    "keyword_intent_plus_TFIDF": {
+      "top1_exact_coarse_sql_operations": 16,
+      "top1_sql_result_kind_equal_label_reference": 39
+    },
+    "intent_plus_shape_gate": {
+      "eligible": 50,
+      "abstained": 14,
+      "top1_exact_coarse_sql_operations": 15,
+      "top1_sql_result_kind_equal_label_reference": 38
+    }
+  },
+  "label_diagnostic": {
+    "question_heuristic_shape_disagreed_with_reference_in": 13,
+    "best_of_top8_keyword_method_operation_signature_matches": 36,
+    "number_with_at_least_one_shape_source_in_train242": 64
+  },
+  "quantitative_limits": "SQL operator bitsets and simple SELECT-projection regex are coarse; count/shape correctness is not semantic correctness, cannot infer actual EX or transfer. Previously seen validation64 and source only. A different earlier 19/64 coarse benchmark used different feature definitions, not a like-for-like gain.",
+  "decisions": "STOP expanding cross-database keyword/template source selection. No physical model inference from this diagnostic, no new QLoRA training, no BIRD DEV500 or HOLDOUT300 consumed. Require answer-shape and relational-role validation before any further Qwen call.",
+  "actual_qwen_calls": 0,
+  "training_steps": 0,
+  "new_semantic_EX_correct": null
+}
