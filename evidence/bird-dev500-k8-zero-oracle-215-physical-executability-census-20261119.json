@@ -1,0 +1,85 @@
+{
+  "protocol": "retrospective-DEV500-K8-physical-worker-source-census-v1",
+  "date": "2026-11-19",
+  "source": "physically scored original fixed Qwen3.5-9B DEV500 8-worker aggregate",
+  "actions_run": 44222560767,
+  "workers": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "total_case_ids": 500,
+  "unique_case_ids": 500,
+  "original_model_digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+  "fixed_original_source_sha256": "ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb",
+  "n_original_candidates": 4000,
+  "groups": {
+    "no_correct": {
+      "n": 215,
+      "hist": {
+        "0": 28,
+        "1": 13,
+        "2": 10,
+        "3": 11,
+        "4": 6,
+        "5": 10,
+        "6": 18,
+        "7": 22,
+        "8": 97
+      },
+      "timeout_cases": 11,
+      "candidate_timeouts": 18,
+      "unscorable_refs": 1
+    },
+    "oracle_wrong_select": {
+      "n": 52,
+      "hist": {
+        "5": 2,
+        "6": 6,
+        "7": 7,
+        "8": 37
+      },
+      "timeout_cases": 1,
+      "candidate_timeouts": 2,
+      "unscorable_refs": 0
+    },
+    "selected_correct": {
+      "n": 233,
+      "hist": {
+        "1": 3,
+        "2": 1,
+        "3": 2,
+        "4": 4,
+        "5": 8,
+        "6": 14,
+        "7": 20,
+        "8": 181
+      },
+      "timeout_cases": 1,
+      "candidate_timeouts": 1,
+      "unscorable_refs": 0
+    }
+  },
+  "zero_oracle_key_stats": {
+    "8_of_8_executable_zero_correct": 97,
+    "at_least_one_executable_zero_correct": 187,
+    "none_executable_zero_correct": 28,
+    "candidate_executable_ge_5": 147,
+    "candidate_executable_ge_7": 119,
+    "one_reference_timeout_under_bounded_scoring": 1
+  },
+  "interpretation": "Eight physically executable SQL candidates but no correct execution result occurs on 97/215 zero-oracle cases. This is evidence of SQL answer/semantic-result mismatch, not enough to causally label joins, aggregation, filters or ground truth issues. 28 cases have no executable candidates and may require separate schema/syntax/preflight work.",
+  "nonclaims": {
+    "no_new_qwen_calls": true,
+    "holdout300_untouched": true,
+    "no_new_correctness_improvement": true,
+    "not_independent_ood": true,
+    "reference_timeout_is_provable_candidate_failure_not_a_gold_execution_match": true
+  },
+  "decision": "Split future generator interventions into (a) executable-but-wrong relational/semantic targets and (b) none-of-eight executable targets. Reuse original candidate traces; don't spend inference budget on repeated direct/repair prompts. Require task-specific source, grain, denominator, role evidence and matched strict EX for any promotion."
+}
