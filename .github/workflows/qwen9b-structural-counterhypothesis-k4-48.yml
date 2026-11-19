@@ -1,0 +1,319 @@
+name: Original fixed Qwen9B TRAIN48 equal-K4 structural SQL counterhypotheses
+on:
+  push:
+    branches: [research/qwen9b-structural-counterhypothesis-k4-48-20261119]
+    paths: [.github/workflows/qwen9b-structural-counterhypothesis-k4-48.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  source-freeze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Source/schema and gold-blind K4 selector CPU tests
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_qwen9b_counterhypothesis_k4_48.py
+          python -m compileall -q experiments/qwen9b_counterhypothesis_k4_48.py
+      - name: Exact pinned original publisher TRAIN source; never BIRD DEV or HOLDOUT
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/Emulated-Inc/text-to-sql-with-evidence-training-pool/resolve/cd2c4ea321075aa53ce7dfe52deaaffa505d046a/raw/bird/train.json' \
+            -o train.json
+          echo 'cd5884489dffd7c76d73509b396bd919fbe8b486efbc4ba2f48f89460de7d69f  train.json' | sha256sum -c -
+      - name: Historical full-SHA source exclusion original
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43888747753
+          github-token: ${{ github.token }}
+          name: qwen9b-birdtrain-db-disjoint-original-sql-sft-candidates
+          path: prior-original
+      - name: Historical full-SHA source exclusion fk
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43904889296
+          github-token: ${{ github.token }}
+          name: qwen9b-fk-correction-prospective-source32-frozen
+          path: prior-fk
+      - name: Historical full-SHA source exclusion value
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43920461939
+          github-token: ${{ github.token }}
+          name: qwen9b-newdb-physical-value16-source-freeze
+          path: prior-value
+      - name: Historical full-SHA source exclusion value-replica
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43926576493
+          github-token: ${{ github.token }}
+          name: qwen9b-second-newdb-physical-value16-source-freeze
+          path: prior-value-replica
+      - name: Historical full-SHA source exclusion role
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44012242171
+          github-token: ${{ github.token }}
+          name: qwen9b-third-newdb-role8-source-freeze
+          path: prior-role
+      - name: Historical full-SHA source exclusion preview
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44040520571
+          github-token: ${{ github.token }}
+          name: qwen9b-semantic-preview8-36db-excluded-frozen
+          path: prior-preview
+      - name: Historical full-SHA source exclusion column
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44042440721
+          github-token: ${{ github.token }}
+          name: qwen9b-column-type8-40db-excluded-frozen
+          path: prior-column
+      - name: Historical full-SHA source exclusion grain
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44053157511
+          github-token: ${{ github.token }}
+          name: qwen9b-count-join-grain16-frozen-only
+          path: prior-grain
+      - name: Historical full-SHA source exclusion fanout
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44289030583
+          github-token: ${{ github.token }}
+          name: qwen9b-fanout-k2-source16-before-model
+          path: prior-fanout
+      - name: Latest original Qwen BIRD TRAIN96 question-only exposure exclusion
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44316964908
+          github-token: ${{ github.token }}
+          name: Qwen9B-grounded-plan96-BIRD-TRAIN-frozen-questions-BEFORE-model
+          path: previous-plan96
+      - name: Download original independently exposed second 96 sources
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44333082630
+          github-token: ${{ github.token }}
+          name: original-Qwen9B-relation-probe96-full-history-source-frozen
+          path: previous-relation96
+      - name: Exclude last 96 independently evaluated role/grain SQL questions
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44476207751
+          github-token: ${{ github.token }}
+          name: original-Qwen9B-role-grain96-full-history-source-frozen
+          path: previous-role96
+      - name: Freeze 48 new question IDs, 8 physical DBs, 711 old IDs excluded
+        run: |
+          set -euo pipefail
+          mkdir history
+          cp prior-original/train.jsonl history/original_train242.jsonl
+          cp prior-original/validation.jsonl history/original_validation64.jsonl
+          cp prior-fk/prospective32.jsonl history/fk32.jsonl
+          cp prior-value/physical-value16.jsonl history/value16.jsonl
+          cp prior-value-replica/physical-value16.jsonl history/value16_replica.jsonl
+          cp prior-role/role-scoped8.jsonl history/role8.jsonl
+          cp prior-preview/semantic-preview8.jsonl history/preview8.jsonl
+          cp prior-column/column-type8.jsonl history/column8.jsonl
+          cp prior-grain/grain16.jsonl history/grain16.jsonl
+          cp prior-fanout/source16.jsonl history/fanout16.jsonl
+          python -m experiments.qwen9b_counterhypothesis_k4_48 freeze \
+            --train train.json --history history \
+            --plan previous-plan96/questions.jsonl \
+            --probe previous-relation96/source96.jsonl \
+            --role previous-role96/source96.jsonl \
+            --out frozen
+          python - <<'PY'
+          import json
+          d=json.load(open('frozen/freeze.json'))
+          assert d['n']==48 and d['n_dbs']==8 and d['per_db']==6
+          assert d['excluded_prior_source_indices']==711
+          assert d['per_arm_model_calls']==4 and d['actual_unique_qwen_calls_per_task']==6
+          assert d['last_two_protected_physical_train_dbs_unused']
+          assert d['original_49_exposed_database_families_only']
+          assert d['DEV500_unused'] and d['HOLDOUT300_unused']
+          assert d['source_contains_no_gold_SQL']
+          assert 'retail_world' not in d['dbs']
+          print('SOURCE_48_NEW_QWEN9B_K4_711_EXCLUDED',d['source_sha256'],d['dbs'],flush=True)
+          PY
+      - name: Upload frozen question-only source BEFORE inference; no gold SQL
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: original-Qwen9B-newTRAIN48-k4-frozen-question-source
+          path: frozen/
+          if-no-files-found: error
+          retention-days: 30
+
+  original-physical-model:
+    needs: source-freeze
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        shard: [0,1,2,3,4,5,6,7]
+    env:
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_CONTEXT_LENGTH: '8192'
+      OLLAMA_NUM_PARALLEL: '1'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: original-Qwen9B-newTRAIN48-k4-frozen-question-source
+          path: frozen
+      - name: Fetch original physical BIRD TRAIN DB by pinned publisher file SHA
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from scripts.prepare_birdtrain_qwen9b_sft_source import fetch_manifest,fetch_database
+          from experiments.qwen9b_counterhypothesis_k4_48 import checked_source,MAX_DB_BYTES
+          _,info=checked_source(Path('frozen/source48.jsonl'),Path('frozen/freeze.json'))
+          db=info['dbs'][int(os.environ['SHARD'])]
+          meta=fetch_manifest()[db]
+          assert 0<meta['size']<=MAX_DB_BYTES
+          file=fetch_database(db,meta,Path('physical'))
+          print('PINNED_PHYSICAL_BIRD_TRAIN_DB',db,file.stat().st_size,flush=True)
+          PY
+      - name: Pull exact original Qwen3.5-9B (no teacher, no new adapter)
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          for i in {1..60}; do curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break; sleep 2; done
+          curl -fsS http://127.0.0.1:11434/api/tags >/dev/null
+          ollama pull qwen3.5:9b-q4_K_M
+      - name: Generate same-base K4 v K4 with two shared original candidates; physically seal SQL/result hash/choices
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python -m experiments.qwen9b_counterhypothesis_k4_48 infer \
+            --source frozen/source48.jsonl --manifest frozen/freeze.json \
+            --dbroot physical --shard "$SHARD" \
+            --out "generated-$SHARD.json"
+          python - <<'PY'
+          import json,glob
+          fs=glob.glob('generated-*.json');assert len(fs)==1
+          x=json.load(open(fs[0]))
+          assert x['n']==6 and len(x['cases'])==6
+          assert x['no_gold_in_model_or_selector']
+          assert x['status']=='ORIGINAL_QWEN9B_CANDIDATES_AND_CHOICES_SEALED_PRE_GOLD'
+          assert all(c['control_k']==4 and c['treatment_k']==4 and c['shared_qwen_calls']==2
+            and c['unique_qwen_calls']==6 and c['control_sql'][:2]==c['treatment_sql'][:2]
+            for c in x['cases'])
+          print('FIXED_QWEN9B_ALL_GOLD_FREE_K4_CHOICES_SEALED',x['shard'],flush=True)
+          PY
+      - name: FIRST upload all original Qwen candidate SQL and physical gold-blind plurality decisions
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: original-Qwen9B-k4-counter48-generated-sealed-${{ matrix.shard }}
+          path: generated-*.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: ONLY AFTER SEALED choices fetch exact original BIRD TRAIN publisher gold SQL
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/Emulated-Inc/text-to-sql-with-evidence-training-pool/resolve/cd2c4ea321075aa53ce7dfe52deaaffa505d046a/raw/bird/train.json' \
+            -o train.json
+          echo 'cd5884489dffd7c76d73509b396bd919fbe8b486efbc4ba2f48f89460de7d69f  train.json' | sha256sum -c -
+      - name: Strict SQLite set/bag EX for two deployed K4 and two hindsight oracle K4
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python -m experiments.qwen9b_counterhypothesis_k4_48 score \
+            --source frozen/source48.jsonl --manifest frozen/freeze.json \
+            --dbroot physical --shard "$SHARD" \
+            --generated "generated-$SHARD.json" --train train.json \
+            --out "scored-$SHARD.json"
+      - name: Preserve physical original publisher-score shard
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: original-Qwen9B-k4-counter48-physical-score-${{ matrix.shard }}
+          path: scored-*.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  strict-complete-final:
+    needs: original-physical-model
+    if: always() && needs.original-physical-model.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: original-Qwen9B-newTRAIN48-k4-frozen-question-source
+          path: frozen
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: original-Qwen9B-k4-counter48-physical-score-*
+          merge-multiple: true
+          path: scored
+      - name: Official whole 48 / eight DBs, compare K4 oracle AND gold-blind K4 selected (never promote)
+        run: |
+          set -euo pipefail
+          test "$(find scored -maxdepth 1 -name 'scored-*.json' | wc -l)" -eq 8
+          python -m experiments.qwen9b_counterhypothesis_k4_48 aggregate \
+            --manifest frozen/freeze.json \
+            --parts scored/scored-0.json scored/scored-1.json \
+                    scored/scored-2.json scored/scored-3.json \
+                    scored/scored-4.json scored/scored-5.json \
+                    scored/scored-6.json scored/scored-7.json \
+            --out final-Qwen9B-K4-counterhypothesis-TRAIN48.json
+          python - <<'PY'
+          import json
+          x=json.load(open('final-Qwen9B-K4-counterhypothesis-TRAIN48.json'))
+          assert x['n']==48 and x['physical_dbs']==8
+          assert x['control_model_calls']==x['treatment_model_calls']==192
+          assert x['actual_unique_original_model_calls']==288
+          assert x['candidate_oracle_not_deployable'] and not x['promotion_allowed']
+          assert x['status']=='COMPLETE_REAL_QWEN9B_TRAIN48_EQUAL_K4_STRUCTURAL_COUNTERHYPOTHESIS'
+          assert not x['DEV500_used'] and not x['HOLDOUT300_used']
+          print('FINAL_STRICT_QWEN35_K4_COUNTERHYPOTHESIS48',json.dumps(x,sort_keys=True),flush=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: final-original-Qwen9B-K4-structural-counterhypothesis-TRAIN48
+          path: final-Qwen9B-K4-counterhypothesis-TRAIN48.json
+          if-no-files-found: error
+          retention-days: 30
