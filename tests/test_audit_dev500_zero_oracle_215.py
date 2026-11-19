@@ -3,6 +3,10 @@ from __future__ import annotations
 
 from collections import Counter
 
+import pytest
+
+pytest.importorskip("sqlglot", reason="CPU forensic script uses an optional SQL AST analysis dependency")
+
 from scripts.audit_dev500_zero_oracle_215 import (
     STUDY, SOURCE_SHA, MODEL_DIGEST, FLAGGED_OPS,
     features, simple_intents,
