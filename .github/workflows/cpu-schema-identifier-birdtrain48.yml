@@ -1,0 +1,116 @@
+name: CPU-only BIRD TRAIN48 Schema Identifier Boundary Audit
+on:
+  push:
+    branches: [research/schema-token-linking-cpu-audit-20261119]
+    paths: [.github/workflows/cpu-schema-identifier-birdtrain48.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  freeze-goldblind:
+    runs-on: ubuntu-latest
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - name: Full repository unit tests and schema bug isolation
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_schema_identifier_cpu_audit.py
+          python -m compileall -q evaluation/schema_identifier_cpu_audit.py
+      - name: Fetch exactly earlier immutable exposed TRAIN48 source; no reference SQL
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44508116418
+          github-token: ${{ github.token }}
+          name: original-Qwen9B-newTRAIN48-k4-frozen-question-source
+          path: frozen
+      - name: Verify frozen gold-free question source SHA and fetch original physical BIRD SQLite DBs
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from concurrent.futures import ThreadPoolExecutor
+          from pathlib import Path
+          from scripts.prepare_birdtrain_qwen9b_sft_source import fetch_manifest,fetch_database
+          from evaluation.schema_identifier_cpu_audit import source_cases,KNOWN_DBS
+          cases=source_cases(Path("frozen/source48.jsonl"))
+          meta=fetch_manifest()
+          assert all(meta[db]['size']<=96*1024*1024 for db in KNOWN_DBS)
+          def fetch(db):
+              path=fetch_database(db,meta[db],Path("physical"))
+              return db,path.stat().st_size
+          with ThreadPoolExecutor(max_workers=4) as pool:
+              for db,sz in pool.map(fetch,KNOWN_DBS):
+                  print('PINNED_SCHEMA_PHYSICAL_DB',db,sz,flush=True)
+          assert len(cases)==48
+          PY
+      - name: Compare ORIGINAL versus corrected CamelCase token boundaries, no publisher SQL
+        run: |
+          set -euo pipefail
+          python -m evaluation.schema_identifier_cpu_audit blind \
+            --source frozen/source48.jsonl --dbroot physical --out sealed-schema-audit.json
+          python - <<'PY'
+          import json
+          p=json.load(open('sealed-schema-audit.json'))
+          assert p['n']==48 and p['no_publisher_SQL_loaded'] and p['no_model_calls']
+          assert p['only_identifier_token_boundaries_changed']
+          assert len(p['cases'])==48
+          print('SCHEMA_SEAL_BEFORE_ANY_GOLD',sum(r['changed_context'] for r in p['cases']),flush=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: original-TRAIN48-IDENTIFIER-BOUNDARY-GOLD-FREE-sealed
+          path: sealed-schema-audit.json
+          if-no-files-found: error
+          retention-days: 30
+  retrospective-reference-table-coverage:
+    needs: freeze-goldblind
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - name: CPU SQL AST parser (no models) plus repo
+        run: |
+          python -m pip install -e . "sqlglot>=27,<30"
+          python - <<'PY'
+          import sqlglot
+          print("FROZEN_STUDY_SQL_PARSER_VERSION",sqlglot.__version__,flush=True)
+          PY
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: original-TRAIN48-IDENTIFIER-BOUNDARY-GOLD-FREE-sealed
+          path: sealed
+      - name: ONLY AFTER source and label-free selection sealed, fetch pinned original BIRD TRAIN references
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/Emulated-Inc/text-to-sql-with-evidence-training-pool/resolve/cd2c4ea321075aa53ce7dfe52deaaffa505d046a/raw/bird/train.json' \
+            -o train.json
+          echo 'cd5884489dffd7c76d73509b396bd919fbe8b486efbc4ba2f48f89460de7d69f  train.json' | sha256sum -c -
+      - name: Retrospective AST reference table coverage. No EX improvement claims or auto promotions.
+        run: |
+          set -euo pipefail
+          python -m evaluation.schema_identifier_cpu_audit score \
+            --sealed sealed/sealed-schema-audit.json --train train.json \
+            --out final-schema-identifier-coverage.json
+          python - <<'PY'
+          import json
+          x=json.load(open('final-schema-identifier-coverage.json'))
+          assert x['n']==48 and x['no_Qwen_calls'] and x['no_training']
+          assert x['promotion_allowed'] is False
+          assert x['no_DEV500_or_HOLDOUT300'] and x['no_new_EX_score']
+          assert x['counts']['scored']+x['counts']['parse_failed']==48
+          print('FINAL_SCHEMA_TOKEN_BOUNDARY_COVERAGE',json.dumps({k:v for k,v in x.items() if k!='case_details'},sort_keys=True),flush=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: original-TRAIN48-IDENTIFIER-BOUNDARY-CPU-FINAL
+          path: final-schema-identifier-coverage.json
+          if-no-files-found: error
+          retention-days: 30
