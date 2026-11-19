@@ -59,7 +59,7 @@ def source_first(a):
         treated=run_query(physical,modified)
         rows.append({
             "case_id":cid,"db":db,"question":row["question"],
-            "question_sha":row["question_sha256"],
+            "question_sha":digest(row["question"]),
             "question_intent":"count explicitly named entity before joined row",
             "original_first_generated_SQL":candidate,
             "source_only_fixed_grain_SQL":modified,
