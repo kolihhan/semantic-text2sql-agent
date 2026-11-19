@@ -1,0 +1,112 @@
+name: CPU forensic all original Qwen9B DEV500 zero-oracle 215 failures
+on:
+  push:
+    branches: [research/dev500-zero-oracle-215-forensic-20261119]
+    paths: [.github/workflows/cpu-dev500-zero-oracle-215-forensic.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: cpu-dev500-215-forensic-single-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  original-215-forensic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          persist-credentials: true
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Install AST parser, run source-agnostic unit guards; no GPU and no inference
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]' 'sqlglot>=27,<30'
+          python -m pytest -q tests/test_audit_dev500_zero_oracle_215.py
+          python -m compileall -q scripts/audit_dev500_zero_oracle_215.py
+
+      - name: Fetch first two original K8 SQL cache shards, exact 2026-11-17 Qwen runs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44086713331
+          github-token: ${{ github.token }}
+          pattern: k8-bird-dev500-prospective-cache-and-offline-score-shard-*
+          merge-multiple: true
+          path: cache
+      - name: Fetch other 30 original fixed Qwen K8 cache shards (no regenerate)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44093103960
+          github-token: ${{ github.token }}
+          pattern: k8-bird-dev500-prospective-cache-and-offline-score-shard-*
+          merge-multiple: true
+          path: cache
+      - name: Fetch eight actual certified 8-second original physical SQLite score workers
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44222560767
+          github-token: ${{ github.token }}
+          pattern: frozen-bird-dev500-prefix-worker-*
+          merge-multiple: true
+          path: workers
+      - name: Download exact pinned BIRD DEV source, used for analysis of 500 already exposed questions ONLY
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true' \
+            -o bird-original-dev.json
+          echo 'ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb  bird-original-dev.json' | sha256sum -c -
+          test "$(find cache -maxdepth 1 -name 'k8-dev500-candidate-cache-*.json' | wc -l)" -eq 32
+          test "$(find workers -maxdepth 1 -name 'prefix-frontier-worker-*.json' | wc -l)" -eq 8
+
+      - name: Generate source-locked 215-case forensic ledger, noncausal AST flags, and aggregate Markdown
+        run: |
+          set -euo pipefail
+          python -m scripts.audit_dev500_zero_oracle_215 \
+            --cache-dir cache --workers-dir workers \
+            --original-dev bird-original-dev.json \
+            --frozen-manifest manifests/bird-dev500-holdout300-20261116-v2.json \
+            --out-dir evidence/dev500-zero-oracle-215-forensic
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('evidence/dev500-zero-oracle-215-forensic')
+          ledger=json.loads((root/'dev500-zero-oracle-215-ledger.json').read_text())
+          report=json.loads((root/'dev500-zero-oracle-215-breakdown.json').read_text())
+          assert ledger['n_recorded']==215 and len({x['case_id'] for x in ledger['cases']})==215
+          assert report['counts']['exec_all_executable_but_wrong']==97
+          assert report['counts']['exec_some_executable_none_correct']==90
+          assert report['counts']['exec_none_executable']==28
+          assert report['population']['original_K8_goldblind_selected_correct']==233
+          assert report['population']['original_K8_oracle_upper_bound_correct']==285
+          assert report['population']['reference_timeout_certified_all_invalid']==1
+          assert ledger['HOLDOUT300_cases_never_selected_or_scored']
+          print('FINAL_ORIGINAL_215_CASE_FORENSIC_VERIFIED',report['counts'],flush=True)
+          PY
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ORIGINAL-BIRD-DEV500-K8-215-FORENSIC-CPU-FINAL
+          path: evidence/dev500-zero-oracle-215-forensic/
+          if-no-files-found: error
+          retention-days: 60
+
+      - name: Commit evidence-only 215-case ledger and report to research branch (no default changes)
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add evidence/dev500-zero-oracle-215-forensic/
+          if git diff --cached --quiet; then
+            echo 'Exact source-derived evidence already committed'
+          else
+            git commit -m 'evidence: audit all 215 zero-oracle DEV500 Qwen9B K8 tasks with original SQL and physical execution'
+            git push origin "HEAD:research/dev500-zero-oracle-215-forensic-20261119"
+          fi
