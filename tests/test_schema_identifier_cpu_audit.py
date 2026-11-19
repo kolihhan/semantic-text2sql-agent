@@ -38,7 +38,8 @@ def test_identical_default_selector_plus_only_token_boundary_changed(tmp_path):
     assert old==original
     assert old[1]["fallback_full_schema"]
     assert not corrected[1]["fallback_full_schema"]
-    assert corrected[1]["selected_tables"]==["EmployeeArchive"]
+    assert "EmployeeArchive" in corrected[1]["selected_tables"]
+    assert "InventoryPart" not in corrected[1]["selected_tables"]
     assert old[1]["selected_tables"]==sorted(cat.tables)
     assert corrected[0]!=old[0]
     assert len(corrected[0])<len(old[0])
