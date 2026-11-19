@@ -1,0 +1,49 @@
+{
+  "status": "REJECTED_V1_PHYSICAL_QWEN9B_TEMPLATE_BINDING_NO_GAIN",
+  "protocol": "BIRD-TRAIN-EXPOSED-4DB-FOUR-CALL-BINDING-PILOT-V1",
+  "run_id": 44450472093,
+  "aggregate_artifact_id": 14494809993,
+  "aggregate_json_sha256": "3b1864848711d412ca2b68dbc477afc1ab62c93f33762fab16409792d639eb35",
+  "cohort": {
+    "n": 4,
+    "n_physical_dbs": 4,
+    "task_cohort": "original previously exposed BIRD TRAIN validation64",
+    "new_unseen_source_claim": false
+  },
+  "model": {
+    "name": "qwen3.5:9b-q4_K_M",
+    "digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+    "new_unique_calls": 20,
+    "effective_calls_per_arm": 4
+  },
+  "results": {
+    "A_K4_selected_correct": 0,
+    "B_first_template_selected_correct": 0,
+    "C_position_control_correct": 1,
+    "A_oracle_correct": 1,
+    "B_oracle_correct": 1,
+    "template_mapping_complete": 1,
+    "template_physically_executable": 1,
+    "rescues": 0,
+    "regressions": 0,
+    "net": 0
+  },
+  "root_cause_source_only": {
+    "frozen_source_manifest_sha256": "72167efca9f66d1ef8dd3fba03159c90d2a28d2a29d7e5f53c88692a85c60330",
+    "obvious_output_shape_mismatches": 4,
+    "examples": [
+      "address-list target vs COUNT source",
+      "elapsed-years target vs top ranked player name source",
+      "percentage target vs country-name projection with ratio only in ORDER BY",
+      "life-expectancy target vs COUNT source"
+    ],
+    "ambiguous_table_and_column_name_tokenization": true
+  },
+  "decision": "Do not expand this structure retrieval or promote SQL code. Gate on projection/result shape; abstain and use original fourth direct sample when no compatible template. Preserve target labels and HOLDOUT300.",
+  "source_is_not_independent": true,
+  "no_dev500": true,
+  "no_holdout300": true,
+  "no_training": true,
+  "no_teacher": true,
+  "do_not_claim_sql_improvement": true
+}
