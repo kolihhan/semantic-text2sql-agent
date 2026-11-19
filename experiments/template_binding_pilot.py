@@ -71,6 +71,49 @@ def intent(q: str) -> set[str]:
     return {o for o, pattern in INTENTS if re.search(pattern, q.casefold())}
 
 
+def requested_answer_kind(question_text: str) -> str:
+    """Conservative answer-shape gate: abstain on unrecognized questions."""
+    s = question_text.casefold()
+    if re.search(r"percentage|percent|proportion|fraction|ratio", s):
+        return "ratio"
+    if re.search(r"how many years|years have passed|difference in years|time elapsed", s):
+        return "elapsed"
+    if re.search(r"how many|number of|count of", s):
+        return "count"
+    if re.search(r"life expectancy|average|mean|median|total (?:amount|revenue|cost)", s):
+        return "metric"
+    if re.search(r"what are|list |give (?:the )?names|which (?:customers|cities|employees|students|people|stores)|addresses", s):
+        return "records"
+    return "unknown"
+
+
+def template_projection_kind(sql: str) -> str:
+    """Classify SELECT projection only; ORDER BY arithmetic cannot satisfy ratio."""
+    m = re.match(r"(?is)^\s*select\s+(.*?)\bfrom\b", sql)
+    if not m:
+        return "unknown"
+    expression = m.group(1).casefold()
+    if re.search(r"\bcount\s*\(", expression):
+        return "count"
+    if "/" in expression or "percent" in expression:
+        return "ratio"
+    if "julianday" in expression or "strftime" in expression or re.search(r"\s-\s", expression):
+        return "elapsed"
+    if re.search(r"\b(?:avg|sum|median|min|max)\s*\(", expression):
+        return "metric"
+    return "records"
+
+
+def template_shape_compatible(question_text: str, sql: str) -> bool:
+    requested = requested_answer_kind(question_text)
+    projected = template_projection_kind(sql)
+    if requested in {"unknown", "elapsed"}:
+        return requested == "elapsed" and projected == "elapsed"
+    if requested == "metric":
+        return projected in {"metric", "records"}
+    return requested == projected
+
+
 def _schema_roles(context: str) -> dict[str, str]:
     lines = context.split("\n")
     found = {}
@@ -114,6 +157,10 @@ def mask_template(original: str, source_context: str) -> tuple[str, dict]:
             return names[key]
         low = raw.casefold()
         kind = roles.get(low)
+        # A source identifier can name BOTH a table and a column. After a dot
+        # it must be a column, never the table placeholder.
+        if kind == "table" and original[:m.start()].rstrip().endswith("."):
+            kind = "column"
         if kind not in {"table", "column"} or low in KEYWORDS:
             return raw
         key = (kind, low)
@@ -142,6 +189,8 @@ def retrieve(train: list[dict], targets: list[dict]) -> list[dict]:
         for i, source in enumerate(train):
             if source["source_db_id"] == target["source_db_id"]:
                 continue
+            if not template_shape_compatible(question(target), source["messages"][2]["content"]):
+                continue
             try:
                 template, placeholders = mask_template(
                     source["messages"][2]["content"], source["messages"][1]["content"])
@@ -153,7 +202,16 @@ def retrieve(train: list[dict], targets: list[dict]) -> list[dict]:
             score = float(sims[j,i]) + .44*len(wanted&actual) - .30*len(wanted-actual) - .10*penalty
             available.append((score, i, template, placeholders))
         if not available:
-            raise ValueError("no eligible source templates")
+            out.append({
+                "source_index": target["source_index"],
+                "target_db": target["source_db_id"],
+                "target_context": target["messages"][1]["content"],
+                "question_hash": sha256(question(target).encode()).hexdigest(),
+                "source_template_index": None, "source_db": None,
+                "source_question": None, "skeleton": None,
+                "placeholders": {}, "abstained": True,
+            })
+            continue
         _, idx, skeleton, slots = max(available, key=lambda x:(x[0],-x[1]))
         source = train[idx]
         out.append({
@@ -166,6 +224,7 @@ def retrieve(train: list[dict], targets: list[dict]) -> list[dict]:
             "source_question": question(source),
             "skeleton": skeleton,
             "placeholders": slots,
+            "abstained": False,
         })
     return out
 
@@ -266,6 +325,7 @@ def infer(frozen_path:Path,dbroot:Path,index:int,out:Path) -> dict:
         p=OllamaProvider(model=MODEL,temperature=.7,seed=seed,num_predict=384,timeout_s=900)
         response=_strip_fence(p.complete_text(system=_SYSTEM,user=row["target_context"]))
         first.append(response)
+    using_template = row.get("abstained") is False
     p=OllamaProvider(model=MODEL,temperature=.7,seed=46,num_predict=384,timeout_s=900)
     instructions=(
         "Bind the following SQL calculation skeleton to the CURRENT physical SQLite schema. "
@@ -276,15 +336,18 @@ def infer(frozen_path:Path,dbroot:Path,index:int,out:Path) -> dict:
         "If impossible, return empty JSON. "
         "Do not copy source foreign identifiers into the target unless they really exist."
     )
-    user=(row["target_context"]+"\n\nSource question: "+row["source_question"]+
-          "\nCalculation skeleton:\n"+row["skeleton"]+
-          "\nSource placeholder roles:\n"+json.dumps(row["placeholders"],ensure_ascii=False))
-    response=p.complete_text(system=instructions,user=user)
-    bound=bind(row["skeleton"],row["placeholders"],response,row["target_context"])
-    all_sql=first+[bound]
+    if using_template:
+        user=(row["target_context"]+"\n\nSource question: "+row["source_question"]+
+              "\nCalculation skeleton:\n"+row["skeleton"]+
+              "\nSource placeholder roles:\n"+json.dumps(row["placeholders"],ensure_ascii=False))
+        response=p.complete_text(system=instructions,user=user)
+        bound=bind(row["skeleton"],row["placeholders"],response,row["target_context"])
+    else:
+        bound=""
+    all_sql=first+[bound if using_template else first[3]]
     outcomes=[physical(db,sql) for sql in all_sql]
     candidates=[{"id":f"c{i+1}",**outcomes[i]} for i in range(4)]
-    templ={"id":"template",**outcomes[4]}
+    templ={"id":"template",**outcomes[4]} if using_template else None
     select_source={
         "protocol":SELECT_PROTOCOL,"manifest_sha256":data["manifest_sha256"],
         "model_digest":DIGEST,
@@ -294,11 +357,12 @@ def infer(frozen_path:Path,dbroot:Path,index:int,out:Path) -> dict:
     sealed=seal_choices(select_source)
     report={"pilot":PILOT,"index":index,"case_id":row["source_index"],
             "db_id":row["target_db"],"model_digest":DIGEST,
-            "n_model_calls_unique":5,"n_model_calls_per_arm":4,
+            "n_model_calls_unique":5 if using_template else 4,"n_model_calls_per_arm":4,
             "original_direct_sql":first,
             "template_sql":bound,"template_mapping_complete":bool(bound),
+            "template_abstained":not using_template,
             "n_direct_executable":sum(x["valid"] for x in outcomes[:4]),
-            "template_executable":outcomes[4]["valid"],
+            "template_executable":bool(using_template and outcomes[4]["valid"]),
             "sealed":sealed,"no_target_gold_read":True,"holdout300_unused":True}
     if out.exists(): raise FileExistsError("refuse to overwrite original model predictions")
     out.write_text(json.dumps(report,indent=2,ensure_ascii=False)+"\n")
@@ -324,6 +388,7 @@ def score(frozen:Path,generated:Path,validation:Path,dbroot:Path,out:Path) -> di
             "target_db":row["target_db"],
             "n_original_calls_unique":gen["n_model_calls_unique"],
             "template_executable":gen["template_executable"],
+            "template_abstained":gen["template_abstained"],
             "template_mapping_complete":gen["template_mapping_complete"],
             "score":summary,"no_dev500":True,"no_holdout300":True}
     if out.exists():raise FileExistsError("refuse score overwrite")
@@ -342,6 +407,8 @@ def aggregate(parts:list[Path],out:Path) -> dict:
         s=r["score"]
         totals["n_scorable"]+=s["n_scorable"]
         totals["n_censored"]+=s["n_unscorable"]
+        totals["model_calls_unique"]+=r["n_original_calls_unique"]
+        totals["template_abstained"]+=int(r["template_abstained"])
         totals["template_bound"]+=int(r["template_mapping_complete"])
         totals["template_executable"]+=int(r["template_executable"])
         totals["A_correct"]+=s["final_correct"]["A"]
@@ -355,7 +422,7 @@ def aggregate(parts:list[Path],out:Path) -> dict:
         totals["B_vs_C_regressions"]+=s["B_vs_C_regressions"]
     result={"status":"COMPLETE_PHYSICAL_QWEN9B_TEMPLATE_BINDING_4CASE_PILOT",
             "protocol":PILOT,"n":N,"n_db":N,
-            "original_Qwen_model_calls_unique":5*N,
+            "original_Qwen_model_calls_unique":totals["model_calls_unique"],
             "effective_four_calls_per_arm":True,
             **dict(totals),
             "no_dev500":True,"no_holdout300":True,
