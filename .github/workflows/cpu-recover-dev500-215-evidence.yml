@@ -1,0 +1,66 @@
+name: CPU recover original 215-case DEV500 forensic evidence (no rerun)
+on:
+  push:
+    branches: [research/dev500-zero-oracle-215-forensic-20261119]
+    paths: [.github/workflows/cpu-recover-dev500-215-evidence.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+jobs:
+  recover-original-evidence-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with: {persist-credentials: true}
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - name: Recover original complete source SHA-verified CPU artifact from failed final commit (not CPU analysis)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44531811978
+          github-token: ${{ github.token }}
+          name: ORIGINAL-BIRD-DEV500-K8-215-FORENSIC-CPU-FINAL
+          path: evidence/dev500-zero-oracle-215-forensic
+      - name: Verify exact immutable original SHA files and all 215 cases before writing
+        run: |
+          set -euo pipefail
+          cd evidence/dev500-zero-oracle-215-forensic
+          echo '0424122e101617e463a1433d5f8da87b4884dc159a7f8071908d8937de8765ab  dev500-zero-oracle-215-audit.md' | sha256sum -c -
+          echo 'd7147a66e5fc048bf53dde1049cc1ef91fd6b18464c363f0281f915b18e47fa7  dev500-zero-oracle-215-breakdown.json' | sha256sum -c -
+          echo '7407be0408a147c3f5220d29d9dcd3f0595f4a638f01970bb7acb7bcedf4c4c2  dev500-zero-oracle-215-ledger.json' | sha256sum -c -
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('dev500-zero-oracle-215-ledger.json')
+          x=json.loads(p.read_text())
+          y=json.loads(Path('dev500-zero-oracle-215-breakdown.json').read_text())
+          cases=x['cases']
+          assert len(cases)==215 and len({r['case_id'] for r in cases})==215
+          assert len({r['db_id'] for r in cases})==11
+          c=y['counts']
+          assert c['exec_all_executable_but_wrong']==97
+          assert c['exec_some_executable_none_correct']==90
+          assert c['exec_none_executable']==28
+          assert y['population']['original_K8_oracle_upper_bound_correct']==285
+          assert y['population']['original_K8_goldblind_selected_correct']==233
+          assert y['population']['reference_timeout_certified_all_invalid']==1
+          assert x['no_new_Qwen_calls'] and x['HOLDOUT300_cases_never_selected_or_scored']
+          print('EXACT_ORIGINAL_DEV500_215_VERIFIED_READY_FOR_REPO',flush=True)
+          PY
+      - name: Commit original forensic evidence only; preserve branch HEAD changes
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add evidence/dev500-zero-oracle-215-forensic/
+          if git diff --cached --quiet; then
+            echo "original evidence already present"
+          else
+            git commit -m 'evidence: add full source-verified BIRD DEV500 Qwen9B K8 215-case zero-oracle audit'
+            git fetch origin research/dev500-zero-oracle-215-forensic-20261119
+            git rebase FETCH_HEAD
+            git push origin "HEAD:research/dev500-zero-oracle-215-forensic-20261119"
+          fi
