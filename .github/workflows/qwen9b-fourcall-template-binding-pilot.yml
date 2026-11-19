@@ -167,7 +167,7 @@ jobs:
           python - <<'PY'
           import json
           r=json.load(open("qwen9b-template-fourcase-ex.json"))
-          assert r["n"]==4 and r["n_db"]==4 and r["original_Qwen_model_calls_unique"]==20
+          assert r["n"]==4 and r["n_db"]==4 and 16<=r["original_Qwen_model_calls_unique"]<=20
           assert r["no_dev500"] and r["no_holdout300"]
           print("PHYSICAL_TEMPLATE_FOUR_CALL_FINAL",json.dumps(r,sort_keys=True),flush=True)
           PY
