@@ -127,7 +127,10 @@ def detect_semantic_concerns(question: str, sql: str) -> tuple[SemanticConcern, 
                 " but SQL only tests season="+first+". "
                 "Check the true stored season encoding; retain both years.",True)
 
-    from_match=re.search(r"\bFROM\s+([\w]+)",sql,flags=re.I)
+    # Read the OUTER FROM, not an inner FROM in ratio denominators.
+    base=re.match(r"(?is)^\s*SELECT\b",sql)
+    start=sql.casefold().find(projection.casefold(),base.end())+len(projection)
+    from_match=re.match(r"(?is)^\s*FROM\s+([\w]+)",sql[start:])
     main=from_match.group(1).casefold() if from_match else ""
     joined=[x.casefold() for x in re.findall(
         r"\bJOIN\s+([\w]+)",sql,flags=re.I)]
