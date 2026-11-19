@@ -324,23 +324,27 @@ def summarize(parts:list[Path],manifest:Path,out:Path)->dict:
     delta=len(wins)-len(losses)
     groups={db:[int(x["treatment_selected_set_EX"])-int(x["baseline_selected_set_EX"])
                 for x in sc if x["db_id"]==db] for db in meta["dbs"]}
-    if any(not v for v in groups.values()):
-        raise ValueError("cannot claim full DB cluster CI with missing DBs")
-    rng=random.Random(20261118)
-    ordered=sorted(groups)
-    sims=[]
-    for _ in range(4000):
-        ds=[rng.choice(ordered) for _ in ordered]
-        values=[v for d in ds for v in groups[d]]
-        sims.append(sum(values)/len(values))
-    sims.sort()
-    ci={"lower95":sims[100],"upper95":sims[3899],
-        "mean":delta/max(1,len(sc)),"n_db_clusters":N_DB}
+    missing_dbs=[db for db,vals in groups.items() if not vals]
+    # An entire physical database is publisher-unscorable in this run.
+    # Report all observed paired scores WITHOUT fabricating full-cluster
+    # bootstrap CI or crediting a passing promotion gate.
+    ci=None
+    if not missing_dbs:
+        rng=random.Random(20261118)
+        ordered=sorted(groups)
+        sims=[]
+        for _ in range(4000):
+            ds=[rng.choice(ordered) for _ in ordered]
+            values=[v for d in ds for v in groups[d]]
+            sims.append(sum(values)/len(values))
+        sims.sort()
+        ci={"lower95":sims[100],"upper95":sims[3899],
+            "mean":delta/max(1,len(sc)),"n_db_clusters":N_DB}
     positive=(
         len(sc)==GATE["require_full_reference_n"]
         and delta>=GATE["min_net_correct"]
         and len({x["db_id"] for x in wins})>=GATE["min_rescue_dbs"]
-        and ci["lower95"]>GATE["min_db_cluster_CI95_lower"]
+        and ci is not None and ci["lower95"]>GATE["min_db_cluster_CI95_lower"]
     )
     report={
         "status":"COMPLETE_REAL_QWEN9B_TRAIN96_MATCHED_K2_ROLE_GRAIN_PROMPT",
@@ -357,6 +361,13 @@ def summarize(parts:list[Path],manifest:Path,out:Path)->dict:
         "rescue_cases":len(wins),"regression_cases":len(losses),"net_correct":delta,
         "rescues_on_database_count":len({x["db_id"] for x in wins}),
         "paired_db_cluster_CI95":ci,
+        "bootstrap_CI_status":("UNESTIMABLE_SOME_PHYSICAL_DATABASES_UNSCORABLE"
+                              if missing_dbs else "COMPLETE_ALL_PHYSICAL_DATABASES"),
+        "unscorable_database_ids":missing_dbs,
+        "censored_by_database":{db:sum(
+            not row["reference_scorable"] for row in records if row["db_id"]==db)
+            for db in meta["dbs"]},
+        "publisher_reference_SQL_unscorable":len(records)-len(sc),
         "treatment_second_SQL_exec_count":sum(x["treatment_second_executable"] for x in records),
         "treatment_second_set_EX_correct":sum(x["treatment_second_set_EX"] for x in sc),
         "treatment_oracle_at2_correct":sum(x["treatment_oracle_at2_set_EX"] for x in sc),
