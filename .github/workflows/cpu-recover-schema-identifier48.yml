@@ -1,0 +1,60 @@
+name: CPU recover original TRAIN48 schema-token coverage from existing GOLD-FREE seal
+on:
+  push:
+    branches: [research/schema-token-linking-cpu-audit-20261119]
+    paths: [.github/workflows/cpu-recover-schema-identifier48.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  original-sealed-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - name: Offline AST scorer only, never rerun physical DB fetch, Qwen or schema selection
+        run: |
+          set -euo pipefail
+          python -m pip install -e . "sqlglot>=27,<30"
+      - name: Immutable original 48 gold-free source/schema decisions from original #44518009961
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44518009961
+          github-token: ${{ github.token }}
+          name: original-TRAIN48-IDENTIFIER-BOUNDARY-GOLD-FREE-sealed
+          path: sealed
+      - name: ONLY after original source+decisions physically sealed, fetch original publisher TRAIN labels
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/Emulated-Inc/text-to-sql-with-evidence-training-pool/resolve/cd2c4ea321075aa53ce7dfe52deaaffa505d046a/raw/bird/train.json' \
+            -o train.json
+          echo 'cd5884489dffd7c76d73509b396bd919fbe8b486efbc4ba2f48f89460de7d69f  train.json' | sha256sum -c -
+      - name: CPU-only replay of exact original gold-free candidate contexts; assert original 48 observations
+        run: |
+          set -euo pipefail
+          python -m evaluation.schema_identifier_cpu_audit score \
+            --sealed sealed/sealed-schema-audit.json --train train.json \
+            --out final-schema-identifier-coverage.json
+          python - <<'PY'
+          import json
+          p=json.load(open('final-schema-identifier-coverage.json'))
+          c=p['counts']
+          assert p['source_sha']=='006773fbd40894ba202c9d31aa54e0af95bcbd7f50e82d65871b36b7e2b89fc0'
+          assert p['n']==48 and c['scored']==48 and c.get('parse_failed',0)==0
+          assert c['schema_changed']==4 and c['rescues']==2 and c['regressions']==0
+          assert c['old_all_gold_tables_covered']==45 and c['new_all_gold_tables_covered']==47
+          assert not p['positive_screen_only'] and not p['promotion_allowed']
+          assert p['no_new_EX_score'] and p['no_Qwen_calls'] and p['no_DEV500_or_HOLDOUT300']
+          print('FINAL_NO_QWEN_BIRD_TRAIN48_CAMELCASE_TABLE_COVERAGE_NEGATIVE_SCREEN',json.dumps({k:v for k,v in p.items() if k!='case_details'},sort_keys=True),flush=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: original-TRAIN48-IDENTIFIER-BOUNDARY-CPU-salvaged-final
+          path: final-schema-identifier-coverage.json
+          if-no-files-found: error
+          retention-days: 30
