@@ -1,0 +1,58 @@
+name: Original Qwen DEV500 K1-K8 oracle gap failclosed lineage (zero inference)
+# Validate every original physical worker against exact 64-character model/source digests.
+on:
+  push:
+    branches: [research/dev500-k1-k8-oracle-frontier-20261120]
+    paths:
+      - .github/workflows/cpu-dev500-k1-k8-oracle-frontier.yml
+permissions:
+  contents: read
+  actions: read
+jobs:
+  original_existing_evidence_only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44660486791
+          github-token: ${{ github.token }}
+          name: BIRD-DEV500-ORIGINAL-QWEN-K1-203-RIGHT-297-WRONG-RISK-AUDIT
+          path: frozen-k1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44222560767
+          github-token: ${{ github.token }}
+          pattern: frozen-bird-dev500-prefix-worker-*
+          merge-multiple: true
+          path: original-8-score-workers
+      - name: Reconstruct historic Qwen original K1 K8 oracle and selector misses
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.dev500_k1_k8_oracle_frontier_original_only \
+            --frozen-k1 frozen-k1/frozen-dev500-k1-risk-vs-correct-controls.json \
+            --workers-dir original-8-score-workers \
+            --out original-dev500-k1-k8-candidate-oracle-cohorts.json
+          python - <<'PY'
+          import json
+          x=json.load(open('original-dev500-k1-k8-candidate-oracle-cohorts.json'))
+          a=x['aggregate']
+          assert x['n']==500 and a['K8_ALL_EIGHT_WRONG']==215
+          assert a['K8_SELECTOR_MISSED_AVAILABLE_CORRECT']==52
+          assert a['K1_RIGHT']==203 and a['K8_RIGHT']==233
+          assert x['no_new_qwen_or_sql_execution'] and x['holdout300_untouched']
+          print('GENERATOR_VS_SELECTOR_MECHANISM_FROZEN',a)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ORIGINAL-QWEN-DEV500-K1-K8-ALLWRONG215-SELECTOR-MISS52
+          path: original-dev500-k1-k8-candidate-oracle-cohorts.json
+          if-no-files-found: error
+          retention-days: 60
