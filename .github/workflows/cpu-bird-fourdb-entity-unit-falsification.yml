@@ -1,4 +1,4 @@
-name: BIRD DEV500 physical entity-unit risks plus K1-right regression controls (NO QWEN)
+name: BIRD DEV500 typed unit fanout vs original K1-right regression controls (NO QWEN)
 on:
   push:
     branches: [research/dev500-entity-denominator-physical-falsification-20261120]
@@ -16,8 +16,24 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
         with:
           python-version: '3.11'
-      - name: Compile read-only standard-library diagnostic
-        run: python -m compileall -q scripts/bird_dev500_fourdb_entity_unit_physical_falsification.py
+      - name: Compile plus control regex smoke test BEFORE physical database downloads
+        run: |
+          python -m compileall -q scripts/bird_dev500_fourdb_entity_unit_physical_falsification.py
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          src=Path('scripts/bird_dev500_fourdb_entity_unit_physical_falsification.py').read_text()
+          a=ast.parse(src)
+          call=[n for n in ast.walk(a) if isinstance(n,ast.Call)
+                and isinstance(n.func,ast.Attribute) and n.func.attr=='subn']
+          assert len(call)==1
+          import re
+          p=ast.literal_eval(call[0].args[0])
+          sql="SELECT COUNT(*) FROM Patient P"
+          modified,num=re.subn(p,"COUNT(DISTINCT P.ID)",sql,count=1)
+          assert num==1 and modified=="SELECT COUNT(DISTINCT P.ID) FROM Patient P"
+          print('K1_CONTROL_COUNT_STAR_REGEX_PRECHECK_OK')
+          PY
       - name: Restore SHA-verified original 81 SOURCE-ONLY question and schema evidence; NO gold SQL
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
