@@ -13,6 +13,8 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 import json
+from hashlib import sha256
+import re
 from pathlib import Path
 import sqlite3
 import time
@@ -76,6 +78,19 @@ PROBES={
 },
 }
 CONTROL_IDS=("109","1028","1441")
+# Separate outcome-conditioned controls: the original first Qwen SQL was
+# verified K1-right BEFORE any alternative unit rewrite; never assert
+# prospective specificity from this handselected set.
+K1_RIGHT_CONTROLS={
+    "1203":("thrombosis_prediction","P.ID",
+        "7dd6b6eb7d1361c0d66e9701b4f7df96d1bcf3d8733c20bac94fe5bcf8cda1f7"),
+    "1280":("thrombosis_prediction","P.ID",
+        "bef2ab53bf04b868a29682935c2b6fa7f1f801d186ebc9738758e9b9a3e36bd8"),
+    "1311":("thrombosis_prediction","e.ID",
+        "b1244d92ebedb943037c3a376d8d9fa143b226b22f63dbff1e8f4b679b50e74e"),
+    "1508":("debit_card_specializing","t.CustomerID",
+        "c0fd4f2622c84bb4b00e0c86851bed6f583a3b45d0b8487fe388caea5296cf92"),
+}
 
 
 def count(conn:sqlite3.Connection,sql:str)->int:
@@ -99,7 +114,50 @@ def schema(conn,table):
     return {"pk":pk,"fks":fk,"n_declared_columns":len(cols)}
 
 
-def run(srcpath:Path, dbroot:Path):
+def original_k1_right_unit_controls(labels_path:Path,cachedir:Path,dbroot:Path):
+    scores=json.loads(labels_path.read_text())
+    assert scores["n"]==500 and scores["k1_right"]==203
+    labels={str(v["case_id"]):v for v in scores["first_candidate_labels"]}
+    assert len(labels)==500
+    cache={}
+    for file in cachedir.glob("k8-dev500-candidate-cache-*.json"):
+        data=json.loads(file.read_text())
+        assert data["model_digest"]==MODEL_SHA and data["no_gold_sql_in_cache"] is True
+        for item in data["cases"]:
+            cid=str(item["case_id"])
+            if cid in K1_RIGHT_CONTROLS:
+                assert cid not in cache
+                samples=sorted(item["samples"],key=lambda x:x["index"])
+                assert len(samples)==8 and samples[0]["index"]==0
+                cache[cid]=(item["db_id"],samples[0]["sql"])
+    assert set(cache)==set(K1_RIGHT_CONTROLS)
+    out=[]
+    for cid,(db,key,hashvalue) in K1_RIGHT_CONTROLS.items():
+        assert labels[cid]["db"]==db
+        assert labels[cid]["first_sql_reference_set_match"] is True
+        assert labels[cid]["reference_scorable"] is True
+        original_db,sql=cache[cid]
+        assert original_db==db and sha256(sql.encode()).hexdigest()==hashvalue
+        new_sql,replacements=re.subn(r"(?i)\\bCOUNT\\s*\\(\\s*\\*\\s*\\)",
+             "COUNT(DISTINCT "+key+")",sql,count=1)
+        assert replacements==1 and new_sql!=sql
+        with sqlite3.connect(get_db(dbroot,db).as_uri()+"?mode=ro",uri=True) as conn:
+            conn.execute("PRAGMA query_only=ON")
+            original_result=count(conn,sql)
+            changed_result=count(conn,new_sql)
+        out.append({
+            "case_id":cid,"db":db,"original_first_Qwen_SQL_sha256":hashvalue,
+            "original_K1_was_physically_correct":True,
+            "original_aggregate":original_result,
+            "alternative_unit_aggregate":changed_result,
+            "alternative_result_differs_from_correct_original":original_result!=changed_result,
+            "would_be_regression_if_rewrite_applied_to_original_K1":original_result!=changed_result,
+            "not_a_general_rule_or_gold_SQL_consultation":True,
+        })
+    return out
+
+
+def run(srcpath:Path, dbroot:Path, k1_labels:Path, original_cache:Path):
     data=json.loads(srcpath.read_text())
     assert data["remaining_count"]==81 and data["database_count"]==11
     assert data["original_model_digest"]==MODEL_SHA
@@ -145,6 +203,8 @@ def run(srcpath:Path, dbroot:Path):
             "row_and_distinct_previously_physically_identical":not p["actual_physical_result_changed"],
             "not_a_correct_result_control":True,
         })
+    right_controls=original_k1_right_unit_controls(k1_labels,original_cache,dbroot)
+    assert len(right_controls)==4
     assert len(entries)==4 and len({e["db"] for e in entries})==4
     assert len(negative)==3 and all(e["row_and_distinct_previously_physically_identical"] for e in negative)
     changed=sum(x["unit_pair_physically_different"] for x in entries)
@@ -152,9 +212,12 @@ def run(srcpath:Path, dbroot:Path):
       "protocol":PROTOCOL,"source_type":"known_failed_DEV; not prospectively sampled",
       "n_tested":4,"n_physical_databases":4,
       "n_immutable_prior_negative_controls":3,
+      "n_original_K1_right_controls":len(right_controls),
+      "original_K1_right_alternative_unit_result_changes":sum(x["alternative_result_differs_from_correct_original"] for x in right_controls),
       "physical_unit_pair_diff_cases":changed,
       "diagnostic_cross_db_physical_variation_seen":changed>=3,
       "cases":entries,"negative_invariant_controls":negative,
+      "original_K1_right_controls":right_controls,
       "gold_sql_not_opened":True,"new_model_calls":0,"no_training":True,
       "no_new_bird_ex":True,"holdout300_untouched":True,
       "does_not_demonstrate_a_general_SQL_repair_rule":True,
@@ -166,14 +229,17 @@ def main():
     p=argparse.ArgumentParser()
     p.add_argument("--source",required=True,type=Path)
     p.add_argument("--db-root",required=True,type=Path)
+    p.add_argument("--k1-labels",required=True,type=Path)
+    p.add_argument("--original-cache",required=True,type=Path)
     p.add_argument("--out",required=True,type=Path)
     args=p.parse_args()
     if args.out.exists():raise FileExistsError("immutable evidence file")
-    obj=run(args.source,args.db_root)
+    obj=run(args.source,args.db_root,args.k1_labels,args.original_cache)
     args.out.parent.mkdir(parents=True,exist_ok=True)
     args.out.write_text(json.dumps(obj,indent=2,sort_keys=True)+"\n")
     print("FOUR_DB_PHYSICAL_TYPED_ENTITY_UNIT_DIAGNOSTIC",json.dumps({
         "n":obj["n_tested"],"physical_unit_pair_diff_cases":obj["physical_unit_pair_diff_cases"],
+        "K1_right_control_unit_rewrite_would_regress":obj["original_K1_right_alternative_unit_result_changes"],
         "by_case":[{"case_id":v["case_id"],"db":v["db"],
                     "difference":v["unit_pair_physically_different"]}
                     for v in obj["cases"]],"qwen_calls":0},sort_keys=True))
