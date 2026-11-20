@@ -1,4 +1,5 @@
-name: Original Qwen DEV500 K1-K8 first SQL vs candidate oracle split (zero inference)
+name: Original Qwen DEV500 K1-K8 oracle gap failclosed lineage (zero inference)
+# Validate every original physical worker against frozen model/source digests.
 on:
   push:
     branches: [research/dev500-k1-k8-oracle-frontier-20261120]
