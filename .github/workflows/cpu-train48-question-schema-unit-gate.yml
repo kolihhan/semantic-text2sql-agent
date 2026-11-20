@@ -1,4 +1,4 @@
-name: Original Qwen TRAIN48 typed unit gate pinned source artifact (CPU ONLY)
+name: Original Qwen TRAIN48 typed unit gate SQLite implicit FK safe (CPU ONLY)
 on:
   push:
     branches: [research/typed-question-schema-sql-unit-gate-20261120]
