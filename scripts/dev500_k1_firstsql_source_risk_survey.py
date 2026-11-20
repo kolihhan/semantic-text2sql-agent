@@ -83,6 +83,7 @@ def source(args):
     cache_files=sorted(args.cache_dir.glob("k8-dev500-candidate-cache-*.json"))
     assert len(cache_files)==32,("frozen cache shards",len(cache_files))
     records={}
+    full_source_for_blind_review={}
     shard_ids=set()
     for path in cache_files:
         d=read(path)
@@ -102,6 +103,12 @@ def source(args):
             sql=original["sql"]
             assert x["question_sha256"]==sha(q)
             assert x["db_id"]==qrows[cid]["db_id"]
+            full_source_for_blind_review[cid]={
+                "case_id":cid,"db":x["db_id"],"question":q,
+                "first_original_qwen_sql":sql,"sql_sha256":sha(sql),
+                "source_only_risk_flags":flags(q,sql),
+                "no_gold_or_outcome_labels":True
+            }
             records[cid]={
                 "case_id":cid,"db":x["db_id"],
                 "difficulty":qrows[cid].get("difficulty") or "unlabeled",
@@ -139,6 +146,8 @@ def source(args):
       "model_digest":MODEL_SHA,"source_sha256":SRC_SHA,
       "risk_features_blind_to_reference":True,"first_sample_index":0,
       "review_44_ids_source_preselected":review,
+      "review_44_full_question_and_original_sql_no_scores":[
+          full_source_for_blind_review[cid] for cid in review],
       "rows":rows,"no_publisher_reference_sql_used":True,
       "do_not_interpret_risk_as_root_cause":True,
       "no_new_qwen_calls":True,"holdout300_unread":True
