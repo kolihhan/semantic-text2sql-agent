@@ -1,0 +1,63 @@
+name: Original TRAIN48 unit gate post-seal score ONLY (zero inference/DB downloads)
+on:
+  push:
+    branches: [research/typed-question-schema-sql-unit-gate-20261120]
+    paths: [.github/workflows/cpu-train48-unit-gate-postseal-score-only.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  old_k4_boolean_labels_after_presealed_source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Download already completed immutable source-only 48-unit artifact (no gold)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44714355170
+          github-token: ${{ github.token }}
+          name: BIRD-ORIGINAL-QWEN-TRAIN48-UNIT-GATE-SOURCE-ONLY-FROZEN
+          path: frozen
+      - name: Download original previously scored Boolean outcomes from original Qwen experiment
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44508116418
+          github-token: ${{ github.token }}
+          pattern: original-Qwen9B-k4-counter48-physical-score-*
+          merge-multiple: true
+          path: score
+      - name: Join sealed 48 question-schema unit judgments to original K4 outcome labels, no SQL/gold
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find score -maxdepth 1 -name 'scored-*.json' | wc -l)" -eq 8
+          python -m scripts.train48_original_qwen_unit_gate_source_then_score score \
+            --frozen frozen/sealed-train48-source-only-unit-decisions.json \
+            --scored-dir score \
+            --out train48-unit-original-outcome-crosstab.json
+          python - <<'PY'
+          import json
+          x=json.load(open('train48-unit-original-outcome-crosstab.json'))
+          assert x['n']==48 and x['original_control_selected_correct']==26
+          assert x['original_control_selected_wrong']==20 and x['original_gold_censored']==2
+          assert x['three_state_outcome_cross_tab']=={
+            'CONSISTENT':{'correct':3,'wrong':0,'censored':0},
+            'CONFLICT':{'correct':0,'wrong':0,'censored':0},
+            'ABSTAIN':{'correct':23,'wrong':20,'censored':2}}
+          assert x['new_Qwen_calls']==0 and x['holdout300_untouched']
+          assert not x['exploratory_positive_gate']
+          assert not x['promote_or_launch_new_Qwen_from_this_alone']
+          print('UNIT_SCREEN_NEGATIVE_SOURCE_SEALED',x['three_state_outcome_cross_tab'])
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: TRAIN48-ORIGINAL-QWEN-UNIT-GATE-THREE-STATE-CORRECT-WRONG-NEGATIVE
+          path: train48-unit-original-outcome-crosstab.json
+          if-no-files-found: error
+          retention-days: 60

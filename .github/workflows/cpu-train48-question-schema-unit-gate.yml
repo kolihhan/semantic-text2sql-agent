@@ -1,0 +1,116 @@
+name: Original Qwen TRAIN48 typed unit gate SQLite implicit FK safe (CPU ONLY)
+on:
+  push:
+    branches: [research/typed-question-schema-sql-unit-gate-20261120]
+    paths: [.github/workflows/cpu-train48-question-schema-unit-gate.yml]
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  source_only_gate_without_labels:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Synthetic regressions for strict 3-state gate
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_question_schema_sql_unit_gate.py
+          python -m compileall -q src/semantic_sql/question_schema_sql_unit_gate.py
+      - name: Restore only prior frozen TRAIN48 original question source, NO score/gold
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44508116418
+          github-token: ${{ github.token }}
+          name: original-Qwen9B-newTRAIN48-k4-frozen-question-source
+          path: sourceonly
+      - name: Restore original K4 candidates sealed BEFORE gold, NO score artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44508116418
+          github-token: ${{ github.token }}
+          pattern: original-Qwen9B-k4-counter48-generated-sealed-*
+          merge-multiple: true
+          path: original_k4
+      - name: Evaluate source/FK/physical cardinality-only decisions against 8 original TRAIN DBs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find original_k4 -maxdepth 1 -name 'generated-*.json' | wc -l)" -eq 8
+          python -m scripts.train48_original_qwen_unit_gate_source_then_score source \
+            --source sourceonly/source48.jsonl \
+            --freeze sourceonly/freeze.json \
+            --generated-dir original_k4 \
+            --db-cache "$RUNNER_TEMP/train48-physical-db" \
+            --out sealed-train48-source-only-unit-decisions.json
+          python - <<'PY'
+          import json
+          d=json.load(open('sealed-train48-source-only-unit-decisions.json'))
+          assert len(d['decisions'])==48 and d['n_databases']==8
+          assert set(d['decision_histogram']) <= {'CONSISTENT','CONFLICT','ABSTAIN'}
+          assert d['no_publisher_gold_SQL_or_preexisting_correctness_labels_loaded']
+          assert d['no_new_Qwen_generation'] and d['no_DEV500_or_HOLDOUT300']
+          print('UNIT_GATE_SEALED_PRE_EXISTING_SCORE_LABELS')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: BIRD-ORIGINAL-QWEN-TRAIN48-UNIT-GATE-SOURCE-ONLY-FROZEN
+          path: sealed-train48-source-only-unit-decisions.json
+          if-no-files-found: error
+          retention-days: 60
+
+  old_labels_only_after_source_freeze:
+    needs: source_only_gate_without_labels
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: BIRD-ORIGINAL-QWEN-TRAIN48-UNIT-GATE-SOURCE-ONLY-FROZEN
+          path: frozen
+      - name: Fetch historical original Qwen K4 Boolean score shards ONLY AFTER gate sealed
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44508116418
+          github-token: ${{ github.token }}
+          pattern: original-Qwen9B-k4-counter48-physical-score-*
+          merge-multiple: true
+          path: old_score
+      - name: Compare CONSISTENT/CONFLICT/ABSTAIN to historical mixed correct/wrong original scores
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find old_score -maxdepth 1 -name 'scored-*.json' | wc -l)" -eq 8
+          python -m scripts.train48_original_qwen_unit_gate_source_then_score score \
+            --frozen frozen/sealed-train48-source-only-unit-decisions.json \
+            --scored-dir old_score \
+            --out historical-train48-unit-gate-outcome-crosstab.json
+          python - <<'PY'
+          import json
+          d=json.load(open('historical-train48-unit-gate-outcome-crosstab.json'))
+          assert d['n']==48 and d['n_scorable']==46
+          assert d['original_control_selected_correct']==26
+          assert d['original_control_selected_wrong']==20
+          assert d['original_gold_censored']==2
+          assert d['new_Qwen_calls']==0 and d['holdout300_untouched']
+          assert d['promote_or_launch_new_Qwen_from_this_alone'] is False
+          print('REUSED_TRAIN48_UNIT_GATE_SCREEN_ONLY',d['three_state_outcome_cross_tab'])
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: BIRD-ORIGINAL-QWEN-TRAIN48-TYPED-UNIT-GATE-REUSED-OUTCOME-MIXED
+          path: historical-train48-unit-gate-outcome-crosstab.json
+          if-no-files-found: error
+          retention-days: 60

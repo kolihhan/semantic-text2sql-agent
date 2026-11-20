@@ -1,0 +1,92 @@
+name: Audit original TRAIN48 unit-gate ABSTAIN reasons (CPU-only, no model)
+on:
+  push:
+    branches: [research/typed-question-schema-sql-unit-gate-20261120]
+    paths:
+      - .github/workflows/cpu-train48-unit-gate-abstain-reason-recheck.yml
+permissions:
+  contents: read
+  actions: read
+jobs:
+  immutable_source_reason_reconciliation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Restore frozen unit decisions, no original raw task secret
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44714355170
+          github-token: ${{ github.token }}
+          name: BIRD-ORIGINAL-QWEN-TRAIN48-UNIT-GATE-SOURCE-ONLY-FROZEN
+          path: frozen
+      - name: Restore original pre-gold 48 questions
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44508116418
+          github-token: ${{ github.token }}
+          name: original-Qwen9B-newTRAIN48-k4-frozen-question-source
+          path: source
+      - name: Restore the same originally sealed K4 selected SQL without ref SQL
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44508116418
+          github-token: ${{ github.token }}
+          pattern: original-Qwen9B-k4-counter48-generated-sealed-*
+          merge-multiple: true
+          path: generated
+      - name: Restore old Boolean selected SQL correctness only after frozen source file
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44508116418
+          github-token: ${{ github.token }}
+          pattern: original-Qwen9B-k4-counter48-physical-score-*
+          merge-multiple: true
+          path: scored
+      - name: Verify strict 48 original statement SHA and per-reason × preexisting-correctness
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find generated -maxdepth 1 -name 'generated-*.json' | wc -l)" -eq 8
+          test "$(find scored -maxdepth 1 -name 'scored-*.json' | wc -l)" -eq 8
+          python -m scripts.audit_train48_unit_gate_abstain_causes \
+            --frozen frozen/sealed-train48-source-only-unit-decisions.json \
+            --source source/source48.jsonl \
+            --freeze source/freeze.json \
+            --generated-dir generated \
+            --scored-dir scored \
+            --out train48-abstain-exact-reasons-and-outcome.json
+          python - <<'PY'
+          import json
+          x=json.load(open('train48-abstain-exact-reasons-and-outcome.json'))
+          assert x['three_state_histogram']=={'ABSTAIN':45,'CONSISTENT':3}
+          assert x['first_abstain_reason_counts']=={
+            'ANSWER_UNIT_NOT_GROUNDED':4,
+            'COMPLEX_OR_UNSAFE_SQL':7,
+            'NOT_SINGLE_SIMPLE_COUNT':32,
+            'TARGET_TABLE_HAS_NO_SIMPLE_PK':1,
+            'TARGET_UNIT_NOT_SINGLE_SOURCE_TABLE':1,
+          }
+          assert x['NOT_SINGLE_SIMPLE_COUNT_subtypes_exact_regex']=={
+            'question_lacks_simple_count_lexical_marker_AND_SQL_has_no_COUNT':27,
+            'selected_SQL_contains_COUNT_but_not_supported_simple_structure':1,
+            'selected_SQL_has_no_COUNT_operator':31,
+          }
+          assert x['reason_by_original_selected_SQL_SET_EX']['NOT_SINGLE_SIMPLE_COUNT']=={
+            'correct':15,'wrong':15,'censored':2}
+          assert x['no_new_Qwen_or_training'] and x['no_DEV500_or_HOLDOUT300']
+          print('ORIGINAL_QWEN_SOURCE_ABSTAIN_BREAKDOWN_CHECKED_AND_NO_NEW_INFERENCE')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ORIGINAL-QWEN-TRAIN48-UNIT-GATE-EXACT-ABSTAIN-CAUSES-AND-K4-OUTCOMES
+          path: train48-abstain-exact-reasons-and-outcome.json
+          if-no-files-found: error
+          retention-days: 60
