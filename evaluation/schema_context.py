@@ -42,7 +42,7 @@ _STOPWORDS = {
 
 
 def _tokens(value: str) -> set[str]:
-    words = re.findall(r"[a-z0-9]+", re.sub(r"([a-z])([A-Z])", r"\1 \2", value.casefold()))
+    words = re.findall(r"[a-z0-9]+", re.sub(r"([a-z])([A-Z])", r"\1 \2", value).casefold())
     return {word.rstrip("s") for word in words if word not in _STOPWORDS and len(word.rstrip("s")) > 1}
 
 
