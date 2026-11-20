@@ -177,16 +177,18 @@ def source_phase(source_first,db_root):
                  "question_sha256":digest(question),"original_sql_sha256":digest(original),
                  "cohort":"K8_SELECTED_CORRECT_FIRST_CANDIDATE_UNVERIFIED",
                  "k8_selector_known_correct":True,"first_candidate_known_correct":False,
+                 "original_sql":original,
+                 "source_only_original_result":run_query(physical,original),
                  "detected":hypothesis is not None}
         if hypothesis is not None:
-            orig_result=run_query(physical,original)
             changed_result=run_query(physical,hypothesis["proposed_sql"])
             control.update({
-                "original_sql":original,"proposed_sql":hypothesis["proposed_sql"],
-                "original_result":orig_result,"candidate_result":changed_result,
+                "proposed_sql":hypothesis["proposed_sql"],
+                "source_only_candidate_result":changed_result,
                 "physical_result_changed":(
-                    orig_result["status"]=="ok" and changed_result["status"]=="ok"
-                    and orig_result["set_sha256"]!=changed_result["set_sha256"])})
+                    control["source_only_original_result"]["status"]=="ok"
+                    and changed_result["status"]=="ok"
+                    and control["source_only_original_result"]["set_sha256"]!=changed_result["set_sha256"])})
         controls.append(control)
     return {
         "protocol":PROTOCOL,"phase":"SOURCE_ONLY","population":len(rows),
@@ -234,18 +236,28 @@ def score_phase(frozen,official_dev,db_root):
     controls=[]
     for row in x["k8_selector_correct_controls"]:
         source=gold[row["case_id"]]
+        assert source["db_id"]==row["db"]
+        assert digest(source["question"])==row["question_sha256"]
         physical=locate(db_root,row["db"])
-        original=run_query(physical,source["SQL"])
-        ctrl_sql=next(c["first_original_sql"] for c in
-                      [z for z in json.loads(frozen.read_text())["k8_selector_correct_controls"]]
-                      if c["case_id"]==row["case_id"]) if False else None
-        # Source stage only retained SQL for controls when a rule fired;
-        # source never saw reference and controls without trigger cannot
-        # be independently certified as FIRST-original-candidate right.
-        controls.append({"case_id":row["case_id"],
+        gold_run=run_query(physical,source["SQL"])
+        original=run_query(physical,row["original_sql"])
+        assert original==row["source_only_original_result"]
+        first_correct=(gold_run["set_sha256"]==original["set_sha256"]
+                       if gold_run["status"]=="ok" and original["status"]=="ok"
+                       else None)
+        changed_correct=None
+        if row["detected"]:
+            candidate=run_query(physical,row["proposed_sql"])
+            assert candidate==row["source_only_candidate_result"]
+            changed_correct=(gold_run["set_sha256"]==candidate["set_sha256"]
+                             if gold_run["status"]=="ok" and candidate["status"]=="ok"
+                             else None)
+        controls.append({"case_id":row["case_id"],"db":row["db"],
                          "k8_selector_correct":True,
-                         "first_candidate_correct":None,
-                         "unsupported_claim":"cannot certify first candidate from selected K8 success"})
+                         "first_candidate_correct":first_correct,
+                         "detected":row["detected"],
+                         "candidate_correct":changed_correct,
+                         "regression":first_correct is True and changed_correct is False})
     valid=[v for v in records if v["original_match"] is not None
            and v["candidate_match"] is not None]
     return {
@@ -257,12 +269,14 @@ def score_phase(frozen,official_dev,db_root):
         "rescues":sum(v["rescue"] for v in valid),
         "regressions":sum(v["regression"] for v in valid),
         "case_results":records,"control_stratum":controls,
-        "actual_first_correct_control_denominator":0,
+        "actual_first_correct_control_denominator":sum(r["first_candidate_correct"] is True for r in controls),
+        "first_correct_controls_treated":sum(r["first_candidate_correct"] is True and r["detected"] for r in controls),
+        "first_correct_control_regressions":sum(r["regression"] for r in controls),
         "no_new_Qwen_calls":True,"no_training":True,
         "no_Guarded_end_to_end_BIRD_EX":True,
         "HOLDOUT300_untouched":True,
         "promotion_forbidden":True,
-        "failure_boundary":"No independent first-SQL-correct negative controls; outcome-conditioned public DEV81.",
+        "failure_boundary":"Three hand-chosen K8-selector-right controls are insufficient to estimate false-positive rate, even if first SQL matches gold.",
     }
 
 
