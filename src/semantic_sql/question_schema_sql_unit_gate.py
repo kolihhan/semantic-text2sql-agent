@@ -49,8 +49,12 @@ def _schema(conn:sqlite3.Connection)->dict:
         fk=conn.execute('PRAGMA foreign_key_list("'+ident+'")').fetchall()
         pk=sorted([(r[5],r[1]) for r in cols if r[5]])
         data[t.lower()]={"name":t,"pk":pk,
-                          "fk":[{"from":r[3].lower(),"to_table":r[2].lower(),
-                                 "to_col":r[4].lower()} for r in fk]}
+                          "fk":[{"from":str(r[3] or "").lower(),
+                                 "to_table":str(r[2] or "").lower(),
+                                 # SQLite allows REFERENCES parent without
+                                 # an explicit target column. Do not guess
+                                 # which target PK the constraint denotes.
+                                 "to_col":str(r[4] or "").lower()} for r in fk]}
     return data
 
 
