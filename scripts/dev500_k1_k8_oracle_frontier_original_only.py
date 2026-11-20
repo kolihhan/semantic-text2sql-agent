@@ -34,7 +34,11 @@ def run(score_file,workers_dir):
     for path in paths:
         d=read(path)
         assert d["protocol"]==WORKER_PROTO
-        assert d["model_digest"]==MODEL_SHA and d["source_sha256"]==SRC_SHA
+        if d.get("model_digest")!=MODEL_SHA or d.get("source_sha256")!=SRC_SHA:
+            raise ValueError(
+                "Pinned physical worker mismatch "+path.name
+                +": model="+str(d.get("model_digest")==MODEL_SHA)
+                +", source="+str(d.get("source_sha256")==SRC_SHA))
         assert d["model_calls"]==0 and d["status"]=="SOURCE_LOCKED_K_PREFIX_WORKER_COMPLETE"
         wi=int(d["worker"])
         assert wi in range(8) and wi not in shard_ids
