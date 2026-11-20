@@ -5,11 +5,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypedDict
 
-from .contracts import AgentResult, SQLCandidate, StageRecord, VerificationResult
+from .contracts import AgentResult, SQLCandidate, StageRecord, VerificationIssue, VerificationResult
 from .direct import _strip_fence, generate_direct_sql
 from .execution import SQLExecutionError, execute_readonly
 from .providers import ModelProvider
 from .verifier import verify_sql_preflight
+from .semantic_contracts import detect_semantic_concerns
 
 
 GUARDED_TREATMENT_ID = "langgraph_preflight_plus_internal_cot_repair_v1"
@@ -32,6 +33,7 @@ class GuardedContext:
     max_repairs: int = 2
     max_rows: int = 100
     semantic_revision: bool = False
+    semantic_contract_checks: bool = False
 
 
 class GuardedState(TypedDict, total=False):
@@ -62,8 +64,23 @@ def _generate(state: GuardedState, runtime) -> dict[str, Any]:
 def _verify(state: GuardedState, runtime) -> dict[str, Any]:
     candidate = state["candidate"]
     verification = verify_sql_preflight(runtime.context.database, candidate.sql)
+    advisories = ()
+    # Explicit experiment switch only. Never read gold/reference SQL or rows.
+    # Keep the default (false) graph/verifier behavior exactly unchanged.
+    if verification.ok and runtime.context.semantic_contract_checks:
+        concerns = detect_semantic_concerns(state["question"], candidate.sql)
+        blocking = tuple(
+            VerificationIssue(code="semantic_" + concern.code, message=concern.message)
+            for concern in concerns if concern.blocking
+        )
+        advisories = tuple(concern.code for concern in concerns if not concern.blocking)
+        if blocking:
+            verification = VerificationResult(ok=False, issues=blocking)
     detail = "PASS" if verification.ok else "; ".join(issue.code for issue in verification.issues)
-    return {"verification": verification, "stages": _append_stage(state, "verify", detail)}
+    stages = _append_stage(state, "verify", detail)
+    if advisories:
+        stages = (*stages, StageRecord("semantic_advisory", "; ".join(advisories)))
+    return {"verification": verification, "stages": stages}
 
 
 def _repair(state: GuardedState, runtime) -> dict[str, Any]:
@@ -195,6 +212,7 @@ def run_guarded(
     schema_context: str, evidence: str | None = None,
     initial_candidate: SQLCandidate | None = None, max_repairs: int = 2,
     max_rows: int = 100, semantic_revision: bool = False,
+    semantic_contract_checks: bool = False,
 ) -> AgentResult:
     database = Path(database)
     output = _build_guarded_graph(semantic_revision=semantic_revision).invoke(
@@ -213,6 +231,7 @@ def run_guarded(
             max_repairs=max_repairs,
             max_rows=max_rows,
             semantic_revision=semantic_revision,
+            semantic_contract_checks=semantic_contract_checks,
         ),
     )
     result = output["result"] if isinstance(output, dict) else output.result

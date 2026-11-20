@@ -1,0 +1,105 @@
+name: Original Qwen9B semantic contract verifier CPU replay DEV100 plus TRAIN48
+on:
+  push:
+    branches: [research/semantic-contract-verifier-cpu-20261119]
+    paths: [.github/workflows/cpu-semantic-contract-original-qwen9b.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  source-locked-retrospective:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - name: Entire original runtime regression suite and opt-in semantic verifier
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q
+          python -m compileall -q src/semantic_sql/semantic_contracts.py evaluation/audit_semantic_contract_original_sql.py
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 37307108955
+          github-token: ${{ github.token }}
+          name: qwen9b-xiyan-style-shard-0
+          path: raw100
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 37307108955
+          github-token: ${{ github.token }}
+          name: qwen9b-xiyan-style-shard-1
+          path: raw100
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 37307108955
+          github-token: ${{ github.token }}
+          name: qwen9b-xiyan-style-shard-2
+          path: raw100
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 37307108955
+          github-token: ${{ github.token }}
+          name: qwen9b-xiyan-style-shard-3
+          path: raw100
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44508116418
+          github-token: ${{ github.token }}
+          name: original-Qwen9B-newTRAIN48-k4-frozen-question-source
+          path: frozen48
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44508116418
+          github-token: ${{ github.token }}
+          pattern: original-Qwen9B-k4-counter48-generated-sealed-*
+          merge-multiple: true
+          path: generated48
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44508116418
+          github-token: ${{ github.token }}
+          pattern: original-Qwen9B-k4-counter48-physical-score-*
+          merge-multiple: true
+          path: scored48
+      - name: Pure CPU semantic-contract violation detection on ORIGINAL Qwen9B outputs
+        run: |
+          set -euo pipefail
+          test "$(find raw100 -maxdepth 1 -name 'qwen9b-shard-*.json' | wc -l)" -eq 4
+          test "$(find generated48 -maxdepth 1 -name 'generated-*.json' | wc -l)" -eq 8
+          test "$(find scored48 -maxdepth 1 -name 'scored-*.json' | wc -l)" -eq 8
+          python -m evaluation.audit_semantic_contract_original_sql \
+            --raw100 raw100 --source48 frozen48/source48.jsonl \
+            --generated48 generated48 --scored48 scored48 \
+            --out final-semantic-contract-retrospective.json
+          python - <<'PY'
+          import json
+          v=json.load(open('final-semantic-contract-retrospective.json'))
+          a=v['historical_dev100'];b=v['previously_exposed_train48']
+          assert a['n']==100 and a['counts']['correct']==39
+          assert a['original_workflow_not_end_to_end_valid']
+          assert b['arms']['control']['counts']['scorable']==46
+          assert b['arms']['control']['counts']['correct']==26
+          assert b['arms']['treatment']['counts']['correct']==25
+          assert v['new_model_calls']==0 and v['promotion_allowed'] is False
+          assert v['DEV500_or_HOLDOUT300_not_opened']
+          print('VERIFIED_GOLD_FREE_DETECTOR_RETROSPECTIVE_ONLY',
+                'DEV100',a['counts'],'TRAIN48',b['arms']['control']['counts'],
+                'SCREEN',v['positive_screen_only'],flush=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: final-original-qwen9b-semantic-contracts-cpu-DEV100-TRAIN48
+          path: final-semantic-contract-retrospective.json
+          if-no-files-found: error
+          retention-days: 30
