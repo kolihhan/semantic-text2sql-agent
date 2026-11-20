@@ -140,7 +140,7 @@ def original_k1_right_unit_controls(labels_path:Path,cachedir:Path,dbroot:Path):
         assert labels[cid]["reference_scorable"] is True
         original_db,sql=cache[cid]
         assert original_db==db and sha256(sql.encode()).hexdigest()==hashvalue
-        new_sql,replacements=re.subn(r"(?i)\\bCOUNT\\s*\\(\\s*\\*\\s*\\)",
+        new_sql,replacements=re.subn(r"(?i)\bCOUNT\s*\(\s*\*\s*\)",
              "COUNT(DISTINCT "+key+")",sql,count=1)
         assert replacements==1 and new_sql!=sql
         with sqlite3.connect(get_db(dbroot,db).as_uri()+"?mode=ro",uri=True) as conn:
