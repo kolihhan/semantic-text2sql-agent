@@ -1,0 +1,228 @@
+name: BIRD TRAIN Typed ERP source-first frozen candidates (CPU ONLY)
+on:
+  push:
+    branches: [research/typed-erp-source-first-20261120]
+  pull_request:
+    branches: [research/typed-question-schema-sql-unit-gate-20261120]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  p0_p1_source_only_freeze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Synthetic preregistered tests before any actual data
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_typed_erp_source_first.py
+          python -m compileall -q scripts/typed_erp_source_first.py scripts/typed_erp_historical_score.py
+      - name: SHA-lock original BIRD TRAIN publisher file (do not index SQL)
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 'https://huggingface.co/datasets/Emulated-Inc/text-to-sql-with-evidence-training-pool/resolve/cd2c4ea321075aa53ce7dfe52deaaffa505d046a/raw/bird/train.json' -o original-bird-train.json
+          echo 'cd5884489dffd7c76d73509b396bd919fbe8b486efbc4ba2f48f89460de7d69f  original-bird-train.json' | sha256sum -c -
+      - name: Historical question-source Original 242 and validation64
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43888747753
+          github-token: ${{ github.token }}
+          name: qwen9b-birdtrain-db-disjoint-original-sql-sft-candidates
+          path: prior-original
+      - name: Historical question-source FK32
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43904889296
+          github-token: ${{ github.token }}
+          name: qwen9b-fk-correction-prospective-source32-frozen
+          path: prior-fk
+      - name: Historical question-source value16
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43920461939
+          github-token: ${{ github.token }}
+          name: qwen9b-newdb-physical-value16-source-freeze
+          path: prior-value
+      - name: Historical question-source value16 replica
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43926576493
+          github-token: ${{ github.token }}
+          name: qwen9b-second-newdb-physical-value16-source-freeze
+          path: prior-value-replica
+      - name: Historical question-source role8
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44012242171
+          github-token: ${{ github.token }}
+          name: qwen9b-third-newdb-role8-source-freeze
+          path: prior-role
+      - name: Historical question-source preview8
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44040520571
+          github-token: ${{ github.token }}
+          name: qwen9b-semantic-preview8-36db-excluded-frozen
+          path: prior-preview
+      - name: Historical question-source column8
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44042440721
+          github-token: ${{ github.token }}
+          name: qwen9b-column-type8-40db-excluded-frozen
+          path: prior-column
+      - name: Historical question-source grain16
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44053157511
+          github-token: ${{ github.token }}
+          name: qwen9b-count-join-grain16-frozen-only
+          path: prior-grain
+      - name: Historical question-source fanout16
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44289030583
+          github-token: ${{ github.token }}
+          name: qwen9b-fanout-k2-source16-before-model
+          path: prior-fanout
+      - name: Historical question-source Original TRAIN48 source only
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44508116418
+          github-token: ${{ github.token }}
+          name: original-Qwen9B-newTRAIN48-k4-frozen-question-source
+          path: old48-source
+      - name: Freeze source and typed schema labels before downloading model SQL or outcome
+        run: |
+          set -euo pipefail
+          python -m scripts.typed_erp_source_first \
+            --train original-bird-train.json \
+            --prior prior-original/train.jsonl \
+                    prior-original/validation.jsonl \
+                    prior-fk/prospective32.jsonl \
+                    prior-value/physical-value16.jsonl \
+                    prior-value-replica/physical-value16.jsonl \
+                    prior-role/role-scoped8.jsonl \
+                    prior-preview/semantic-preview8.jsonl \
+                    prior-column/column-type8.jsonl \
+                    prior-grain/grain16.jsonl \
+                    prior-fanout/source16.jsonl \
+            --old-source old48-source/source48.jsonl \
+            --old-freeze old48-source/freeze.json \
+            --db-cache "$RUNNER_TEMP/typed-erp-source-db" \
+            --git-sha "$GITHUB_SHA" \
+            --out typed-erp-source-only.json
+          python - <<'PY'
+          import json
+          a=json.load(open('typed-erp-source-only.json'))
+          assert a['source_db_count']==12 and len(a['source_candidates'])==240
+          assert len(a['original_Qwen48_source_only_controls'])==48
+          assert a['sealed_untouched_db_ids']==['simpson_episodes','works_cycles']
+          assert a['candidate_labels_not_ground_truth']
+          assert all('SQL' not in r and 'gold' not in r for r in a['source_candidates'])
+          print('FROZEN_PRE_SQL',a['git_commit_sha'],a['classifier_code_sha256'])
+          PY
+      - name: Upload immutable P0/P1 source task eligibility
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: typed-erp-source-eligibility-frozen
+          path: typed-erp-source-only.json
+          retention-days: 60
+          if-no-files-found: error
+
+  p2_postfreeze_sql_probe:
+    needs: p0_p1_source_only_freeze
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Install
+        run: python -m pip install -e '.[dev]'
+      - name: Source frozen first
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: typed-erp-source-eligibility-frozen
+          path: frozen
+      - name: Original Qwen SQL shards AFTER source freeze
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44508116418
+          github-token: ${{ github.token }}
+          pattern: original-Qwen9B-k4-counter48-generated-sealed-*
+          merge-multiple: true
+          path: old-generated
+      - name: Seal SQL decisions before downloading any outcome
+        run: |
+          set -euo pipefail
+          test "$(find old-generated -maxdepth 1 -name 'generated-*.json' | wc -l)" -eq 8
+          python -m scripts.typed_erp_historical_score probe \
+            --frozen frozen/typed-erp-source-only.json \
+            --generated-dir old-generated \
+            --out typed-erp-original-sql-probe-before-score.json
+      - name: Upload sealed pre-outcome candidate SQL checks
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: typed-erp-original-qwen-sql-probe-prescore
+          path: typed-erp-original-sql-probe-before-score.json
+          retention-days: 60
+          if-no-files-found: error
+
+  p2_p3_historical_mixed_control_score:
+    needs: p2_postfreeze_sql_probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Install
+        run: python -m pip install -e '.[dev]'
+      - name: Read sealed original SQL probe, no source changes allowed
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: typed-erp-original-qwen-sql-probe-prescore
+          path: probe
+      - name: Original TRAIN48 physical SET EX outcomes AFTER SQL probe seal
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44508116418
+          github-token: ${{ github.token }}
+          pattern: original-Qwen9B-k4-counter48-physical-score-*
+          merge-multiple: true
+          path: old-scored
+      - name: Compare all correct wrong censored controls without guessing semantic causes
+        run: |
+          set -euo pipefail
+          test "$(find old-scored -maxdepth 1 -name 'scored-*.json' | wc -l)" -eq 8
+          python -m scripts.typed_erp_historical_score score \
+            --probe probe/typed-erp-original-sql-probe-before-score.json \
+            --scored-dir old-scored \
+            --out typed-erp-train48-mixed-controls-final-audit.json
+      - name: Upload historical mixed-control audit
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: typed-erp-train48-historical-controls-audit-no-promotion
+          path: typed-erp-train48-mixed-controls-final-audit.json
+          retention-days: 60
+          if-no-files-found: error
