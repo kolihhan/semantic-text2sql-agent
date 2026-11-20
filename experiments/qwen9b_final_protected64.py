@@ -128,7 +128,7 @@ def freeze(trainfile: Path, ledgerfile: Path, _oldtrain: Path,
     out.mkdir(parents=True,exist_ok=False)
     path=out/"questions.jsonl"
     path.write_text("".join(
-        json.dumps(r,ensure_ascii=False,separators=(",",":"))+"\\n" for r in rows
+        json.dumps(r,ensure_ascii=False,separators=(",",":"))+"\n" for r in rows
     ),encoding="utf-8")
     report={
         "status":"FROZEN_SOURCE_NO_GOLD_BEFORE_REAL_QWEN_GENERATION",
@@ -146,7 +146,7 @@ def freeze(trainfile: Path, ledgerfile: Path, _oldtrain: Path,
         "experimental_compute":"1 original Qwen direct SQL versus Qwen relation plan then Qwen SQL; 2x to 3x total calls per task",
         "gate":GATE
     }
-    (out/"freeze.json").write_text(json.dumps(report,indent=2,sort_keys=True)+"\\n")
+    (out/"freeze.json").write_text(json.dumps(report,indent=2,sort_keys=True)+"\n")
     return report
 
 def checked_rows(path:Path,meta:Path)->tuple[list[dict],dict]:
