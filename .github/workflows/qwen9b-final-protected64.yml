@@ -1,0 +1,227 @@
+name: FINAL fixed Qwen9B protected two-DB 64-question semantic plan strict EX
+on:
+  pull_request:
+    types: [opened]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  freeze-question-only-cohort:
+    if: github.head_ref == 'research/final-qwen9b-semantic-plan-protected64-20261121'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_qwen9b_final_protected64.py
+          python -m compileall -q experiments/qwen9b_final_protected64.py
+      - name: Publisher BIRD TRAIN ONLY, SHA frozen, never DEV / HOLDOUT
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/Emulated-Inc/text-to-sql-with-evidence-training-pool/resolve/cd2c4ea321075aa53ce7dfe52deaaffa505d046a/raw/bird/train.json' \
+            -o train.json
+          echo 'cd5884489dffd7c76d73509b396bd919fbe8b486efbc4ba2f48f89460de7d69f  train.json' | sha256sum -c -
+      - name: Original 49 exposed DB list and two previously protected final-evaluation physical DBs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44296448327
+          github-token: ${{ github.token }}
+          name: original-BIRD-TRAIN49-exposed-2-residual-physical-DB-sealed-manifest
+          path: ledger
+      - name: Original 242 and 64 historically scored source question IDs (exclude)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43888747753
+          github-token: ${{ github.token }}
+          name: qwen9b-birdtrain-db-disjoint-original-sql-sft-candidates
+          path: old-source
+      - name: Prior FK fanout16 source question IDs (exclude)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44289030583
+          github-token: ${{ github.token }}
+          name: qwen9b-fanout-k2-source16-before-model
+          path: old-fanout
+      - name: Use untouched presealed 64 TRAIN questions across exactly two held-back original physical DBs
+        run: |
+          set -euo pipefail
+          python -m experiments.qwen9b_final_protected64 freeze \
+            --train train.json \
+            --ledger ledger/sealed-residual-db-holdout.json \
+            --prior-train old-source/train.jsonl \
+            --prior-val old-source/validation.jsonl \
+            --prior-fanout old-fanout/source16.jsonl \
+            --out frozen
+          python - <<'PY'
+          import json
+          m=json.load(open('frozen/freeze.json'))
+          assert m['source_n']==64 and m['db_n']==2 and m['per_db']==32
+          assert not m['HOLDOUT300_used'] and not m['DEV500_used']
+          assert m['protected_2_ood_train_DBs_used'] is True
+          assert not m['publisher_SQL_in_frozen_questions']
+          print('SOURCE_ONLY_PROSPECTIVE_QWEN64_LOCK',json.dumps(m,sort_keys=True),flush=True)
+          PY
+      - name: Upload immutable question-only source and preregistered gate BEFORE Qwen calls
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: Qwen9B-grounded-plan64-BIRD-TRAIN-frozen-questions-BEFORE-model
+          path: frozen/
+          if-no-files-found: error
+          retention-days: 30
+
+  same-Qwen9B-generate-and-score:
+    needs: freeze-question-only-cohort
+    if: github.head_ref == 'research/final-qwen9b-semantic-plan-protected64-20261121'
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        shard: [0,1]
+    env:
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_CONTEXT_LENGTH: '8192'
+      OLLAMA_NUM_PARALLEL: '1'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e .
+      - name: Only frozen questions, NO publisher gold reference
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: Qwen9B-grounded-plan64-BIRD-TRAIN-frozen-questions-BEFORE-model
+          path: frozen
+      - name: Fetch exact original physical SQLite, SHA and size from pinned manifest
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import os
+          from scripts.prepare_birdtrain_qwen9b_sft_source import fetch_manifest,fetch_database
+          from experiments.qwen9b_final_protected64 import checked_rows,MAX_DB_BYTES
+          r,m=checked_rows(Path('frozen/questions.jsonl'),Path('frozen/freeze.json'))
+          d=m['source_dbs'][int(os.environ['SHARD'])]
+          meta=fetch_manifest()[d]
+          assert meta['size']<=MAX_DB_BYTES
+          p=fetch_database(d,meta,Path('physical-original'))
+          print('QWEN64_REAL_ORIGINAL_PHYSICAL_SQLITE',d,p.stat().st_size,flush=True)
+          PY
+      - name: Pull ORIGINAL Qwen3.5-9B exact digest on CPU, no training/teacher
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          for i in {1..60}; do curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break; sleep 2; done
+          curl -fsS http://127.0.0.1:11434/api/tags >/dev/null
+          ollama pull qwen3.5:9b-q4_K_M
+      - name: Real Qwen baseline SQL vs schema-validated relation plan then new SQL
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python -m experiments.qwen9b_final_protected64 infer \
+            --source frozen/questions.jsonl \
+            --meta frozen/freeze.json \
+            --shard "$SHARD" \
+            --dbroot physical-original \
+            --out "generated-$SHARD.json"
+          python - <<'PY'
+          import glob,json
+          x=json.load(open(glob.glob('generated-*.json')[0]))
+          assert x['n']==32 and x['model_digest']=='56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90'
+          assert x['gold_sql_used_to_generate'] is False
+          assert x['total_model_calls']>=64 and x['total_model_calls']<=96
+          print('REAL_QWEN64_GENERATED_SEALED',x['db_id'],x['total_model_calls'],flush=True)
+          PY
+      - name: Upload actual immutable model generations BEFORE reading gold SQL
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: real-Qwen9B-PROTECTED64-grounded-plan-generated-${{ matrix.shard }}
+          path: generated-*.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Original publisher TRAIN reference downloaded ONLY AFTER SQL generation frozen
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/Emulated-Inc/text-to-sql-with-evidence-training-pool/resolve/cd2c4ea321075aa53ce7dfe52deaaffa505d046a/raw/bird/train.json' \
+            -o train.json
+          echo 'cd5884489dffd7c76d73509b396bd919fbe8b486efbc4ba2f48f89460de7d69f  train.json' | sha256sum -c -
+      - name: Score strict SET and BAG against publisher SQL after independent generation
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python -m experiments.qwen9b_final_protected64 score \
+            --source frozen/questions.jsonl \
+            --meta frozen/freeze.json \
+            --generated "generated-$SHARD.json" \
+            --train train.json \
+            --dbroot physical-original \
+            --shard "$SHARD" \
+            --out "scored-$SHARD.json"
+      - name: Preserve all source-paired Qwen strict EX worker output
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: real-Qwen9B-PROTECTED64-grounded-plan-physical-EX-worker-${{ matrix.shard }}
+          path: scored-*.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  strict-96-source-aggregate:
+    needs: same-Qwen9B-generate-and-score
+    if: github.head_ref == 'research/final-qwen9b-semantic-plan-protected64-20261121'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: Qwen9B-grounded-plan64-BIRD-TRAIN-frozen-questions-BEFORE-model
+          path: frozen
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: real-Qwen9B-PROTECTED64-grounded-plan-physical-EX-worker-*
+          merge-multiple: true
+          path: scored
+      - name: Aggregate 64 source-frozen same-Qwen paired strict EX observations from two DB clusters
+        run: |
+          set -euo pipefail
+          python -m experiments.qwen9b_final_protected64 aggregate \
+            --meta frozen/freeze.json \
+            --inputs scored/scored-0.json scored/scored-1.json \
+            --out qwen9b-physical-plan64-paired-final.json
+          python - <<'PY'
+          import json
+          r=json.load(open('qwen9b-physical-plan64-paired-final.json'))
+          assert r['n']==64 and r['physical_DB_n']==2
+          assert r['model_digest']=='56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90'
+          assert not r['DEV500_used'] and not r['HOLDOUT300_used']
+          print('REAL_QWEN9B_GROUNDED_RELATION_PLAN96_STRICT_EX_RESULT',json.dumps(r,sort_keys=True),flush=True)
+          PY
+      - name: Preserve final 96-question physical EX evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: real-Qwen9B-PROTECTED64-grounded-relational-plan-strict-EX-final
+          path: qwen9b-physical-plan64-paired-final.json
+          if-no-files-found: warn
+          retention-days: 30
