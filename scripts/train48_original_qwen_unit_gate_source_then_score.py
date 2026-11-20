@@ -19,7 +19,7 @@ import sqlite3
 from urllib.request import urlopen
 from urllib.parse import quote
 
-from semantic_sql.question_schema_sql_unit_gate import decide,PROTOCOL as GATE_PROTO
+GATE_PROTO="BIRD-QUESTION-SCHEMA-SQL-UNIT-GATE-CAUTIOUS-V1"
 
 SOURCE_PROTO="BIRD-TRAIN48-ORIGINAL-QWEN-K4-TYPED-UNIT-PRE-GOLD-RECHECK-V1"
 SCORE_PROTO="BIRD-TRAIN48-ORIGINAL-QWEN-K4-TYPED-UNIT-REUSED-LABEL-SCORE-V1"
@@ -103,6 +103,7 @@ def _fetch_db(db:str,record:dict,root:Path):
 
 
 def source_stage(source:Path,freeze:Path,generated_dir:Path,db_cache:Path)->dict:
+    from semantic_sql.question_schema_sql_unit_gate import decide
     rows,manifest=source_rows(source,freeze)
     original_sql=_original_shards(generated_dir,rows,manifest["source_sha256"])
     dbmap=_manifest()
