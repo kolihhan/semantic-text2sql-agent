@@ -26,6 +26,7 @@ def get_db(root:Path,db:str)->Path:
 
 PROTOCOL="BIRD-DEV500-FOUR-DB-TYPED-ENTITY-UNIT-PHYSICAL-FALSIFICATION-V1"
 MODEL_SHA="56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90"
+SOURCE_SHA="ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb"
 
 # Output counts only. The probe is grounded in source-first question and
 # actual schema keys, never in publisher/gold SQL.
@@ -122,7 +123,8 @@ def original_k1_right_unit_controls(labels_path:Path,cachedir:Path,dbroot:Path):
     cache={}
     for file in cachedir.glob("k8-dev500-candidate-cache-*.json"):
         data=json.loads(file.read_text())
-        assert data["model_digest"]==MODEL_SHA and data["no_gold_sql_in_cache"] is True
+        assert data["model_digest"]==MODEL_SHA and data["source_sha256"]==SOURCE_SHA
+        assert data["no_gold_sql_in_cache"] is True and data["k"]==8
         for item in data["cases"]:
             cid=str(item["case_id"])
             if cid in K1_RIGHT_CONTROLS:
