@@ -39,7 +39,7 @@ RELATION = re.compile(
 TARGET = re.compile(r"\b(?:how many|number of|count of|total number of)\s+"
                     r"(?:(?:different|distinct|unique|individual)\s+)?"
                     r"([a-z][a-z0-9 _-]{0,64}?)(?:\s+(?:are|were|have|had|did|do|does|"
-                    r"with|in|from|for|among|per|that|who|whose|which|by|can)\b|[?.,]|$)", re.I)
+                    r"with|in|from|for|among|per|that|who|whose|which|by|can|placed|made|purchased|bought|attended|submitted|ordered|used|visited)\b|[?.,]|$)", re.I)
 WORDS = re.compile(r"[a-z0-9]+")
 STOP = frozenset(("the","a","an","of","on","and","or","is","are","to","in","by",
                   "from","with","how","many","number","count","total","for",
