@@ -175,10 +175,13 @@ def decide(question:str,sql:str,conn:sqlite3.Connection)->dict:
     # High-specificity conflict requires a documented child FK to answer
     # target, AND a *real* difference on the same WHERE/ON joined population.
     if len(others)==1 and _one_to_many_child_of(target,others[0],schema):
+        # The sanitized SQL is ONLY for structural parsing. Never execute
+        # it: changing literal strings would silently change WHERE filters.
+        original_sql=sql.strip().rstrip(";")
         alternate=(
-            clean[:match.start(1)]+"DISTINCT "+unit["alias"]+"."+pk
-            +clean[match.end(1):])
-        actual=_bounded_scalar(conn,clean)
+            original_sql[:match.start(1)]+"DISTINCT "+unit["alias"]+"."+pk
+            +original_sql[match.end(1):])
+        actual=_bounded_scalar(conn,original_sql)
         distinct_count=_bounded_scalar(conn,alternate)
         if actual is None or distinct_count is None:
             return out("ABSTAIN","PHYSICAL_SQL_UNSCORABLE")
