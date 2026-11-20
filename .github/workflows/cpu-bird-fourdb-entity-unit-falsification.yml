@@ -1,4 +1,4 @@
-name: BIRD DEV500 four-DB physical entity-unit falsification only (NO QWEN, NO GOLD)
+name: BIRD DEV500 physical entity-unit risks plus K1-right regression controls (NO QWEN)
 on:
   push:
     branches: [research/dev500-entity-denominator-physical-falsification-20261120]
@@ -26,6 +26,23 @@ jobs:
           github-token: ${{ github.token }}
           name: BIRD-DEV500-QWEN9B-ORIGINAL-81-PHYSICAL-SOURCE-FIRST-EVIDENCE
           path: source81
+      - name: Restore immutable original K1 correct-label controls without publisher SQL
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44660486791
+          github-token: ${{ github.token }}
+          name: BIRD-DEV500-ORIGINAL-QWEN-K1-203-RIGHT-297-WRONG-RISK-AUDIT
+          path: original_K1
+      - name: Restore source-verified original Qwen K8 cache shards, no reference SQL
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44093103960
+          github-token: ${{ github.token }}
+          pattern: k8-bird-dev500-prospective-cache-and-offline-score-shard-*
+          merge-multiple: true
+          path: original_cache
       - name: Fetch and SHA-lock original real BIRD physical SQLite databases, no reference SQL access
         shell: bash
         run: |
@@ -48,12 +65,16 @@ jobs:
           python -m scripts.bird_dev500_fourdb_entity_unit_physical_falsification \
             --source source81/original-81-source-first-physical-schema.json \
             --db-root "$BIRD_DB_ROOT" \
+            --k1-labels original_K1/frozen-dev500-k1-risk-vs-correct-controls.json \
+            --original-cache original_cache \
             --out fourdb-source-only-physical-unit-differences.json
           python - <<'PY'
           import json
           d=json.load(open('fourdb-source-only-physical-unit-differences.json'))
           assert d['n_tested']==4 and d['n_physical_databases']==4
           assert len(d['negative_invariant_controls'])==3
+          assert d['n_original_K1_right_controls']==4
+          print('K1_RIGHT_SOURCE_CONTROLS_CHANGED',d['original_K1_right_alternative_unit_result_changes'])
           assert d['new_model_calls']==0 and d['gold_sql_not_opened'] and d['holdout300_untouched']
           assert d['no_new_bird_ex'] and d['does_not_demonstrate_a_general_SQL_repair_rule']
           print('PHYSICAL_UNIT_FALSIFICATION',d['physical_unit_pair_diff_cases'],
