@@ -1,4 +1,4 @@
-name: Original Qwen TRAIN48 typed unit gate src-package fix (CPU ONLY, no new Qwen)
+name: Original Qwen TRAIN48 typed unit gate literal-safe physical check (CPU ONLY)
 on:
   push:
     branches: [research/typed-question-schema-sql-unit-gate-20261120]
