@@ -1,0 +1,335 @@
+{
+  "protocol": "BIRD-DEV500-QWEN9B-K1-FROZEN44-ASSISTANT-SOURCEFIRST-HYPOTHESES-V1",
+  "source_run": "https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/44660486791",
+  "source_artifact": 14595795616,
+  "selection": "44 source-only cases, four per original physical DB selected BEFORE scorer outcomes; two risk-positive and two general when available",
+  "annotation_access": "Only question and original first Qwen SQL; no publisher SQL or per-case correctness labels consulted for annotation",
+  "output_source_only_not_ground_truth": true,
+  "known_prior_case_exposures": [
+    "593",
+    "1256",
+    "1091"
+  ],
+  "high_confidence_contradiction_count": 14,
+  "unverified_hypothesis_count": 8,
+  "abstain_count": 22,
+  "n": 44,
+  "records": [
+    {
+      "case_id": "20",
+      "source_only_label": "HIGH_SOURCE_CONTRADICTION",
+      "mechanism": "INVALID_AGGREGATION",
+      "source_reason": "Non-charter count uses COUNT(CASE WHEN ... THEN NULL END), which always contributes zero; source SQL also uses inconsistent alias/identifier quoting.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "31",
+      "source_only_label": "HIGH_SOURCE_CONTRADICTION",
+      "mechanism": "SQL_IDENTIFIER_QUOTING",
+      "source_reason": "Multiple columns containing spaces/parentheses are referenced unquoted, invalid for SQLite.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "48",
+      "source_only_label": "ABSTAIN_NOT_PROVEN",
+      "mechanism": null,
+      "source_reason": "No unambiguous question-versus-first-SQL contradiction established without schema/data or complete semantic task interpretation.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "4",
+      "source_only_label": "ABSTAIN_NOT_PROVEN",
+      "mechanism": null,
+      "source_reason": "No unambiguous question-versus-first-SQL contradiction established without schema/data or complete semantic task interpretation.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "467",
+      "source_only_label": "HYPOTHESIS_NEEDS_PHYSICAL_VALIDATION",
+      "mechanism": "JOIN_MULTIPLICITY",
+      "source_reason": "Count(cards) after joining set_translations might duplicate cards if multiple translation rows share setCode; needs physical multiplicity check.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "496",
+      "source_only_label": "HYPOTHESIS_NEEDS_PHYSICAL_VALIDATION",
+      "mechanism": "IDENTIFIER_SCHEMA_MISMATCH",
+      "source_reason": "SQL uses st.name whereas other public source examples refer to set_translations.translation; physical schema required.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "468",
+      "source_only_label": "ABSTAIN_NOT_PROVEN",
+      "mechanism": null,
+      "source_reason": "No unambiguous question-versus-first-SQL contradiction established without schema/data or complete semantic task interpretation.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "497",
+      "source_only_label": "ABSTAIN_NOT_PROVEN",
+      "mechanism": null,
+      "source_reason": "No unambiguous question-versus-first-SQL contradiction established without schema/data or complete semantic task interpretation.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "709",
+      "source_only_label": "HYPOTHESIS_NEEDS_PHYSICAL_VALIDATION",
+      "mechanism": "COUNT_ENTITY_GRAIN",
+      "source_reason": "Question asks number of posts, but query counts zero-score comment rows; duplicate comments per post can inflate count.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "593",
+      "source_only_label": "HIGH_SOURCE_CONTRADICTION",
+      "mechanism": "BOOLEAN_CONJUNCTION",
+      "source_reason": "Question requires users with Teacher AND Supporter; IN(...) selects either badge and COUNT(*) counts badge records.",
+      "previously_exposed_case": true
+    },
+    {
+      "case_id": "624",
+      "source_only_label": "ABSTAIN_NOT_PROVEN",
+      "mechanism": null,
+      "source_reason": "No unambiguous question-versus-first-SQL contradiction established without schema/data or complete semantic task interpretation.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "649",
+      "source_only_label": "ABSTAIN_NOT_PROVEN",
+      "mechanism": null,
+      "source_reason": "No unambiguous question-versus-first-SQL contradiction established without schema/data or complete semantic task interpretation.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "1508",
+      "source_only_label": "ABSTAIN_NOT_PROVEN",
+      "mechanism": null,
+      "source_reason": "No unambiguous question-versus-first-SQL contradiction established without schema/data or complete semantic task interpretation.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "1503",
+      "source_only_label": "HIGH_SOURCE_CONTRADICTION",
+      "mechanism": "VALUE_GROUNDING",
+      "source_reason": "Question says euro transactions but SQL filters on Price < 0, not a currency attribute.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "1518",
+      "source_only_label": "HYPOTHESIS_NEEDS_PHYSICAL_VALIDATION",
+      "mechanism": "TABLE_IDENTIFIER",
+      "source_reason": "Subquery FROM T1 may be invalid or mistaken table alias; check physical schema before declaring.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "1529",
+      "source_only_label": "ABSTAIN_NOT_PROVEN",
+      "mechanism": null,
+      "source_reason": "No unambiguous question-versus-first-SQL contradiction established without schema/data or complete semantic task interpretation.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "1091",
+      "source_only_label": "ABSTAIN_NOT_PROVEN",
+      "mechanism": null,
+      "source_reason": "No unambiguous question-versus-first-SQL contradiction established without schema/data or complete semantic task interpretation.",
+      "previously_exposed_case": true
+    },
+    {
+      "case_id": "1107",
+      "source_only_label": "HIGH_SOURCE_CONTRADICTION",
+      "mechanism": "TEMPORAL_RELATION",
+      "source_reason": "Attribute snapshot crossing maximum is not temporally linked to a Match date; finding first match date cannot establish date of highest crossing score.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "1037",
+      "source_only_label": "HIGH_SOURCE_CONTRADICTION",
+      "mechanism": "SQL_DIALECT",
+      "source_reason": "SQLite does not support YEAR(date) as built-in, so YEAR(pl.birthday) is not a valid portable SQLite filter.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "1143",
+      "source_only_label": "ABSTAIN_NOT_PROVEN",
+      "mechanism": null,
+      "source_reason": "No unambiguous question-versus-first-SQL contradiction established without schema/data or complete semantic task interpretation.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "190",
+      "source_only_label": "HIGH_SOURCE_CONTRADICTION",
+      "mechanism": "RELATION_PATH",
+      "source_reason": "SQL joins account by district before the explicit client→disp→account relationship, introducing a disconnected/multiplying path.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "160",
+      "source_only_label": "ABSTAIN_NOT_PROVEN",
+      "mechanism": null,
+      "source_reason": "No unambiguous question-versus-first-SQL contradiction established without schema/data or complete semantic task interpretation.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "181",
+      "source_only_label": "ABSTAIN_NOT_PROVEN",
+      "mechanism": null,
+      "source_reason": "No unambiguous question-versus-first-SQL contradiction established without schema/data or complete semantic task interpretation.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "158",
+      "source_only_label": "HIGH_SOURCE_CONTRADICTION",
+      "mechanism": "ENTITY_RELATION_PATH",
+      "source_reason": "SQL joins client by district rather than authenticated account ownership; also references JOIN o without declared table in source SQL.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "939",
+      "source_only_label": "HYPOTHESIS_NEEDS_PHYSICAL_VALIDATION",
+      "mechanism": "NATIONALITY_VALUE",
+      "source_reason": "Question says UN; SQL maps to British. Whether UN denotes UK requires independent semantic interpretation.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "982",
+      "source_only_label": "HYPOTHESIS_NEEDS_PHYSICAL_VALIDATION",
+      "mechanism": "CATEGORY_VALUE",
+      "source_reason": "Question says American drivers; SQL uses nationality='USA'; category encoding is unverified.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "988",
+      "source_only_label": "ABSTAIN_NOT_PROVEN",
+      "mechanism": null,
+      "source_reason": "No unambiguous question-versus-first-SQL contradiction established without schema/data or complete semantic task interpretation.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "924",
+      "source_only_label": "ABSTAIN_NOT_PROVEN",
+      "mechanism": null,
+      "source_reason": "No unambiguous question-versus-first-SQL contradiction established without schema/data or complete semantic task interpretation.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "1313",
+      "source_only_label": "HYPOTHESIS_NEEDS_PHYSICAL_VALIDATION",
+      "mechanism": "COUNT_ENTITY_GRAIN",
+      "source_reason": "JOIN member→major may be many-to-one and COUNT(*) may be valid; audit only potential, not defect.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "1321",
+      "source_only_label": "ABSTAIN_NOT_PROVEN",
+      "mechanism": null,
+      "source_reason": "No unambiguous question-versus-first-SQL contradiction established without schema/data or complete semantic task interpretation.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "1427",
+      "source_only_label": "HIGH_SOURCE_CONTRADICTION",
+      "mechanism": "OUTPUT_PROJECTION",
+      "source_reason": "Question asks budget category, but SQL projects budget category plus event.type (the latter is a filter).",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "1355",
+      "source_only_label": "ABSTAIN_NOT_PROVEN",
+      "mechanism": null,
+      "source_reason": "No unambiguous question-versus-first-SQL contradiction established without schema/data or complete semantic task interpretation.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "779",
+      "source_only_label": "ABSTAIN_NOT_PROVEN",
+      "mechanism": null,
+      "source_reason": "No unambiguous question-versus-first-SQL contradiction established without schema/data or complete semantic task interpretation.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "793",
+      "source_only_label": "ABSTAIN_NOT_PROVEN",
+      "mechanism": null,
+      "source_reason": "No unambiguous question-versus-first-SQL contradiction established without schema/data or complete semantic task interpretation.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "837",
+      "source_only_label": "ABSTAIN_NOT_PROVEN",
+      "mechanism": null,
+      "source_reason": "No unambiguous question-versus-first-SQL contradiction established without schema/data or complete semantic task interpretation.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "773",
+      "source_only_label": "HIGH_SOURCE_CONTRADICTION",
+      "mechanism": "FK_DOMAIN_COLLISION",
+      "source_reason": "Three foreign-key integer IDs into unrelated eye/hair/skin color tables are compared as if color names were identical.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "1172",
+      "source_only_label": "HYPOTHESIS_NEEDS_PHYSICAL_VALIDATION",
+      "mechanism": "COUNT_ENTITY_GRAIN",
+      "source_reason": "Question counts male patients; multiple elevated bilirubin lab rows per person may inflate COUNT(*).",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "1256",
+      "source_only_label": "HIGH_SOURCE_CONTRADICTION",
+      "mechanism": "COUNT_ENTITY_GRAIN",
+      "source_reason": "Question counts patients but SQL counts multiple Laboratory rows per Patient; previously physically confirmed source-case intervention.",
+      "previously_exposed_case": true
+    },
+    {
+      "case_id": "1214",
+      "source_only_label": "ABSTAIN_NOT_PROVEN",
+      "mechanism": null,
+      "source_reason": "No unambiguous question-versus-first-SQL contradiction established without schema/data or complete semantic task interpretation.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "1303",
+      "source_only_label": "ABSTAIN_NOT_PROVEN",
+      "mechanism": null,
+      "source_reason": "No unambiguous question-versus-first-SQL contradiction established without schema/data or complete semantic task interpretation.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "303",
+      "source_only_label": "HIGH_SOURCE_CONTRADICTION",
+      "mechanism": "ID_VS_ATTRIBUTE",
+      "source_reason": "TR006 molecule identifier is incorrectly searched in molecule.label rather than its ID.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "271",
+      "source_only_label": "HIGH_SOURCE_CONTRADICTION",
+      "mechanism": "BOOLEAN_CONJUNCTION",
+      "source_reason": "Question asks whether a bond has BOTH chlorine and carbon; SQL element IN('cl','c') is OR over molecule atoms and does not enforce two endpoints.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "275",
+      "source_only_label": "HIGH_SOURCE_CONTRADICTION",
+      "mechanism": "OUTPUT_ENTITY",
+      "source_reason": "Question asks for molecule ID; SQL projects bond_id aliased as molecule_id and uses a bond-type literal with trailing whitespace.",
+      "previously_exposed_case": false
+    },
+    {
+      "case_id": "248",
+      "source_only_label": "ABSTAIN_NOT_PROVEN",
+      "mechanism": null,
+      "source_reason": "No unambiguous question-versus-first-SQL contradiction established without schema/data or complete semantic task interpretation.",
+      "previously_exposed_case": false
+    }
+  ],
+  "no_label_training": true,
+  "no_qlora": true,
+  "holdout300_untouched": true,
+  "annotation_provenance": "Assistant-authored source-first initial reading; NOT independently expert human-adjudicated",
+  "independent_human_review_completed": false,
+  "not_fully_blinded_because_prior_dev_exposure": true,
+  "sample_is_source_risk_stratified_not_population_representative": true,
+  "confidence_labels_not_ground_truth": true
+}

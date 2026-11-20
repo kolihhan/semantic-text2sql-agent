@@ -1,0 +1,139 @@
+name: BIRD DEV500 K1 blind full-SQL 44-review plus all500 correct controls (zero Qwen)
+on:
+  push:
+    branches: [research/dev500-k1-firstsql-intent-survey-20261120]
+    paths:
+      - .github/workflows/cpu-dev500-k1-firstsql-risk-control-survey.yml
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  source_first_original_sql_features:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Pin source-only audit script
+        run: python -m compileall -q scripts/dev500_k1_firstsql_source_risk_survey.py
+      - name: Download original first two Qwen cache shards only (no gold scores)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44086713331
+          github-token: ${{ github.token }}
+          pattern: k8-bird-dev500-prospective-cache-and-offline-score-shard-*
+          merge-multiple: true
+          path: original-cache
+      - name: Download remaining original Qwen cache shards only (no gold scores)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44093103960
+          github-token: ${{ github.token }}
+          pattern: k8-bird-dev500-prospective-cache-and-offline-score-shard-*
+          merge-multiple: true
+          path: original-cache
+      - name: Build QUESTION-ONLY source projection, with no publisher SQL passed to audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true' \
+            -o publisher-source-INTERNAL-DO-NOT-EXPORT.json
+          echo 'ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb  publisher-source-INTERNAL-DO-NOT-EXPORT.json' | sha256sum -c -
+          python - <<'PY'
+          from hashlib import sha256
+          import json
+          m=json.load(open('manifests/bird-dev500-holdout300-20261116-v2.json'))
+          assert m['source_sha256']=='ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb'
+          dev={str(i) for i in m['dev_case_ids']}
+          holdout={str(i) for i in m['holdout_case_ids']}
+          assert len(dev)==500 and len(holdout)==300 and dev.isdisjoint(holdout)
+          # Explicit projection: source-feature code receives NO SQL key.
+          source=json.load(open('publisher-source-INTERNAL-DO-NOT-EXPORT.json'))
+          questions=[{'case_id':str(x['question_id']),'db_id':x['db_id'],
+                      'difficulty':x.get('difficulty'),
+                      'question':x['question']}
+                     for x in source if str(x['question_id']) in dev]
+          assert len(questions)==500
+          out={'source_sha256':m['source_sha256'],'questions':questions,
+               'reference_SQL_not_exported':True,'holdout_not_exported':True}
+          with open('frozen-question-only.json','w') as f:
+              json.dump(out,f,ensure_ascii=False)
+          PY
+          rm publisher-source-INTERNAL-DO-NOT-EXPORT.json
+      - name: Freeze 500 original-first SQL features and 44 blind manual-review candidates
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.dev500_k1_firstsql_source_risk_survey source \
+            --cache-dir original-cache \
+            --question-only frozen-question-only.json \
+            --manifest manifests/bird-dev500-holdout300-20261116-v2.json \
+            --out source-frozen-dev500-original-k1-risk.json
+          python - <<'PY'
+          import json
+          v=json.load(open('source-frozen-dev500-original-k1-risk.json'))
+          assert v['n']==500 and v['dbs']==11
+          assert v['no_publisher_reference_sql_used'] and v['no_new_qwen_calls']
+          assert len(v['review_44_ids_source_preselected'])==44
+          assert len(v['review_44_full_question_and_original_sql_no_scores'])==44
+          print('SOURCE_ONLY_FROZEN_BEFORE_K1_OUTCOMES',v['n'])
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: BIRD-DEV500-FIRST-QWEN-K1-500-SOURCE-ONLY-INTENT-RISKS
+          path: source-frozen-dev500-original-k1-risk.json
+          if-no-files-found: error
+          retention-days: 60
+
+  score_original_first_sql_from_existing_workers:
+    needs: source_first_original_sql_features
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: BIRD-DEV500-FIRST-QWEN-K1-500-SOURCE-ONLY-INTENT-RISKS
+          path: source
+      - name: Download eight immutable existing physical score workers (K1/K8)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44222560767
+          github-token: ${{ github.token }}
+          pattern: frozen-bird-dev500-prefix-worker-*
+          merge-multiple: true
+          path: original-score-workers
+      - name: Offline join source-only question/SQL features with original first-SQL outcomes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.dev500_k1_firstsql_source_risk_survey score \
+            --source-frozen source/source-frozen-dev500-original-k1-risk.json \
+            --workers-dir original-score-workers \
+            --out frozen-dev500-k1-risk-vs-correct-controls.json
+          python - <<'PY'
+          import json
+          v=json.load(open('frozen-dev500-k1-risk-vs-correct-controls.json'))
+          assert v['n']==500 and v['k1_right']==203 and v['k1_wrong']==297
+          assert v['k8_right']==233 and v['publisher_reference_scorable']==499
+          assert v['no_new_qwen_calls'] and v['holdout300_untouched']
+          print('VERIFIED_EXISTING_K1_203_K1_WRONG_297_SOURCE_RISK_ONLY')
+          for k,vv in v['source_only_risk_strata'].items():
+              print('NONCAUSAL_RISK',k,vv['n'],vv['first_sql_right'],vv['first_sql_wrong'])
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: BIRD-DEV500-ORIGINAL-QWEN-K1-203-RIGHT-297-WRONG-RISK-AUDIT
+          path: frozen-dev500-k1-risk-vs-correct-controls.json
+          if-no-files-found: error
+          retention-days: 60
