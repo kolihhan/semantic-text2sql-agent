@@ -30,3 +30,22 @@ Three additional pre-existing read-only invariant probes (#109 financial, #1028 
 6. **For any subsequent independent A/B** keep Qwen3.5-9B, candidate count and latency matched, compare new correct candidate oracle and GOLD-BLIND selected strict SET/BAG EX, rescues/regressions, DB clustering, and costs. HOLDOUT300 sealed. No source SQL hand-edits as claim of a reusable algorithm.
 
 **Decision:** source-only typed entity-unit hypothesis survives as a research direction, but **no generic source-independent SQL transform or new benchmark improvement is validated**. Do not merge into Guarded.
+
+
+## Original K1-RIGHT correctness controls, actual physical regression falsification (second complete Actions)
+
+- **Completed physical Actions [#44680969153](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/44680969153)**, SUCCESS, immutable artifact **14604600688**, now including 4 original K1-right controls from immutable K1 label/source digest and original 4 SHA-pinned Qwen K8 cache shards. No publisher gold SQL opened in the physical job.
+- These four cases were *outcome-selected as correct controls*, not a random prospective sample. All original first SQL texts were K1 SET-result correct (first original model sample, frozen 8s SQLite physical labels); the alternative substitutes `COUNT(DISTINCT target_id)` for one `COUNT(*)` and executes on the same physical DB.
+
+| K1-right case / DB | Original first-Qwen physical count (already gold-result matching) | Alternative DISTINCT count | Would turn original correct K1 result into mismatch? |
+|---|---:|---:|---|
+| #1203 thrombosis_prediction | 641 lab-related joined rows | 88 distinct patient IDs | **Yes** |
+| #1280 thrombosis_prediction | 1,924 lab-related joined rows | 45 distinct patient IDs | **Yes** |
+| #1311 thrombosis_prediction | 1 | 1 | No effect |
+| #1508 debit_card_specializing | 56 transaction rows | 50 distinct customer IDs | **Yes** |
+
+**3/4 observed K1-right controls would regress if these arbitrary unit rewrites were applied.** This is strict result-set evidence on the same pinned SQLite snapshot: original first SQL matched publisher output, modified scalar count is different, therefore cannot still match that scalar output. **It is not a measured error-rate of a pre-registered generalized policy**; we deliberately picked K1-correct queries with COUNT(*) and relevant joins after inspecting previous experiments.
+
+The relationship with four known K8-wrong cases is asymmetric: finding genuine fanout does NOT tell the correct question target unit. Indeed #1508 legitimately counts transactions for one original first-SQL result, while #1525's question explicitly asks the percentage of *customers*. The model or planner must independently bind the semantic answer unit and quantify denominator/counted relation. **A blanket COUNT DISTINCT is now disallowed by directly observed regression controls.**
+
+**Revised stop-loss:** P1 supports typed-answer-unit diagnostics only, but new model A/B is NOT authorized until an original-question/schema-driven, case-ID-agnostic applicability gate can protect K1-right SQLs and generalize across unexposed TRAIN DBs. No Guarded production edits, SQL training, new Qwen calls or HOLDOUT300.
