@@ -59,7 +59,7 @@ def run(source_file,cache_dir,ledger_file):
         assert digest(json.dumps(sqls,sort_keys=True))==row["original_eight_sql_sha256"]
     ledger_rows={}
     for line in ledger_file.read_text().splitlines():
-        match=re.fullmatch(r"\\|\\s*(\\d+)\\s*\\|\\s*([\\w_]+)\\s*\\|\\s*(SOURCE_TEXT_CONTRADICTION|PROVISIONAL|ABSTAIN)\\s*\\|\\s*([A-Z_]+)\\s*\\|",line)
+        match=re.fullmatch(r"\|\s*(\d+)\s*\|\s*([\w_]+)\s*\|\s*(SOURCE_TEXT_CONTRADICTION|PROVISIONAL|ABSTAIN)\s*\|\s*([A-Z_]+)\s*\|",line)
         if match:
             cid,db,status,family=match.groups()
             assert cid not in ledger_rows
