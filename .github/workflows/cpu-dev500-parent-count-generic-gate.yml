@@ -1,0 +1,129 @@
+name: Source-only generic FK COUNT parent trigger and postblind controls (NO QWEN)
+on:
+  push:
+    branches: [research/dev500-81-count-grain-stoploss-20261119]
+    paths: [.github/workflows/cpu-dev500-parent-count-generic-gate.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  schema_and_original_sql_first:
+    runs-on: ubuntu-latest
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: 'Source-first physical-only: no reference SQL downloaded to this job'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m compileall -q scripts/dev500_parent_count_generic_source_gate.py scripts/postblind_bird_dev500_count_probe5.py
+          python -m pip install -q 'pytest>=8,<10'
+          python -m pytest -q tests/test_dev500_parent_count_generic_source_gate.py
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44555827205
+          github-token: ${{ github.token }}
+          name: BIRD-DEV500-QWEN9B-ORIGINAL-81-PHYSICAL-SOURCE-FIRST-EVIDENCE
+          path: already_frozen_81
+      - name: Pin BIRD physical SQLite DB original bytes, without accessing publisher SQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bird"
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o "$RUNNER_TEMP/bird/dev.zip"
+          echo "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  $RUNNER_TEMP/bird/dev.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/bird/dev.zip" -d "$RUNNER_TEMP/bird/unpacked"
+          DB_ZIP=$(find "$RUNNER_TEMP/bird/unpacked" -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ZIP"
+          mkdir -p "$RUNNER_TEMP/bird/databases"
+          unzip -q "$DB_ZIP" -d "$RUNNER_TEMP/bird/databases"
+          DB_ROOT=$(find "$RUNNER_TEMP/bird/databases" -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ROOT"
+          echo "BIRD_DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Seal three source-only count/percent target hypotheses before gold
+        # The source-first artifact contains the full question, whose SHA is derived before gold.
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.dev500_parent_count_generic_source_gate source \
+            --source-first already_frozen_81/original-81-source-first-physical-schema.json \
+            --db-root "$BIRD_DB_ROOT" \
+            --out frozen-parent-count-generic-source.json
+          python - <<'PY'
+          import json
+          d=json.load(open('frozen-parent-count-generic-source.json'))
+          assert d['population']==81 and d['n_controls']==3 and d['detected']>=1 and d['source_11_dbs']==11
+          assert d['no_publisher_reference_read'] and d['no_new_Qwen_calls'] and d['promotion_forbidden']
+          print('GENERIC_FK_PARENT_SOURCE_FROZEN_BEFORE_GOLD')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: BIRD-DEV500-GENERIC-FK-PARENT-COUNT-SOURCE
+          path: frozen-parent-count-generic-source.json
+          if-no-files-found: error
+          retention-days: 60
+  postblind_frozen_source_comparison:
+    needs: schema_and_original_sql_first
+    runs-on: ubuntu-latest
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: BIRD-DEV500-GENERIC-FK-PARENT-COUNT-SOURCE
+          path: source_sealed
+      - name: Verify already sealed source-only experiment before opening gold SQL
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          d=json.load(open('source_sealed/frozen-parent-count-generic-source.json'))
+          assert d['population']==81 and d['no_publisher_reference_read']
+          assert len(d['cases'])==81 and len(d['k8_selector_correct_controls'])==3
+          print('SAFE_TO_OPEN_PUBLIC_PUBLISHER_REFERENCE_SQL')
+          PY
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true' \
+            -o original-bird-dev.json
+          echo 'ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb  original-bird-dev.json' | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/bird"
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o "$RUNNER_TEMP/bird/dev.zip"
+          echo "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  $RUNNER_TEMP/bird/dev.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/bird/dev.zip" -d "$RUNNER_TEMP/bird/unpacked"
+          DB_ZIP=$(find "$RUNNER_TEMP/bird/unpacked" -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ZIP"
+          mkdir -p "$RUNNER_TEMP/bird/databases"
+          unzip -q "$DB_ZIP" -d "$RUNNER_TEMP/bird/databases"
+          DB_ROOT=$(find "$RUNNER_TEMP/bird/databases" -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ROOT"
+          echo "BIRD_DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Compare original same-model SQL and sole count-grain variant with actual publisher results
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.dev500_parent_count_generic_source_gate score \
+            --sealed source_sealed/frozen-parent-count-generic-source.json \
+            --official-dev original-bird-dev.json --db-root "$BIRD_DB_ROOT" \
+            --out postblind-parent-count-generic.json
+          python - <<'PY'
+          import json
+          d=json.load(open('postblind-parent-count-generic.json'))
+          assert d['source_activation_denominator']==81 and d['source_activated']>=1
+          assert d['no_new_Qwen_calls'] and d['promotion_forbidden']
+          assert d['promotion_forbidden'] and d['HOLDOUT300_untouched']
+          print('GENERIC_PARENT_POSTBLIND_DIAGNOSTIC',d['scorable_activated'],d['rescues'],d['regressions'],d['actual_first_correct_control_denominator'])
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: BIRD-DEV500-GENERIC-FK-PARENT-COUNT-POSTBLIND
+          path: postblind-parent-count-generic.json
+          if-no-files-found: error
+          retention-days: 60
