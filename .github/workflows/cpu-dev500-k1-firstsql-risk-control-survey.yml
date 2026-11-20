@@ -1,4 +1,4 @@
-name: BIRD DEV500 first-original-SQL K1 semantic-risk census and correct controls (zero Qwen)
+name: BIRD DEV500 K1 blind full-SQL 44-review plus all500 correct controls (zero Qwen)
 on:
   push:
     branches: [research/dev500-k1-firstsql-intent-survey-20261120]
@@ -81,6 +81,7 @@ jobs:
           assert v['n']==500 and v['dbs']==11
           assert v['no_publisher_reference_sql_used'] and v['no_new_qwen_calls']
           assert len(v['review_44_ids_source_preselected'])==44
+          assert len(v['review_44_full_question_and_original_sql_no_scores'])==44
           print('SOURCE_ONLY_FROZEN_BEFORE_K1_OUTCOMES',v['n'])
           PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
