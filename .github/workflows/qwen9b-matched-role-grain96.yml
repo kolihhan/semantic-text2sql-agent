@@ -1,0 +1,300 @@
+name: Original Qwen9B BIRD TRAIN96 equal-K2 direct vs semantic-role SQL
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  source-freeze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Validate two-call budget, frozen guards and read-only 5-row relation probe
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_qwen9b_semantic_roles96.py
+          python -m compileall -q experiments/qwen9b_semantic_roles96.py
+      - name: Exact pinned original publisher TRAIN source; never BIRD DEV or HOLDOUT
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/Emulated-Inc/text-to-sql-with-evidence-training-pool/resolve/cd2c4ea321075aa53ce7dfe52deaaffa505d046a/raw/bird/train.json' \
+            -o train.json
+          echo 'cd5884489dffd7c76d73509b396bd919fbe8b486efbc4ba2f48f89460de7d69f  train.json' | sha256sum -c -
+      - name: Historical full-SHA source exclusion original
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43888747753
+          github-token: ${{ github.token }}
+          name: qwen9b-birdtrain-db-disjoint-original-sql-sft-candidates
+          path: prior-original
+      - name: Historical full-SHA source exclusion fk
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43904889296
+          github-token: ${{ github.token }}
+          name: qwen9b-fk-correction-prospective-source32-frozen
+          path: prior-fk
+      - name: Historical full-SHA source exclusion value
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43920461939
+          github-token: ${{ github.token }}
+          name: qwen9b-newdb-physical-value16-source-freeze
+          path: prior-value
+      - name: Historical full-SHA source exclusion value-replica
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43926576493
+          github-token: ${{ github.token }}
+          name: qwen9b-second-newdb-physical-value16-source-freeze
+          path: prior-value-replica
+      - name: Historical full-SHA source exclusion role
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44012242171
+          github-token: ${{ github.token }}
+          name: qwen9b-third-newdb-role8-source-freeze
+          path: prior-role
+      - name: Historical full-SHA source exclusion preview
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44040520571
+          github-token: ${{ github.token }}
+          name: qwen9b-semantic-preview8-36db-excluded-frozen
+          path: prior-preview
+      - name: Historical full-SHA source exclusion column
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44042440721
+          github-token: ${{ github.token }}
+          name: qwen9b-column-type8-40db-excluded-frozen
+          path: prior-column
+      - name: Historical full-SHA source exclusion grain
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44053157511
+          github-token: ${{ github.token }}
+          name: qwen9b-count-join-grain16-frozen-only
+          path: prior-grain
+      - name: Historical full-SHA source exclusion fanout
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44289030583
+          github-token: ${{ github.token }}
+          name: qwen9b-fanout-k2-source16-before-model
+          path: prior-fanout
+      - name: Latest original Qwen BIRD TRAIN96 question-only exposure exclusion
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44316964908
+          github-token: ${{ github.token }}
+          name: Qwen9B-grounded-plan96-BIRD-TRAIN-frozen-questions-BEFORE-model
+          path: previous-plan96
+      - name: Download original independently exposed second 96 sources
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44333082630
+          github-token: ${{ github.token }}
+          name: original-Qwen9B-relation-probe96-full-history-source-frozen
+          path: previous-relation96
+      - name: Strict 615 historical source ID exclusion, freeze 12 DB x 8 new questions
+        run: |
+          set -euo pipefail
+          mkdir history
+          cp prior-original/train.jsonl history/original_train242.jsonl
+          cp prior-original/validation.jsonl history/original_validation64.jsonl
+          cp prior-fk/prospective32.jsonl history/fk32.jsonl
+          cp prior-value/physical-value16.jsonl history/value16.jsonl
+          cp prior-value-replica/physical-value16.jsonl history/value16_replica.jsonl
+          cp prior-role/role-scoped8.jsonl history/role8.jsonl
+          cp prior-preview/semantic-preview8.jsonl history/preview8.jsonl
+          cp prior-column/column-type8.jsonl history/column8.jsonl
+          cp prior-grain/grain16.jsonl history/grain16.jsonl
+          cp prior-fanout/source16.jsonl history/fanout16.jsonl
+          python -m experiments.qwen9b_semantic_roles96 freeze \
+            --train train.json --history history \
+            --prior96 previous-plan96/questions.jsonl \
+            --second96 previous-relation96/source96.jsonl \
+            --out frozen
+          python - <<'PY'
+          import json
+          d=json.load(open('frozen/freeze.json'))
+          assert d['n']==96 and d['n_dbs']==12 and d['per_db']==8
+          assert d['excluded_all_previous_source_indices']==615
+          assert d['full_10_historical_SHA_checked'] and d['source_has_no_gold']
+          assert d['original_49_exposed_DBs_only']
+          assert d['last_two_protected_DBs_unused']
+          assert d['DEV500_unused'] and d['HOLDOUT300_unused']
+          assert d['equal_model_calls_per_arm_per_question']==2
+          print('FIXED_QWEN_MATCHED_TWO_CALLS_SOURCE_FROZEN', d['dbs'],flush=True)
+          PY
+      - name: Immutable original question-only cohort before any original Qwen calls
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: original-Qwen9B-role-grain96-full-history-source-frozen
+          path: frozen/
+          if-no-files-found: error
+          retention-days: 30
+
+  real-matched-inference-and-physical-score:
+    needs: source-freeze
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      max-parallel: 12
+      matrix:
+        shard: [0,1,2,3,4,5,6,7,8,9,10,11]
+    env:
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_CONTEXT_LENGTH: '8192'
+      OLLAMA_NUM_PARALLEL: '1'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: original-Qwen9B-role-grain96-full-history-source-frozen
+          path: frozen
+      - name: Original source physical SQLite with exact pinned checksum
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import os
+          from scripts.prepare_birdtrain_qwen9b_sft_source import fetch_manifest,fetch_database
+          from experiments.qwen9b_semantic_roles96 import checked_source,MAX_DB_BYTES
+          rows,meta=checked_source(Path('frozen/source96.jsonl'),Path('frozen/freeze.json'))
+          db=meta['dbs'][int(os.environ['SHARD'])]
+          manifest=fetch_manifest()[db]
+          assert manifest['size']<=MAX_DB_BYTES
+          file=fetch_database(db,manifest,Path('physical'))
+          print('QWEN_ROLE_GRAIN_ORIGINAL_DB_SHA_OK',db,file.stat().st_size,flush=True)
+          PY
+      - name: Pull EXACT original Qwen3.5-9B, no teacher or training
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          for i in {1..60}; do curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break; sleep 2; done
+          curl -fsS http://127.0.0.1:11434/api/tags >/dev/null
+          ollama pull qwen3.5:9b-q4_K_M
+      - name: Exactly two original direct SQL calls vs two role/grain SQL calls on same model
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python -m experiments.qwen9b_semantic_roles96 infer \
+            --source frozen/source96.jsonl --manifest frozen/freeze.json \
+            --dbroot physical --shard "$SHARD" \
+            --out "generated-$SHARD.json"
+          python - <<'PY'
+          import glob,json
+          p=glob.glob('generated-*.json')
+          assert len(p)==1
+          d=json.load(open(p[0]))
+          assert d['n']==8 and d['n_baseline_calls']==16 and d['n_treatment_calls']==16
+          assert d['model_digest']=='56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90'
+          assert d['gold_in_generation'] is False and not d['holdout_used']
+          print('MATCHED_ORIGINAL_QWEN_REAL_SQL_CANDIDATES_SEALED',d['shard'],flush=True)
+          PY
+      - name: FIRST upload immutable original Qwen SQL BEFORE publisher reference SQL fetched
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: original-Qwen9B-role-grain96-generated-${{ matrix.shard }}
+          path: generated-*.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: ONLY NOW download exact original BIRD TRAIN publisher SQL for strict scoring
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/Emulated-Inc/text-to-sql-with-evidence-training-pool/resolve/cd2c4ea321075aa53ce7dfe52deaaffa505d046a/raw/bird/train.json' \
+            -o train.json
+          echo 'cd5884489dffd7c76d73509b396bd919fbe8b486efbc4ba2f48f89460de7d69f  train.json' | sha256sum -c -
+      - name: Compute original physical SQLite 8s bounded SET/BAG EX after candidates sealed
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python -m experiments.qwen9b_semantic_roles96 score \
+            --source frozen/source96.jsonl --manifest frozen/freeze.json \
+            --dbroot physical --shard "$SHARD" \
+            --generated "generated-$SHARD.json" --train train.json \
+            --out "scored-$SHARD.json"
+      - name: Preserve one immutable 8-question physical DB score
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: original-Qwen9B-role-grain96-physical-score-${{ matrix.shard }}
+          path: scored-*.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  strict-96-final:
+    needs: real-matched-inference-and-physical-score
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: original-Qwen9B-role-grain96-full-history-source-frozen
+          path: frozen
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: original-Qwen9B-role-grain96-physical-score-*
+          merge-multiple: true
+          path: scored
+      - name: Aggregate exact 96 paired source IDs and 12 physical DB clustered 95CI
+        run: |
+          set -euo pipefail
+          python -m experiments.qwen9b_semantic_roles96 aggregate \
+            --manifest frozen/freeze.json \
+            --parts scored/scored-0.json scored/scored-1.json scored/scored-2.json scored/scored-3.json scored/scored-4.json scored/scored-5.json scored/scored-6.json scored/scored-7.json scored/scored-8.json scored/scored-9.json scored/scored-10.json scored/scored-11.json \
+            --out original-Qwen9B-96-matched-2-call-relation-probe-EX.json
+          python - <<'PY'
+          import json
+          s=json.load(open('original-Qwen9B-96-matched-2-call-relation-probe-EX.json'))
+          assert s['n']==96 and s['physical_dbs']==12
+          assert s['baseline_model_calls']==192 and s['treatment_model_calls']==192
+          assert not s['DEV500_used'] and not s['HOLDOUT300_used']
+          assert not s['last_2_protected_original_TRAIN_DBS_used']
+          print('FINAL_FIXED_QWEN9B_MATCHED_2_CALL_ROLE_GRAIN',
+                json.dumps(s,sort_keys=True),flush=True)
+          PY
+      - name: Preserve actual original Qwen9B matched compute 96-case result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: original-Qwen9B-matched-2call-TRAIN96-role-grain-FINAL
+          path: original-Qwen9B-96-matched-2-call-relation-probe-EX.json
+          if-no-files-found: warn
+          retention-days: 30

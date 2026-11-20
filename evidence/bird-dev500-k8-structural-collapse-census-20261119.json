@@ -1,0 +1,61 @@
+{
+  "status": "COMPLETE_RETROSPECTIVE_K8_SQL_STRUCTURE_DIVERSITY_500_FIXED_SOURCE",
+  "date": "2026-11-19",
+  "source": {
+    "runs": [
+      44086713331,
+      44093103960,
+      44222560767
+    ],
+    "candidate_cache_shards": 32,
+    "worker_outcome_shards": 8,
+    "unique_case_ids": 500,
+    "total_qwen_generated_sql": 4000,
+    "model_digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90"
+  },
+  "measures": {
+    "unique_sql": "distinct case/whitespace normalized SQL strings out of 8",
+    "unique_operator_signature": "regex features count/sum/avg/min/max/distinct/where/group/having/order/limit/join/left_join/cte/union/except/intersect/exists/like/between/case/ratio",
+    "unique_table_sets": "regex FROM/JOIN surface tokens, not a true SQL AST",
+    "unique_projection": "coarse SELECT projection regex, not semantic grain"
+  },
+  "groups": {
+    "zero_oracle": {
+      "n": 215,
+      "mean_distinct_sql_text": 6.144,
+      "median_distinct_sql_text": 7,
+      "mean_distinct_operator_signature": 2.93,
+      "median_distinct_operator_signature": 2,
+      "mean_distinct_table_sets": 2.786,
+      "mean_distinct_projection_classes": 1.307,
+      "distinct_operator_signatures_le2": 125,
+      "distinct_projection_classes_eq1": 162,
+      "all8_physically_executable_n": 97,
+      "all8_executable_subset": {
+        "n": 97,
+        "mean_distinct_operator_signatures": 1.876,
+        "distinct_operator_signatures_le2": 78,
+        "mean_distinct_table_sets": 1.866
+      }
+    },
+    "oracle_correct_selector_wrong": {
+      "n": 52,
+      "mean_distinct_sql_text": 6.442,
+      "mean_distinct_operator_signatures": 2.5
+    },
+    "selected_correct": {
+      "n": 233,
+      "mean_distinct_sql_text": 3.974,
+      "mean_distinct_operator_signatures": 1.773
+    }
+  },
+  "interpretation": "In K8-zero-oracle tasks, textual SQL diversity usually exceeds coarse structural diversity. However selected-correct cases also tend to be more homogeneous, plausibly reflecting task difficulty/confidence: correlation does not prove that enforcing diversity improves accuracy.",
+  "next_mechanism": "Test a preregistered same-base four-call structured counter-hypothesis generator that explicitly varies answer grain, relation and aggregation denominator, instead of another random paraphrase. Evaluate candidate-oracle coverage and final gold-blind strict EX separately, with paired regressions and distinct source tasks.",
+  "limitations": [
+    "original previously viewed DEV500, not untouched OOD",
+    "regex structural proxies, no SQL AST / independently adjudicated root-cause labels",
+    "no new model calls or strict EX improvement claimed",
+    "BIRD HOLDOUT300 untouched",
+    "no training or stronger teachers"
+  ]
+}

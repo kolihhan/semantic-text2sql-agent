@@ -1,0 +1,114 @@
+name: CPU-only sealed original Qwen9B TRAIN96 candidate gate diagnostic
+on:
+  push:
+    branches: [research/template-slot-blind-ab-20261119]
+    paths: [.github/workflows/cpu-qwen9b-role96-goldblind-selector.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  source-and-seal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_qwen9b_role96_goldblind_selector_cpu.py
+          python -m compileall -q scripts/audit_qwen9b_role96_goldblind_selector_cpu.py
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44476207751
+          github-token: ${{ github.token }}
+          name: original-Qwen9B-role-grain96-full-history-source-frozen
+          path: frozen
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44476207751
+          github-token: ${{ github.token }}
+          pattern: original-Qwen9B-role-grain96-generated-*
+          merge-multiple: true
+          path: original-generated
+      - name: Choose SQLs from question, evidence, candidate SQL only. NO original reference labels yet.
+        run: |
+          set -euo pipefail
+          test "$(find original-generated -maxdepth 1 -name 'generated-*.json' | wc -l)" -eq 12
+          python -m scripts.audit_qwen9b_role96_goldblind_selector_cpu seal \
+            --source frozen/source96.jsonl \
+            --generated original-generated/generated-0.json original-generated/generated-1.json \
+                        original-generated/generated-2.json original-generated/generated-3.json \
+                        original-generated/generated-4.json original-generated/generated-5.json \
+                        original-generated/generated-6.json original-generated/generated-7.json \
+                        original-generated/generated-8.json original-generated/generated-9.json \
+                        original-generated/generated-10.json original-generated/generated-11.json \
+            --out sealed-choices.json
+          python - <<'PY'
+          import json
+          d=json.load(open('sealed-choices.json'))
+          assert d['n']==96 and len(d['cases'])==96 and d['no_gold_scoring_artifacts_read']
+          assert set(c['selected'] for c in d['cases'])<={'direct','constrained'}
+          print('NO_GOLD_GATED_CHOICE_SEALED',sum(c['selected']=='constrained' for c in d['cases']),flush=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen9b-role96-selector-GOLD-FREE-decisions
+          path: sealed-choices.json
+          if-no-files-found: error
+          retention-days: 30
+
+  original-physical-score:
+    needs: source-and-seal
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - run: python -m pip install -e .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: qwen9b-role96-selector-GOLD-FREE-decisions
+          path: seal
+      - name: Only AFTER immutable decisions sealed, fetch original physical reference-scored outcomes
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44476207751
+          github-token: ${{ github.token }}
+          pattern: original-Qwen9B-role-grain96-physical-score-*
+          merge-multiple: true
+          path: originals
+      - run: |
+          set -euo pipefail
+          test "$(find originals -maxdepth 1 -name 'scored-*.json' | wc -l)" -eq 12
+          python -m scripts.audit_qwen9b_role96_goldblind_selector_cpu score \
+            --sealed seal/sealed-choices.json \
+            --scores originals/scored-0.json originals/scored-1.json \
+                     originals/scored-2.json originals/scored-3.json \
+                     originals/scored-4.json originals/scored-5.json \
+                     originals/scored-6.json originals/scored-7.json \
+                     originals/scored-8.json originals/scored-9.json \
+                     originals/scored-10.json originals/scored-11.json \
+            --out qwen9b-conservative-role96-selection-final.json
+          python - <<'PY'
+          import json
+          d=json.load(open('qwen9b-conservative-role96-selection-final.json'))
+          c=d['counts']
+          assert d['n']==96 and c['scorable']==88 and c['unscorable']==8
+          assert c['original_correct']==35 and c['selector_correct']==36
+          assert c['changed']==5 and c['rescues']==1 and c.get('regressions',0)==0
+          assert d['net']==1 and not d['positive_screen_only'] and not d['promotion_allowed']
+          print('POSTHOC_CPU_ONLY_NEGATIVE_SELECTOR',json.dumps(d,sort_keys=True),flush=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: qwen9b-role96-conservative-selector-CPU-FINAL
+          path: qwen9b-conservative-role96-selection-final.json
+          if-no-files-found: error
+          retention-days: 30

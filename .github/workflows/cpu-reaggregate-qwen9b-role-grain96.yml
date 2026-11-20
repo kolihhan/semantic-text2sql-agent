@@ -1,0 +1,73 @@
+name: CPU reaggregate existing Qwen9B TRAIN96 preserved scores
+on:
+  push:
+    branches: [research/template-slot-blind-ab-20261119]
+    paths:
+      - .github/workflows/cpu-reaggregate-qwen9b-role-grain96.yml
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  cpu-score-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_qwen9b_semantic_roles96.py tests/test_qwen9b_roles96_censored_aggregate.py
+      - name: Download frozen original selected source only (no regeneration)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44476207751
+          github-token: ${{ github.token }}
+          name: original-Qwen9B-role-grain96-full-history-source-frozen
+          path: frozen
+      - name: Download ALL 12 original physical strict SET/BAG EX scores only
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44476207751
+          github-token: ${{ github.token }}
+          pattern: original-Qwen9B-role-grain96-physical-score-*
+          merge-multiple: true
+          path: scored
+      - name: Recompute 96 original paired score rows without GPU/model
+        run: |
+          set -euo pipefail
+          test "$(find scored -maxdepth 1 -name 'scored-*.json' | wc -l)" -eq 12
+          python -m experiments.qwen9b_semantic_roles96 aggregate \
+            --manifest frozen/freeze.json \
+            --parts scored/scored-0.json scored/scored-1.json scored/scored-2.json \
+                    scored/scored-3.json scored/scored-4.json scored/scored-5.json \
+                    scored/scored-6.json scored/scored-7.json scored/scored-8.json \
+                    scored/scored-9.json scored/scored-10.json scored/scored-11.json \
+            --out qwen9b-roles96-recovered-final.json
+          python - <<'PY'
+          import json
+          d=json.load(open('qwen9b-roles96-recovered-final.json'))
+          assert d['n']==96
+          assert d['scorable']==88 and d['censored']==8
+          assert d['baseline_selected_set_EX_correct']==35
+          assert d['treatment_final_set_EX_correct']==29
+          assert d['rescue_cases']==7 and d['regression_cases']==13
+          assert d['net_correct']==-6
+          assert d['bootstrap_CI_status']=='UNESTIMABLE_SOME_PHYSICAL_DATABASES_UNSCORABLE'
+          assert d['unscorable_database_ids']==['retail_world']
+          assert d['paired_db_cluster_CI95'] is None
+          assert d['baseline_model_calls']==d['treatment_model_calls']==192
+          assert d['accepted'] is False
+          assert d['DEV500_used'] is False and d['HOLDOUT300_used'] is False
+          print('FINAL_QWEN9B_ROLE_GRAIN96_NEGATIVE',json.dumps({k:v for k,v in d.items() if k!='cases'},sort_keys=True),flush=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: final-fixed-Qwen9B-roles96-CPU-salvaged-original-scores
+          path: qwen9b-roles96-recovered-final.json
+          if-no-files-found: error
+          retention-days: 30
