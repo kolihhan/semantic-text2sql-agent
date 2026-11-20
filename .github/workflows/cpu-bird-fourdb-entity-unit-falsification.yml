@@ -1,0 +1,104 @@
+name: BIRD DEV500 typed unit fanout vs original K1-right regression controls (NO QWEN)
+on:
+  push:
+    branches: [research/dev500-entity-denominator-physical-falsification-20261120]
+    paths:
+      - .github/workflows/cpu-bird-fourdb-entity-unit-falsification.yml
+permissions:
+  contents: read
+  actions: read
+jobs:
+  source_only_four_physical_dbs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Compile plus control regex smoke test BEFORE physical database downloads
+        run: |
+          python -m compileall -q scripts/bird_dev500_fourdb_entity_unit_physical_falsification.py
+          python - <<'PY'
+          import ast
+          from pathlib import Path
+          src=Path('scripts/bird_dev500_fourdb_entity_unit_physical_falsification.py').read_text()
+          a=ast.parse(src)
+          call=[n for n in ast.walk(a) if isinstance(n,ast.Call)
+                and isinstance(n.func,ast.Attribute) and n.func.attr=='subn']
+          assert len(call)==1
+          import re
+          p=ast.literal_eval(call[0].args[0])
+          sql="SELECT COUNT(*) FROM Patient P"
+          modified,num=re.subn(p,"COUNT(DISTINCT P.ID)",sql,count=1)
+          assert num==1 and modified=="SELECT COUNT(DISTINCT P.ID) FROM Patient P"
+          print('K1_CONTROL_COUNT_STAR_REGEX_PRECHECK_OK')
+          PY
+      - name: Restore SHA-verified original 81 SOURCE-ONLY question and schema evidence; NO gold SQL
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44555827205
+          github-token: ${{ github.token }}
+          name: BIRD-DEV500-QWEN9B-ORIGINAL-81-PHYSICAL-SOURCE-FIRST-EVIDENCE
+          path: source81
+      - name: Restore immutable original K1 correct-label controls without publisher SQL
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44660486791
+          github-token: ${{ github.token }}
+          name: BIRD-DEV500-ORIGINAL-QWEN-K1-203-RIGHT-297-WRONG-RISK-AUDIT
+          path: original_K1
+      - name: Restore source-verified original Qwen K8 cache shards, no reference SQL
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44093103960
+          github-token: ${{ github.token }}
+          pattern: k8-bird-dev500-prospective-cache-and-offline-score-shard-*
+          merge-multiple: true
+          path: original_cache
+      - name: Fetch and SHA-lock original real BIRD physical SQLite databases, no reference SQL access
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/bird"
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o "$RUNNER_TEMP/bird/dev.zip"
+          echo "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  $RUNNER_TEMP/bird/dev.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/bird/dev.zip" -d "$RUNNER_TEMP/bird/unpacked"
+          DB_ZIP=$(find "$RUNNER_TEMP/bird/unpacked" -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ZIP"
+          mkdir -p "$RUNNER_TEMP/bird/databases"
+          unzip -q "$DB_ZIP" -d "$RUNNER_TEMP/bird/databases"
+          DB_ROOT=$(find "$RUNNER_TEMP/bird/databases" -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ROOT"
+          echo "BIRD_DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Validate target physical join keys and predeclared answer-unit count probes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.bird_dev500_fourdb_entity_unit_physical_falsification \
+            --source source81/original-81-source-first-physical-schema.json \
+            --db-root "$BIRD_DB_ROOT" \
+            --k1-labels original_K1/frozen-dev500-k1-risk-vs-correct-controls.json \
+            --original-cache original_cache \
+            --out fourdb-source-only-physical-unit-differences.json
+          python - <<'PY'
+          import json
+          d=json.load(open('fourdb-source-only-physical-unit-differences.json'))
+          assert d['n_tested']==4 and d['n_physical_databases']==4
+          assert len(d['negative_invariant_controls'])==3
+          assert d['n_original_K1_right_controls']==4
+          print('K1_RIGHT_SOURCE_CONTROLS_CHANGED',d['original_K1_right_alternative_unit_result_changes'])
+          assert d['new_model_calls']==0 and d['gold_sql_not_opened'] and d['holdout300_untouched']
+          assert d['no_new_bird_ex'] and d['does_not_demonstrate_a_general_SQL_repair_rule']
+          print('PHYSICAL_UNIT_FALSIFICATION',d['physical_unit_pair_diff_cases'],
+                'of',d['n_tested'])
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: BIRD-DEV500-FOUR-DB-ENTITY-GRAIN-DENOMINATOR-SOURCE-PHYSICAL
+          path: fourdb-source-only-physical-unit-differences.json
+          if-no-files-found: error
+          retention-days: 60
