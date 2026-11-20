@@ -60,3 +60,19 @@ Source-first examples:
 5. Next admissible generated-SQL intervention must have *an observable, question-ID-agnostic, non-oracle mechanism* and independent prospective evaluation. Preserve HOLDOUT300.
 
 **Disposition:** This round successfully built the correct K1 contrast population, a source-first 44-case qualitative review queue and falsifiable semantic failure hypotheses. **No new BIRD Guarded score, no QLoRA, no production code promotion.**
+
+
+## Extra challenge: question type versus database composition
+
+Using only the frozen 500 per-case K1 outcomes and 11 physical DB groups, calculate the **expected correct cases for each question type under the observed within-DB baseline correct rate** (no new model/data). This is a descriptive standardization, *not* a causal analysis, randomized test, or new prospective result:
+
+| Source question tag | Observed correct | Expected correct after reweighting by each DB's overall K1 rate | Difference |
+|---|---:|---:|---:|
+| Rank/top/min/max | 23/85 | 31.82/85 | **-8.82 questions** |
+| Ratio/percent | 12/43 | 15.79/43 | -3.79 questions |
+| Temporal | 10/32 | 10.51/32 | -0.51 questions |
+| Count | 52/118 | 47.19/118 | +4.81 questions |
+| COUNT(*) after JOIN risk proxy | 10/40 | 15.67/40 | -5.67 questions |
+
+Thus **ranking remains a more compelling descriptive weakness than generic percent/ratio after this coarse DB reweighting**. But within-DB difficulty, question length, SQL decoding budget and schema complexity remain uncontrolled. Tags overlap, some were chosen after previous exposure, and there is no correction for multiple comparisons. Do NOT describe the table as statistical proof of semantic root cause or guaranteed prompt lift.
+
