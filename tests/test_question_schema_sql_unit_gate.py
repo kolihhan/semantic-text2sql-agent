@@ -36,7 +36,7 @@ def test_conflict_requires_actual_one_to_many_fk_and_changed_population():
     con=make_conn()
     bad="SELECT COUNT(*) FROM Patient p JOIN Laboratory l ON p.ID=l.ID WHERE l.CRP='+'"
     r=decide("How many patients have a positive CRP laboratory result?",bad,con)
-    assert r["decision"]=="CONFLICT"
+    assert r["decision"]=="CONFLICT", r
     assert r["reason"]=="ONE_TO_MANY_FK_PROVEN_DIFFERENT_ANSWER_UNIT"
     assert r["changed_result_boolean"]
     con.close()
