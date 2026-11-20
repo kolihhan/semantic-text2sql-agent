@@ -65,7 +65,12 @@ def _question_table(question:str,table_catalog:dict)->str|None:
     for t in table_catalog:
         canonical=_singular(t)
         if len(canonical)<4:continue
-        for word in (canonical,t.lower()):
+        variants={canonical,t.lower(),canonical+"s"}
+        if canonical.endswith("y"):
+            variants.add(canonical[:-1]+"ies")
+        if canonical.endswith(("s","x","ch","sh")):
+            variants.add(canonical+"es")
+        for word in variants:
             m=re.search(r"(?<![a-z0-9_])"+re.escape(word)+r"(?![a-z0-9_])",tail)
             if m:
                 options.append((m.start(),t))
