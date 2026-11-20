@@ -98,3 +98,18 @@ def test_no_actual_multiplicity_abstains_not_overconfident_conflict():
     assert r["decision"]=="ABSTAIN"
     assert r["reason"]=="ONE_TO_MANY_FK_BUT_NO_PHYSICAL_DIFFERENCE"
     con.close()
+
+
+def test_implicit_sqlite_fk_target_is_abstain_not_runtime_crash():
+    con=make_conn()
+    con.executescript("""
+    CREATE TABLE Parent2(parent_id INTEGER PRIMARY KEY);
+    CREATE TABLE Child2(child_id INTEGER PRIMARY KEY,
+                        parent_id INTEGER REFERENCES Parent2);
+    INSERT INTO Parent2 VALUES(1);
+    INSERT INTO Child2 VALUES(1,1),(2,1);
+    """)
+    out=decide("How many parent2 entries have children?",
+               "SELECT COUNT(*) FROM Parent2 p JOIN Child2 c ON p.parent_id=c.parent_id",con)
+    assert out["decision"]=="ABSTAIN",out
+    con.close()
