@@ -1,4 +1,4 @@
-name: Original Qwen TRAIN48 typed unit gate literal-safe physical check (CPU ONLY)
+name: Original Qwen TRAIN48 typed unit gate pinned source artifact (CPU ONLY)
 on:
   push:
     branches: [research/typed-question-schema-sql-unit-gate-20261120]
@@ -28,7 +28,7 @@ jobs:
           repository: kolihhan/semantic-text2sql-agent
           run-id: 44508116418
           github-token: ${{ github.token }}
-          name: qwen9b-newTRAIN48-k4-frozen-question-source
+          name: original-Qwen9B-newTRAIN48-k4-frozen-question-source
           path: sourceonly
       - name: Restore original K4 candidates sealed BEFORE gold, NO score artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
