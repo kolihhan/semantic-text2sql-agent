@@ -17,7 +17,10 @@ from pathlib import Path
 import sqlite3
 import time
 
-from scripts.audit_dev500_81_physical_keys import get_db
+def get_db(root:Path,db:str)->Path:
+    files=list(root.rglob(db+".sqlite"))
+    if len(files)!=1:raise ValueError("Missing or ambiguous physical SQLite for "+db)
+    return files[0]
 
 PROTOCOL="BIRD-DEV500-FOUR-DB-TYPED-ENTITY-UNIT-PHYSICAL-FALSIFICATION-V1"
 MODEL_SHA="56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90"
