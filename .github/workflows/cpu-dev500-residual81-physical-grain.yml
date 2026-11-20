@@ -1,0 +1,101 @@
+name: BIRD DEV500 source-first 81 physical schema and count-grain audit
+on:
+  push:
+    branches: [research/dev500-zero-oracle-215-forensic-20261119]
+    paths: [.github/workflows/cpu-dev500-residual81-physical-grain.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  original-81-source-first:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Check source-only script, install physical-census dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]' 'sqlglot>=27,<30'
+          python -m compileall -q scripts/audit_dev500_zero_oracle_215.py scripts/audit_dev500_81_physical_keys.py
+      - name: Exactly frozen first two original Qwen9B K8 cache shards
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44086713331
+          github-token: ${{ github.token }}
+          pattern: k8-bird-dev500-prospective-cache-and-offline-score-shard-*
+          merge-multiple: true
+          path: cache
+      - name: Exactly frozen remaining 30 original Qwen9B K8 cache shards
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44093103960
+          github-token: ${{ github.token }}
+          pattern: k8-bird-dev500-prospective-cache-and-offline-score-shard-*
+          merge-multiple: true
+          path: cache
+      - name: Original eight physical workers, 500 case score evidence
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44222560767
+          github-token: ${{ github.token }}
+          pattern: frozen-bird-dev500-prefix-worker-*
+          merge-multiple: true
+          path: workers
+      - name: Exact public DEV source and original official physical DB zip
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true' \
+            -o original-bird-dev.json
+          echo 'ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb  original-bird-dev.json' | sha256sum -c -
+          test "$(find cache -maxdepth 1 -name 'k8-dev500-candidate-cache-*.json' | wc -l)" -eq 32
+          test "$(find workers -maxdepth 1 -name 'prefix-frontier-worker-*.json' | wc -l)" -eq 8
+          mkdir -p "$RUNNER_TEMP/bird"
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o "$RUNNER_TEMP/bird/dev.zip"
+          echo "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  $RUNNER_TEMP/bird/dev.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/bird/dev.zip" -d "$RUNNER_TEMP/bird/unpacked"
+          DB_ZIP=$(find "$RUNNER_TEMP/bird/unpacked" -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ZIP"
+          mkdir -p "$RUNNER_TEMP/bird/databases"
+          unzip -q "$DB_ZIP" -d "$RUNNER_TEMP/bird/databases"
+          DB_ROOT=$(find "$RUNNER_TEMP/bird/databases" -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ROOT"
+          echo "BIRD_DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+      - name: CPU inspect 81 source-first schemas, FK keys and paired physical COUNT probes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.audit_dev500_81_physical_keys \
+            --cache-dir cache --workers-dir workers \
+            --source original-bird-dev.json \
+            --manifest manifests/bird-dev500-holdout300-20261116-v2.json \
+            --db-root "$BIRD_DB_ROOT" \
+            --out original-81-source-first-physical-schema.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data=json.loads(Path('original-81-source-first-physical-schema.json').read_text())
+          assert data['remaining_count']==81 and data['database_count']==11
+          assert len(data['source_first_cases'])==81
+          assert len(data['predeclared_count_grain_probes'])==5
+          assert len(data['existing_correct_controls'])==3
+          assert data['no_new_model_calls'] and data['no_gold_reference_consulted']
+          assert data['holdout300_untouched'] and data['no_guarded_code_changed']
+          assert not data['no_new_bird_ex'] is False
+          print('APPROVED_SOURCE_ONLY_81_PHYSCHEMA',len(data['source_first_cases']))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: success()
+        with:
+          name: BIRD-DEV500-QWEN9B-ORIGINAL-81-PHYSICAL-SOURCE-FIRST-EVIDENCE
+          path: original-81-source-first-physical-schema.json
+          if-no-files-found: error
+          retention-days: 60

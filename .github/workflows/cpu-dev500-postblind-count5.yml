@@ -1,0 +1,81 @@
+name: BIRD DEV500 postblind five source-frozen COUNT-grain probes
+on:
+  push:
+    branches: [research/dev500-zero-oracle-215-forensic-20261119]
+    paths: [.github/workflows/cpu-dev500-postblind-count5.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  postblind-five:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Build correct-bounds CPU-only audit code
+        shell: bash
+        run: |
+          python -m compileall -q scripts/postblind_bird_dev500_count_probe5.py
+      - name: Fetch immutable source-FIRST physical evidence from successful prior Actions
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44555827205
+          github-token: ${{ github.token }}
+          name: BIRD-DEV500-QWEN9B-ORIGINAL-81-PHYSICAL-SOURCE-FIRST-EVIDENCE
+          path: source_first
+      - name: Only AFTER source-first freeze, retrieve identical pinned public source and read-only physical original DBs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f source_first/original-81-source-first-physical-schema.json
+          python - <<'PY'
+          import json
+          d=json.load(open('source_first/original-81-source-first-physical-schema.json'))
+          assert d['remaining_count']==81 and d['no_gold_reference_consulted']
+          assert len(d['predeclared_count_grain_probes'])==5
+          print('SOURCE_FIRST_LOCK_VERIFIED_BEFORE_PUBLISHER_GOLD')
+          PY
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true' \
+            -o original-bird-dev.json
+          echo 'ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb  original-bird-dev.json' | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/bird"
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o "$RUNNER_TEMP/bird/dev.zip"
+          echo "cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630  $RUNNER_TEMP/bird/dev.zip" | sha256sum -c -
+          unzip -q "$RUNNER_TEMP/bird/dev.zip" -d "$RUNNER_TEMP/bird/unpacked"
+          DB_ZIP=$(find "$RUNNER_TEMP/bird/unpacked" -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ZIP"
+          mkdir -p "$RUNNER_TEMP/bird/databases"
+          unzip -q "$DB_ZIP" -d "$RUNNER_TEMP/bird/databases"
+          DB_ROOT=$(find "$RUNNER_TEMP/bird/databases" -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ROOT"
+          echo "BIRD_DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Strict five-predefined-query physical paired reference SET match, no model inference
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.postblind_bird_dev500_count_probe5 \
+            --source-first source_first/original-81-source-first-physical-schema.json \
+            --original-dev original-bird-dev.json --db-root "$BIRD_DB_ROOT" \
+            --out postblind-5-case-count-grain-set-equality.json
+          python - <<'PY'
+          import json
+          x=json.load(open('postblind-5-case-count-grain-set-equality.json'))
+          assert len(x['case_results'])==5
+          assert x['population_predeclared_physical_probes']==5
+          assert x['source_first_cases_81_11_db']
+          assert x['no_model_calls'] and x['no_Guarded_end_to_end_2_repair_ab']
+          assert x['no_hidden_holdout'] and x['no_training']
+          assert x['rescues']+x['regressions']<=5
+          print('POST_BLIND_BIRD_COUNT5_COMPLETE_WITH_ACTUAL_DENOMINATOR')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: BIRD-DEV500-QWEN9B-FIVE-COUNT-GRAIN-POSTBLIND-SET-EX-DIAGNOSTIC
+          path: postblind-5-case-count-grain-set-equality.json
+          if-no-files-found: error
+          retention-days: 60

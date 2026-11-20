@@ -1,0 +1,272 @@
+{
+  "by_database": {
+    "california_schools": {
+      "all": 28,
+      "exec_all_executable_but_wrong": 2,
+      "exec_none_executable": 10,
+      "exec_some_executable_none_correct": 8,
+      "failures": 20,
+      "has_gold_matched_candidate": 8
+    },
+    "card_games": {
+      "all": 62,
+      "exec_all_executable_but_wrong": 21,
+      "exec_none_executable": 1,
+      "exec_some_executable_none_correct": 7,
+      "failures": 29,
+      "has_gold_matched_candidate": 33
+    },
+    "codebase_community": {
+      "all": 62,
+      "exec_all_executable_but_wrong": 11,
+      "exec_none_executable": 1,
+      "exec_some_executable_none_correct": 5,
+      "failures": 17,
+      "has_gold_matched_candidate": 45
+    },
+    "debit_card_specializing": {
+      "all": 19,
+      "exec_all_executable_but_wrong": 6,
+      "exec_some_executable_none_correct": 6,
+      "failures": 12,
+      "has_gold_matched_candidate": 7
+    },
+    "european_football_2": {
+      "all": 41,
+      "exec_all_executable_but_wrong": 8,
+      "exec_none_executable": 2,
+      "exec_some_executable_none_correct": 4,
+      "failures": 14,
+      "has_gold_matched_candidate": 27
+    },
+    "financial": {
+      "all": 34,
+      "exec_all_executable_but_wrong": 4,
+      "exec_none_executable": 6,
+      "exec_some_executable_none_correct": 17,
+      "failures": 27,
+      "has_gold_matched_candidate": 7
+    },
+    "formula_1": {
+      "all": 56,
+      "exec_all_executable_but_wrong": 16,
+      "exec_some_executable_none_correct": 9,
+      "failures": 25,
+      "has_gold_matched_candidate": 31
+    },
+    "student_club": {
+      "all": 53,
+      "exec_all_executable_but_wrong": 3,
+      "exec_some_executable_none_correct": 9,
+      "failures": 12,
+      "has_gold_matched_candidate": 41
+    },
+    "superhero": {
+      "all": 43,
+      "exec_all_executable_but_wrong": 3,
+      "exec_some_executable_none_correct": 3,
+      "failures": 6,
+      "has_gold_matched_candidate": 37
+    },
+    "thrombosis_prediction": {
+      "all": 53,
+      "exec_all_executable_but_wrong": 7,
+      "exec_none_executable": 8,
+      "exec_some_executable_none_correct": 13,
+      "failures": 28,
+      "has_gold_matched_candidate": 25
+    },
+    "toxicology": {
+      "all": 49,
+      "exec_all_executable_but_wrong": 16,
+      "exec_some_executable_none_correct": 9,
+      "failures": 25,
+      "has_gold_matched_candidate": 24
+    }
+  },
+  "by_publisher_difficulty": {
+    "challenging": {
+      "all": 73,
+      "failures": 50,
+      "has_gold_matched_candidate": 23
+    },
+    "moderate": {
+      "all": 146,
+      "failures": 79,
+      "has_gold_matched_candidate": 67
+    },
+    "simple": {
+      "all": 281,
+      "failures": 86,
+      "has_gold_matched_candidate": 195
+    }
+  },
+  "counts": {
+    "all_eight_candidate_ast_parsed": 209,
+    "all_executable_correct_reference_unmatched": 97,
+    "all_same_sql": 5,
+    "at_least_four_distinct_sql": 183,
+    "exec_all_executable_but_wrong": 97,
+    "exec_none_executable": 28,
+    "exec_some_executable_none_correct": 90,
+    "failures": 215,
+    "flag_all_8_candidates_same_coarse_ast_shape": 40,
+    "flag_all_8_candidates_same_normalized_sql": 5,
+    "flag_at_least_one_model_generation_hit_token_limit": 28,
+    "flag_no_parsed_candidate_has_all_reference_tables": 60,
+    "flag_no_parsed_candidate_has_reference_avg": 3,
+    "flag_no_parsed_candidate_has_reference_count": 3,
+    "flag_no_parsed_candidate_has_reference_distinct": 40,
+    "flag_no_parsed_candidate_has_reference_division": 8,
+    "flag_no_parsed_candidate_has_reference_exists": 3,
+    "flag_no_parsed_candidate_has_reference_group": 5,
+    "flag_no_parsed_candidate_has_reference_join": 8,
+    "flag_no_parsed_candidate_has_reference_limit": 4,
+    "flag_no_parsed_candidate_has_reference_order": 5,
+    "flag_no_parsed_candidate_has_reference_sum": 6,
+    "flag_no_parsed_candidate_has_reference_where": 4,
+    "flag_no_parsed_candidate_matches_reference_output_width": 45,
+    "fully_distinct_sql": 88,
+    "model_length_stop_candidate_slots": 85,
+    "model_length_stop_cases": 28,
+    "publisher_unscorable_certified": 1,
+    "reference_ast_unparsed": 0
+  },
+  "methodology": {
+    "AST_parsing_is_different_from_SQLite_execution": true,
+    "HOLDOUT300_untouched": true,
+    "ast_structural_flags_are_posthoc_and_may_overlap": true,
+    "no_SQL_generative_or_selection_intervention": true,
+    "no_model_calls": true,
+    "physical_execution_class_is_observed": true,
+    "reference_SQL_structural_disagreement_does_not_imply_wrong_semantics": true
+  },
+  "model_digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+  "population": {
+    "candidate_sql": 4000,
+    "original_K8_goldblind_selected_correct": 233,
+    "original_K8_no_correct_candidate": 215,
+    "original_K8_oracle_upper_bound_correct": 285,
+    "physical_db_count": 11,
+    "publisher_reference_scorable": 499,
+    "reference_timeout_certified_all_invalid": 1,
+    "total": 500
+  },
+  "protocol": "ORIGINAL-QWEN9B-BIRD-DEV500-ZERO-ORACLE-215-FORENSIC-CPU-V1",
+  "sample_case_ids_by_noncausal_ast_flag": {
+    "all_8_candidates_same_coarse_ast_shape": [
+      "4",
+      "27",
+      "33",
+      "172",
+      "199",
+      "219"
+    ],
+    "all_8_candidates_same_normalized_sql": [
+      "199",
+      "452",
+      "567",
+      "766",
+      "1108"
+    ],
+    "at_least_one_model_generation_hit_token_limit": [
+      "0",
+      "20",
+      "21",
+      "31",
+      "45",
+      "66"
+    ],
+    "no_parsed_candidate_has_all_reference_tables": [
+      "0",
+      "5",
+      "20",
+      "21",
+      "31",
+      "45"
+    ],
+    "no_parsed_candidate_has_reference_avg": [
+      "0",
+      "154",
+      "1189"
+    ],
+    "no_parsed_candidate_has_reference_count": [
+      "67",
+      "144",
+      "1093"
+    ],
+    "no_parsed_candidate_has_reference_distinct": [
+      "21",
+      "109",
+      "144",
+      "191",
+      "199",
+      "219"
+    ],
+    "no_parsed_candidate_has_reference_division": [
+      "0",
+      "20",
+      "31",
+      "119",
+      "523",
+      "974"
+    ],
+    "no_parsed_candidate_has_reference_exists": [
+      "191",
+      "317",
+      "593"
+    ],
+    "no_parsed_candidate_has_reference_group": [
+      "103",
+      "224",
+      "428",
+      "1282",
+      "1497"
+    ],
+    "no_parsed_candidate_has_reference_join": [
+      "0",
+      "20",
+      "267",
+      "446",
+      "477",
+      "567"
+    ],
+    "no_parsed_candidate_has_reference_limit": [
+      "0",
+      "462",
+      "1284",
+      "1474"
+    ],
+    "no_parsed_candidate_has_reference_order": [
+      "0",
+      "20",
+      "135",
+      "144",
+      "204"
+    ],
+    "no_parsed_candidate_has_reference_sum": [
+      "20",
+      "116",
+      "172",
+      "523",
+      "1093",
+      "1497"
+    ],
+    "no_parsed_candidate_has_reference_where": [
+      "0",
+      "20",
+      "317",
+      "1022"
+    ],
+    "no_parsed_candidate_matches_reference_output_width": [
+      "0",
+      "5",
+      "20",
+      "21",
+      "26",
+      "45"
+    ]
+  },
+  "source_sha256": "ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb",
+  "status": "COMPLETE_FROZEN_DEV500_FORENSIC_NOT_EXPERIMENT"
+}
