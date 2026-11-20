@@ -1,0 +1,68 @@
+name: Original DEV500 Qwen9B 81 full K8 SQL source + assistant triage immutable verification (NO QWEN)
+on:
+  push:
+    branches: [research/dev500-81-full-k8-source-triage-20261120]
+    paths:
+      - .github/workflows/cpu-verify-dev500-81-fullk8-source-review.yml
+permissions:
+  contents: read
+  actions: read
+jobs:
+  exact_original_sql_evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Restore first two SHA-pinned original Qwen K8 cache shards (no publisher gold)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44086713331
+          github-token: ${{ github.token }}
+          pattern: k8-bird-dev500-prospective-cache-and-offline-score-shard-*
+          merge-multiple: true
+          path: original-cache
+      - name: Restore other 30 frozen Qwen K8 cache shards (no publisher gold)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44093103960
+          github-token: ${{ github.token }}
+          pattern: k8-bird-dev500-prospective-cache-and-offline-score-shard-*
+          merge-multiple: true
+          path: original-cache
+      - name: Restore original 81-question physical-schema SOURCE-ONLY snapshot
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44555827205
+          github-token: ${{ github.token }}
+          name: BIRD-DEV500-QWEN9B-ORIGINAL-81-PHYSICAL-SOURCE-FIRST-EVIDENCE
+          path: source81
+      - name: Verify all 81 original question+eight SQL full SHA256 and every assistant ledger row
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.verify_dev500_81_full_k8_source_review \
+            --source-file source81/original-81-source-first-physical-schema.json \
+            --cache-dir original-cache \
+            --ledger-file evidence/dev500-81-all8-sourcefirst-assistant-triage-20261120.md \
+            --out verified-original-qwen-81-full-k8-source-ledger.json
+          python - <<'PY'
+          import json
+          d=json.load(open('verified-original-qwen-81-full-k8-source-ledger.json'))
+          assert d['source_and_all_eight_sql_sha_checks_passed']
+          assert d['n_original_sqls']==648 and d['n_source_cases']==81 and d['n_source_db_families']==11
+          assert d['annotation_categories']=={
+            'SOURCE_TEXT_CONTRADICTION':9,'PROVISIONAL':53,'ABSTAIN':19}
+          assert d['no_gold_reference_sql_opened'] and d['holdout300_untouched'] and d['no_Qwen_calls']
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: BIRD-DEV500-ORIGINAL-QWEN9B-81-ALL8-SOURCE-VERIFIED-ASSISTANT-TRIAGE
+          path: verified-original-qwen-81-full-k8-source-ledger.json
+          retention-days: 60
+          if-no-files-found: error
