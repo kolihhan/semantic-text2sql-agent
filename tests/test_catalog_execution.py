@@ -58,7 +58,7 @@ def test_readonly_executor_rejects_mutation(tmp_path):
 def test_schema_selector_matches_columns_and_keeps_fk_neighbors(tmp_path):
     catalog = DatabaseCatalog.from_sqlite(make_db(tmp_path))
     context, diagnostics = select_schema_context(catalog, tmp_path, "demo", "show customer total amount")
-    assert diagnostics["selector"] == "deterministic_lexical_v1"
+    assert diagnostics["selector"] == "deterministic_lexical_v2"
     assert diagnostics["fallback_full_schema"] is False
     assert {"orders", "customers", "products"} <= set(diagnostics["selected_tables"])
     assert "FK orders.customer_id -> customers.id" in context
