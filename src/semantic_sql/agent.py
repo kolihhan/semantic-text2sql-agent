@@ -31,6 +31,7 @@ class SemanticSQLService:
         *,
         evidence: str | None = None,
         initial_candidate: SQLCandidate | None = None,
+        semantic_hint: str | None = None,
     ) -> AgentResult:
         return run_guarded(
             database=self.database,
@@ -42,4 +43,5 @@ class SemanticSQLService:
             max_repairs=self.max_repairs,
             max_rows=self.max_rows,
             semantic_revision=self.semantic_revision,
+            semantic_hint=semantic_hint,
         )

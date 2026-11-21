@@ -41,6 +41,7 @@ class GuardedState(TypedDict, total=False):
     candidate: SQLCandidate | None
     verification: VerificationResult | None
     semantic_revised: bool
+    semantic_hint: str | None
     stages: tuple[StageRecord, ...]
     result: AgentResult | None
 
@@ -93,6 +94,57 @@ def _repair(state: GuardedState, runtime) -> dict[str, Any]:
 
 def _semantic_revise(state: GuardedState, runtime) -> dict[str, Any]:
     candidate = state["candidate"]
+    hint = state.get("semantic_hint")
+    if hint:
+        # Reuse the existing LangGraph node; one targeted model call and original
+        # SQL fallback. This is NOT an automatic semantic-error detector.
+        prompt = (
+            f"Question:\n{state['question']}\n\n"
+            f"Schema context:\n{state['schema_context']}\n\n"
+        )
+        if state.get("evidence"):
+            prompt += f"External evidence:\n{state['evidence']}\n\n"
+        prompt += (
+            f"Original SQL:\n{candidate.sql}\n\n"
+            f"Suspected mismatch (hypothesis, NOT a guaranteed error):\n{hint}\n\n"
+            "Compare the user question with the SQL before making any changes:\n"
+            "1. Answer/output: which entities, fields, and number of rows are requested?\n"
+            "2. Grain and calculation: one record or per-entity total? Check "
+            "SUM/COUNT/DISTINCT/AVG, grouping keys, ratio numerator and denominator.\n"
+            "3. Relationships: check JOIN keys and whether joins multiply the counted entity.\n"
+            "4. Constraints: preserve the requested values, dates, ranges, and WHERE conditions.\n"
+            "5. Ranking: order by the REQUESTED metric AFTER aggregation; "
+            "check direction, LIMIT, offset, and ties.\n"
+            "Use the hint only if the question and schema support that mismatch. "
+            "If it is unproven or the SQL already satisfies the question, return "
+            "the ORIGINAL SQL exactly. Otherwise make the smallest supported change, "
+            "preserving all unaffected clauses and output fields. "
+            "Never invent schema fields, facts, or filters. "
+            "Return exactly ONE read-only SQLite SELECT/CTE statement; "
+            "no JSON, markdown, reasoning, or explanation."
+        )
+        response = runtime.context.provider.complete_text(
+            system=(
+                "You are a conservative SQL semantic editor, not a SQL generator. "
+                "Treat any suggested error as a hypothesis; follow the user question "
+                "and available schema over the hint. Emit SQL only."
+            ),
+            user=prompt,
+        )
+        proposed = _strip_fence(response)
+        valid = verify_sql_preflight(runtime.context.database, proposed).ok
+        revised = SQLCandidate(
+            sql=proposed if valid else candidate.sql,
+            attempt=candidate.attempt,
+        )
+        outcome = ("invalid_fallback" if not valid
+                   else "same" if proposed.strip().rstrip(";") == candidate.sql.strip().rstrip(";")
+                   else "changed")
+        return {
+            "candidate": revised,
+            "semantic_revised": True,
+            "stages": _append_stage(state, "semantic_revision", "targeted:" + outcome),
+        }
     prompt = f"Question:\n{state['question']}\n\nSchema context:\n{state['schema_context']}\n\n"
     if state.get("evidence") is not None:
         prompt += f"External evidence:\n{state['evidence']}\n\n"
@@ -195,15 +247,22 @@ def run_guarded(
     schema_context: str, evidence: str | None = None,
     initial_candidate: SQLCandidate | None = None, max_repairs: int = 2,
     max_rows: int = 100, semantic_revision: bool = False,
+    semantic_hint: str | None = None,
 ) -> AgentResult:
+    if semantic_hint is not None:
+        if not isinstance(semantic_hint, str) or not semantic_hint.strip() or len(semantic_hint) > 500:
+            raise ValueError("semantic_hint must be nonempty text of at most 500 characters")
+        semantic_hint = semantic_hint.strip()
+    use_revision = semantic_revision or semantic_hint is not None
     database = Path(database)
-    output = _build_guarded_graph(semantic_revision=semantic_revision).invoke(
+    output = _build_guarded_graph(semantic_revision=use_revision).invoke(
         {
             "question": question,
             "schema_context": schema_context,
             "evidence": evidence,
             "candidate": initial_candidate,
             "semantic_revised": False,
+            "semantic_hint": semantic_hint,
             "stages": (),
         },
         config={"recursion_limit": 2 * max(0, max_repairs) + 10},
@@ -212,7 +271,7 @@ def run_guarded(
             provider=provider,
             max_repairs=max_repairs,
             max_rows=max_rows,
-            semantic_revision=semantic_revision,
+            semantic_revision=use_revision,
         ),
     )
     result = output["result"] if isinstance(output, dict) else output.result
