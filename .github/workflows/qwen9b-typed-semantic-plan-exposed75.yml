@@ -128,7 +128,7 @@ jobs:
           done
           ollama pull "$MODEL"
           python - <<'PY'
-          from evaluation.qwen9b_typed_plan_exposed75 import _model_digest,QWEN_MODEL,QWEN_DIGEST
+          from evaluation.qwen9b_typed_plan_exposed12 import _model_digest,QWEN_MODEL,QWEN_DIGEST
           assert _model_digest(QWEN_MODEL)==QWEN_DIGEST
           print("PINNED_QWEN9B_DIGEST_VALIDATED")
           PY
