@@ -84,6 +84,11 @@ jobs:
                   if qwen9b: break
                   time.sleep(3)
               result["ready_models_count"] = len(ready)
+              result["ready_models"] = sorted(
+                  [{"id": str(m.get("id", "")), "owned_by": str(m.get("owned_by", "unknown"))}
+                   for m in ready if isinstance(m, dict)],
+                  key=lambda m: (m["owned_by"], m["id"]),
+              )
               result["qwen_3_5_9b_ready"] = bool(qwen9b)
               if not qwen9b:
                   result["status"] = "BLOCKED_NO_QWEN9B_ANONYMOUS_ROUTE"
