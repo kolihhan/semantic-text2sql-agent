@@ -18,6 +18,7 @@ class SemanticSQLService:
         max_rows: int = 100,
         semantic_revision: bool = False,
         semantic_plan_verifier: bool = False,
+        semantic_plan_policy: str = "always",
         semantic_contract_checks: bool = False,
     ) -> None:
         self.database = Path(database)
@@ -27,6 +28,7 @@ class SemanticSQLService:
         self.max_rows = max_rows
         self.semantic_revision = semantic_revision
         self.semantic_plan_verifier = semantic_plan_verifier
+        self.semantic_plan_policy = semantic_plan_policy
         self.semantic_contract_checks = semantic_contract_checks
 
     def ask(
@@ -47,5 +49,6 @@ class SemanticSQLService:
             max_rows=self.max_rows,
             semantic_revision=self.semantic_revision,
             semantic_plan_verifier=self.semantic_plan_verifier,
+            semantic_plan_policy=self.semantic_plan_policy,
             semantic_contract_checks=self.semantic_contract_checks,
         )
