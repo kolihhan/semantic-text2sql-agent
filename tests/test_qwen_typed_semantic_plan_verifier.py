@@ -126,3 +126,20 @@ def test_no_fk_metadata_must_not_force_invalid_join_error(db):
     verdict=verify_plan_against_sql(extraction=extraction,sql=GOOD,
                                     catalog=DatabaseCatalog.from_sqlite(db))
     assert verdict.status=="consistent"
+
+def test_aggregate_match_but_unverified_question_filter_not_semantic_pass(db):
+    requirement=plan(filters=[{"field":"orders.id","op":"=","value":1}])
+    model=Model(GOOD, requirement)
+    result=execute(db, model)
+    assert len(model.calls)==2
+    assert result.status=="semantic_unverified"
+    assert result.rows==((2,),)
+    assert "UNVERIFIED" in [x.summary for x in result.stages if x.name=="semantic_plan_verify"][0]
+
+def test_unchecked_multi_entity_relation_not_semantic_pass(db):
+    requirement=plan(join_entities=["orders","orders"])
+    model=Model(GOOD, requirement)
+    result=execute(db, model)
+    assert result.status=="semantic_unverified"
+    assert result.rows==((2,),)
+    assert len(model.calls)==2
