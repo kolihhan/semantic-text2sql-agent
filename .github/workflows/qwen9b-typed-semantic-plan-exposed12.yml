@@ -1,0 +1,205 @@
+name: Qwen3.5-9B Semantic Plan Verifier exposed DEV100 diagnostic 12 paired
+on:
+  push:
+    branches: [research/qwen9b-typed-semantic-plan-verifier-20261121]
+    paths: [.github/QWEN9B_TYPED_PLAN_12_START]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: qwen9b-scv12-single-shot-20261121
+  cancel-in-progress: false
+env:
+  MODEL: qwen3.5:9b-q4_K_M
+  EXPECTED_MODEL_DIGEST: 56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90
+  SOURCE_HF_COMMIT: 3c11fb193e5439b338e23677fa0aae11e8b85db9
+  SOURCE_RAW_SHA256: ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb
+  DB_ZIP_SHA256: cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630
+
+jobs:
+  freeze:
+    name: Freeze only historical source and SQL (NO gold SQL)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - name: Download pinned historical BIRD DEV original source
+        run: |
+          set -euo pipefail
+          mkdir -p source raw100
+          curl -fL --retry 3 "https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/${SOURCE_HF_COMMIT}/data/dev_20251106-00000-of-00001.json?download=true" -o source/original-dev.json
+          echo "${SOURCE_RAW_SHA256}  source/original-dev.json" | sha256sum -c -
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 37307108955
+          github-token: ${{ github.token }}
+          name: qwen9b-xiyan-style-shard-0
+          path: raw100
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 37307108955
+          github-token: ${{ github.token }}
+          name: qwen9b-xiyan-style-shard-1
+          path: raw100
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 37307108955
+          github-token: ${{ github.token }}
+          name: qwen9b-xiyan-style-shard-2
+          path: raw100
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 37307108955
+          github-token: ${{ github.token }}
+          name: qwen9b-xiyan-style-shard-3
+          path: raw100
+      - name: Freeze historical SQL from COMPLETE shards without correctness outcomes
+        run: |
+          set -euo pipefail
+          test "$(find raw100 -maxdepth 1 -name 'qwen9b-shard-*.json' | wc -l)" -eq 4
+          python -m evaluation.qwen9b_typed_plan_exposed12 freeze --source source/original-dev.json --shards raw100 --out scv12-frozen-gold-free.json
+          python - <<'PY'
+          import json
+          f=json.load(open("scv12-frozen-gold-free.json"))
+          assert len(f["selected"])==12 and f["gold_sql_present"] is False
+          assert all("official_ex" not in x and "SQL" not in x for x in f["selected"])
+          assert len({x["case_id"] for x in f["selected"]})==12
+          print("FROZEN_SOURCE_NO_GOLD_STRICT",len(f["selected"]))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: original-qwen9b-scv12-frozen-gold-free
+          path: scv12-frozen-gold-free.json
+          if-no-files-found: error
+          retention-days: 30
+
+  blind:
+    name: Run exactly 12 historical original SQLs under Always and Selective (Qwen9B)
+    needs: [freeze]
+    runs-on: ubuntu-latest
+    timeout-minutes: 210
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - name: Install pinned repository plus SQL AST parser
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev,semantic_plan_verifier]'
+          python -m pytest -q
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: original-qwen9b-scv12-frozen-gold-free
+          path: frozen
+      - name: Restore physical DEV databases from original pinned package
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/bird
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
+          echo "${DB_ZIP_SHA256}  /tmp/bird/dev.zip" | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          DB_ZIP=$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ZIP"
+          mkdir -p /tmp/bird/databases
+          unzip -q "$DB_ZIP" -d /tmp/bird/databases
+          DB_ROOT=$(find /tmp/bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=/tmp/bird/databases; fi
+          test -d "$DB_ROOT"
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Install Ollama pinned Qwen3.5-9B on CPU
+        run: |
+          set -euo pipefail
+          curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          ollama serve > /tmp/ollama.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 1
+          done
+          ollama pull "$MODEL"
+          python - <<'PY'
+          from evaluation.qwen9b_typed_plan_exposed12 import _model_digest,QWEN_MODEL,QWEN_DIGEST
+          assert _model_digest(QWEN_MODEL)==QWEN_DIGEST
+          print("PINNED_QWEN9B_DIGEST_VALIDATED")
+          PY
+      - name: Frozen gold-blind Qwen9B Always vs Selective on original guarded SQL
+        run: |
+          set -euo pipefail
+          python -m evaluation.qwen9b_typed_plan_exposed12 infer --frozen frozen/scv12-frozen-gold-free.json --db-root "$DB_ROOT" --out scv12-qwen9b-blind.json
+          python - <<'PY'
+          import json
+          d=json.load(open("scv12-qwen9b-blind.json"))
+          assert d["status"]=="COMPLETED_GOLD_BLIND_DECISIONS" and len(d["cases"])==12
+          assert d["reference_sql_opened"] is False
+          print("QWEN9B_GOLD_BLIND_DECISIONS_SEALED",len(d["cases"]))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: original-qwen9b-scv12-blind-decisions
+          path: scv12-qwen9b-blind.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  score:
+    name: Only after sealed Qwen output, open labels and compute strict EX
+    needs: [freeze,blind]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - name: Install scorer only
+        run: python -m pip install -e '.[dev,semantic_plan_verifier]'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: original-qwen9b-scv12-frozen-gold-free
+          path: frozen
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: original-qwen9b-scv12-blind-decisions
+          path: blind
+      - name: Open original source labels AFTER blind model decision artifact uploaded
+        run: |
+          set -euo pipefail
+          mkdir -p source /tmp/bird
+          curl -fL --retry 3 "https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/${SOURCE_HF_COMMIT}/data/dev_20251106-00000-of-00001.json?download=true" -o source/original-dev.json
+          echo "${SOURCE_RAW_SHA256}  source/original-dev.json" | sha256sum -c -
+      - name: Fetch pinned original physical databases for strict scorer
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
+          echo "${DB_ZIP_SHA256}  /tmp/bird/dev.zip" | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          DB_ZIP=$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)
+          test -n "$DB_ZIP"
+          mkdir -p /tmp/bird/databases
+          unzip -q "$DB_ZIP" -d /tmp/bird/databases
+          DB_ROOT=$(find /tmp/bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=/tmp/bird/databases; fi
+          test -d "$DB_ROOT"
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+      - name: Strict physical SET and BAG EX plus rescues and regressions
+        run: |
+          set -euo pipefail
+          python -m evaluation.qwen9b_typed_plan_exposed12 score --frozen frozen/scv12-frozen-gold-free.json --blind blind/scv12-qwen9b-blind.json --source source/original-dev.json --db-root "$DB_ROOT" --out scv12-scored.json
+          python - <<'PY'
+          import json
+          d=json.load(open("scv12-scored.json"))
+          assert d["status"]=="COMPLETE_HISTORICAL_SOURCE_ONLY_NOT_INDEPENDENT"
+          assert d["n_selected"]==12 and d["holdout_opened"] is False
+          print("NO_PROMOTION_HISTORICALLY_EXPOSED_SCV12",d["scores"])
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: original-qwen9b-scv12-strict-ex-postseal
+          path: scv12-scored.json
+          if-no-files-found: error
+          retention-days: 30
