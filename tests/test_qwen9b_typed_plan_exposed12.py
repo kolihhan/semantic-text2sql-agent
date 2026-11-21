@@ -73,4 +73,4 @@ def test_score_refuses_early_gold_access_and_mismatched_source(tmp_path):
     b=tmp_path/"blind.json"
     b.write_text(json.dumps({"status":"INCOMPLETE","reference_sql_opened":False,"cases":[]}))
     with pytest.raises(ValueError,match="incomplete"):
-        e.score(frozen=f,blind=b,source=tmp_path/"no-source",db_root=tmp_path,out=tmp_path/"score")
+        e.score(frozen=f,blind=b,source=tmp_path/"no-source",db_root=tmp_path,output=tmp_path/"score")
