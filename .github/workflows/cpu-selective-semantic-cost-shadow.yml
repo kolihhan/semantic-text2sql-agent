@@ -1,0 +1,145 @@
+name: Qwen9B opt-in selective semantic gate CPU shadow cost and safety audit
+on:
+  push:
+    branches: [research/selective-semantic-fallback-budget-20261121]
+    paths: [.github/SELECTIVE_SEMANTIC_COST_SHADOW_START]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  source-locked-retrospective:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - name: Entire original runtime regression suite and opt-in semantic verifier
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q
+          python -m pytest -q tests/test_selective_semantic_cost_guard.py
+          python -m compileall -q src/semantic_sql/semantic_contracts.py evaluation/audit_semantic_contract_original_sql.py
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 37307108955
+          github-token: ${{ github.token }}
+          name: qwen9b-xiyan-style-shard-0
+          path: raw100
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 37307108955
+          github-token: ${{ github.token }}
+          name: qwen9b-xiyan-style-shard-1
+          path: raw100
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 37307108955
+          github-token: ${{ github.token }}
+          name: qwen9b-xiyan-style-shard-2
+          path: raw100
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 37307108955
+          github-token: ${{ github.token }}
+          name: qwen9b-xiyan-style-shard-3
+          path: raw100
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44508116418
+          github-token: ${{ github.token }}
+          name: original-Qwen9B-newTRAIN48-k4-frozen-question-source
+          path: frozen48
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44508116418
+          github-token: ${{ github.token }}
+          pattern: original-Qwen9B-k4-counter48-generated-sealed-*
+          merge-multiple: true
+          path: generated48
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44508116418
+          github-token: ${{ github.token }}
+          pattern: original-Qwen9B-k4-counter48-physical-score-*
+          merge-multiple: true
+          path: scored48
+      - name: Pure CPU semantic-contract violation detection on ORIGINAL Qwen9B outputs
+        run: |
+          set -euo pipefail
+          test "$(find raw100 -maxdepth 1 -name 'qwen9b-shard-*.json' | wc -l)" -eq 4
+          test "$(find generated48 -maxdepth 1 -name 'generated-*.json' | wc -l)" -eq 8
+          test "$(find scored48 -maxdepth 1 -name 'scored-*.json' | wc -l)" -eq 8
+          python -m evaluation.audit_semantic_contract_original_sql \
+            --raw100 raw100 --source48 frozen48/source48.jsonl \
+            --generated48 generated48 --scored48 scored48 \
+            --out final-semantic-contract-retrospective.json
+          python - <<'PY'
+          import json
+          v=json.load(open('final-semantic-contract-retrospective.json'))
+          a=v['historical_dev100'];b=v['previously_exposed_train48']
+          assert a['n']==100 and a['counts']['correct']==39
+          assert a['original_workflow_not_end_to_end_valid']
+          assert b['arms']['control']['counts']['scorable']==46
+          assert b['arms']['control']['counts']['correct']==26
+          assert b['arms']['treatment']['counts']['correct']==25
+          assert v['new_model_calls']==0 and v['promotion_allowed'] is False
+          assert v['DEV500_or_HOLDOUT300_not_opened']
+          print('VERIFIED_GOLD_FREE_DETECTOR_RETROSPECTIVE_ONLY',
+                'DEV100',a['counts'],'TRAIN48',b['arms']['control']['counts'],
+                'SCREEN',v['positive_screen_only'],flush=True)
+          PY
+      - name: Stop rule and cost forecast ONLY, no model repairs
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path("final-semantic-contract-retrospective.json").read_text())
+          a=r["historical_dev100"]["counts"]
+          c=r["previously_exposed_train48"]["arms"]["control"]["counts"]
+          t=r["previously_exposed_train48"]["arms"]["treatment"]["counts"]
+          assert r["positive_screen_only"] is False
+          assert a["wrong_blocking_flagged"]==3
+          assert a.get("known_correct_blocking_flagged",0)==0
+          assert c.get("blocking_flagged",0)==0
+          assert t.get("blocking_flagged",0)==0
+          assert r["new_model_calls"]==0
+          report={
+            "protocol":"QWEN9B-SELECTIVE-SEMANTIC-SHADOW-COST-V1",
+            "base_model":"Qwen3.5-9B, fixed",
+            "baseline_unchanged":True,"sql_model_training":False,
+            "new_model_calls":0,"new_execution_match":None,
+            "historical_dev100_original_wrong":61,
+            "historical_dev100_flagged_wrong":3,
+            "historical_dev100_flagged_correct":0,
+            "historical_dev100_per_100_extra_Qwen_calls_if_one_repair_each":a["blocking_flagged"],
+            "historical_dev100_estimated_relative_Qwen_call_overhead_vs_one_call_baseline":a["blocking_flagged"]/100,
+            "historical_train48_per_48_extra_Qwen_calls_if_one_repair_each":c.get("blocking_flagged",0),
+            "independent_lift_demonstrated":False,
+            "cost_budget":"At most 1 semantic model call per flagged case; original valid SQL restored if failed. Normal syntax repair remains <=2.",
+            "legacy_semantic_screen_positive":r["positive_screen_only"],
+            "decision":"HOLD: not enough independent semantic-conflict signal; do not run Qwen repairs or promote",
+            "qualifications":"All historical original SQL exposed; DEV100 one invalid shard; speculative extra calls not real measured runtime overhead."
+          }
+          Path("selective-semantic-cost-shadow.json").write_text(
+              json.dumps(report,indent=2,sort_keys=True)+"\n")
+          print("SEMANTIC_COST_SHADOW_VERIFIED",report,flush=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: QWEN9B-SELECTIVE-SEMANTIC-ONECALL-COST-SHADOW
+          path: |
+            final-semantic-contract-retrospective.json
+            selective-semantic-cost-shadow.json
+          if-no-files-found: error
+          retention-days: 30
