@@ -1,0 +1,116 @@
+name: FreeLLMAPI anonymous Qwen 9B live smoke (no secrets)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/freellmapi-transport-probe-20261122
+    paths:
+      - .github/workflows/freellmapi-anonymous-smoke.yml
+
+permissions:
+  contents: read
+
+jobs:
+  real-transport-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Clone pinned FreeLLMAPI and build local server
+        run: |
+          set -euo pipefail
+          git clone -q https://github.com/tashfeenahmed/freellmapi.git /tmp/freellmapi
+          git -C /tmp/freellmapi checkout -q --detach 7ad9097fd9d83bc3e1af0f925ea813a913b18dde
+          cd /tmp/freellmapi
+          npm ci --no-audit --no-fund
+          npm run build:server
+      - name: Boot local FreeLLMAPI with anonymous-only providers
+        run: |
+          set -euo pipefail
+          export ENCRYPTION_KEY="$(openssl rand -hex 32)"
+          export HOST=127.0.0.1 PORT=3001
+          cd /tmp/freellmapi
+          nohup node server/dist/index.js > /tmp/freellmapi-smoke.log 2>&1 < /dev/null &
+          echo $! > /tmp/freellmapi-smoke.pid
+          for i in $(seq 1 45); do
+            if curl -fsS --max-time 2 http://127.0.0.1:3001/api/ping > /dev/null; then
+              echo "BOOT_OK"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "BOOT_FAILED"
+          sed -E 's/(key|token|password|secret)[=:][^ ]+/\\1=<redacted>/Ig' /tmp/freellmapi-smoke.log | tail -35
+          exit 1
+      - name: Probe authenticated local router and real Qwen availability
+        env:
+          PYTHONPATH: src
+        run: |
+          python - <<'PY'
+          import json
+          import time
+          import urllib.error
+          import urllib.request
+
+          from semantic_sql.providers import FreeLLMAPIProvider
+
+          base = "http://127.0.0.1:3001"
+          result = {"transport": "FreeLLMAPI", "third_party_sha": "7ad9097fd9d83bc3e1af0f925ea813a913b18dde", "test": "real network; no upstream secret"}
+          def req(path, token=None, payload=None):
+              data = json.dumps(payload).encode() if payload is not None else None
+              headers = {"Content-Type": "application/json"}
+              if token: headers["Authorization"] = "Bearer " + token
+              request = urllib.request.Request(base + path, data=data, headers=headers, method="POST" if data is not None else "GET")
+              with urllib.request.urlopen(request, timeout=20) as response:
+                  return json.load(response)
+
+          try:
+              session = req("/api/auth/setup", payload={"email": "smoke@example.invalid", "password": "temporary-only-not-a-real-password"})
+              dashboard_token = session["token"]
+              api_key = req("/api/settings/api-key", token=dashboard_token)["apiKey"]
+              assert api_key.startswith("freellmapi-"), "unified key shape mismatch"
+              result["local_gateway"] = "READY"
+              ready = []
+              for attempt in range(20):
+                  models = req("/v1/models?execution_status=ready", token=api_key)
+                  ready = models.get("data", [])
+                  qwen9b = [m for m in ready if m.get("id") == "Qwen 3.5 9B"]
+                  if qwen9b: break
+                  time.sleep(3)
+              result["ready_models_count"] = len(ready)
+              result["qwen_3_5_9b_ready"] = bool(qwen9b)
+              if not qwen9b:
+                  result["status"] = "BLOCKED_NO_QWEN9B_ANONYMOUS_ROUTE"
+                  print(json.dumps(result, indent=2))
+                  open("freellmapi-smoke-result.json", "w").write(json.dumps(result, indent=2))
+                  raise SystemExit(2)
+              query = FreeLLMAPIProvider(base_url=base + "/v1", api_key=api_key, timeout_s=60)
+              sql = query.complete_text(system="Reply with a single SELECT statement only.", user="Return the SQLite SQL statement that evaluates to integer 1.")
+              result["response_identity"] = "Qwen/Qwen3.5-9B"
+              result["returned_select"] = sql.lstrip().upper().startswith("SELECT")
+              result["status"] = "LIVE_RESPONSE" if result["returned_select"] else "NON_SQL_RESPONSE"
+              open("freellmapi-smoke-result.json", "w").write(json.dumps(result, indent=2))
+              print(json.dumps(result, indent=2))
+              if not result["returned_select"]: raise SystemExit(3)
+          except Exception as ex:
+              if "status" not in result:
+                  result["status"] = "GATEWAY_OR_PROVIDER_ERROR"
+                  result["error_type"] = type(ex).__name__
+                  result["error_summary"] = str(ex)[:160].split("Bearer ")[0]
+                  open("freellmapi-smoke-result.json", "w").write(json.dumps(result, indent=2))
+                  print(json.dumps(result, indent=2))
+              raise
+          PY
+      - name: Save non-sensitive probe report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: freellmapi-anonymous-smoke
+          path: freellmapi-smoke-result.json
+          if-no-files-found: ignore
