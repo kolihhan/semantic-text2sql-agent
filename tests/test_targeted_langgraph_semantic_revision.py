@@ -50,7 +50,17 @@ def test_targeted_revision_reuses_existing_graph_and_corrects_grouped_total(data
     assert result.rows == (("A",),)
     assert result.candidate.sql == FIXED
     assert len(p.calls) == 1
-    assert "Specific issue to check" in p.calls[0][1]
+    prompt = p.calls[0][1]
+    system = p.calls[0][0]
+    assert "Suspected mismatch (hypothesis, NOT a guaranteed error)" in prompt
+    assert HINT in prompt
+    for requirement in (
+        "Answer/output:", "Grain and calculation:", "Relationships:",
+        "Constraints:", "Ranking:", "ORIGINAL SQL exactly",
+        "no JSON, markdown", "preserving all unaffected clauses",
+    ):
+        assert requirement in prompt
+    assert "follow the user question" in system
     assert [s.name for s in result.stages] == [
         "sql", "verify", "semantic_revision", "verify", "execute"
     ]
