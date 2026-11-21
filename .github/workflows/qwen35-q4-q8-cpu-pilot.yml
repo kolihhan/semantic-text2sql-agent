@@ -1,0 +1,226 @@
+name: Qwen3.5-9B Q4 vs Q8 CPU frozen-six ablation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/qwen35-9b-q4-q8-gh-cpu-20261122
+    paths:
+      - .github/workflows/qwen35-q4-q8-cpu-pilot.yml
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_HF_COMMIT: 3c11fb193e5439b338e23677fa0aae11e8b85db9
+  SOURCE_RAW_SHA256: ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb
+  SOURCE_HISTORICAL_SHA256: 0310b7ca2dfb6247234e2073f93e7a75106ee41ba55231f75d06d2ef68efe2ec
+  DB_ZIP_SHA256: cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630
+  PYTHONPATH: src:.
+
+jobs:
+  quant-ablation:
+    strategy:
+      fail-fast: false
+      matrix:
+        quant: [q4, q8]
+        include:
+          - quant: q4
+            model: qwen3.5:9b-q4_K_M
+          - quant: q8
+            model: qwen3.5:9b-q8_0
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      QUANT: ${{ matrix.quant }}
+      MODEL: ${{ matrix.model }}
+      OLLAMA_NUM_PARALLEL: '1'
+      OLLAMA_MAX_LOADED_MODELS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Record hardware and free disk space without modifications
+        run: |
+          echo "RUNNER_HARDWARE quant=$QUANT"
+          nproc
+          free -h
+          df -h /
+          df -B1 --output=avail /
+      - name: Free unused ephemeral preinstalled SDK disk for 11GB Q8 model
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+          echo "DISK_AFTER_CLEAN"
+          df -h /
+          free -h
+          python - <<'PY'
+          import os
+          free_gib = os.statvfs("/").f_bavail * os.statvfs("/").f_frsize / (1024**3)
+          print(f"RUNNER_DISK_FREE_GIB={free_gib:.2f}", flush=True)
+          required = 13 if os.environ["QUANT"] == "q8" else 9
+          if free_gib < required:
+              raise SystemExit(f"RESOURCE_BLOCKED_DISK: {free_gib:.2f} GiB < {required} GiB")
+          PY
+      - name: Install pinned project evaluation dependencies
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m compileall -q scripts/qwen35_quantization_pilot.py
+      - name: Fetch and verify immutable BIRD DEV frozen source
+        run: |
+          set -euo pipefail
+          mkdir -p .quant/data
+          curl -fLsS --retry 3 "https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/${SOURCE_HF_COMMIT}/data/dev_20251106-00000-of-00001.json?download=true" -o .quant/data/source-lf.json
+          echo "${SOURCE_RAW_SHA256}  .quant/data/source-lf.json" | sha256sum -c -
+          python - <<'PY'
+          import hashlib,os
+          from pathlib import Path
+          raw=Path(".quant/data/source-lf.json").read_bytes()
+          assert b"\r\n" not in raw
+          historical=raw.replace(b"\n",b"\r\n")
+          Path(".quant/data/source-historical.json").write_bytes(historical)
+          assert hashlib.sha256(historical).hexdigest()==os.environ["SOURCE_HISTORICAL_SHA256"]
+          print("PINNED_BIRD_SOURCE_PASS")
+          PY
+          rm .quant/data/source-lf.json
+      - name: Fetch verified BIRD DEV database package and reclaim archive disk
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/bird /tmp/bird/db
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
+          echo "${DB_ZIP_SHA256}  /tmp/bird/dev.zip" | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          DB_ZIP="$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)"
+          test -n "$DB_ZIP"
+          unzip -q "$DB_ZIP" -d /tmp/bird/db
+          DB_ROOT="$(find /tmp/bird/db -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)"
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=/tmp/bird/db; fi
+          test -d "$DB_ROOT"
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+          rm -rf /tmp/bird/dev.zip /tmp/bird/unpacked
+          echo "DISK_AFTER_DATABASE_DOWNLOAD"
+          df -h /
+      - name: Install Ollama and start one CPU backend
+        run: |
+          set -euo pipefail
+          curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          nohup ollama serve > /tmp/ollama-cpu.log 2>&1 < /dev/null &
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:11434/api/tags > /dev/null; then
+              echo "OLLAMA_READY"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "OLLAMA_BOOT_FAILED"
+          exit 1
+      - name: Pull exact model variant and capture resource footprint
+        run: |
+          set -euo pipefail
+          echo "PULL_MODEL=$MODEL"
+          df -h /
+          ollama pull "$MODEL"
+          ollama list
+          echo "DISK_POST_PULL"
+          df -h /
+          free -h
+      - name: One fixed low-cost CPU inference feasibility smoke
+        run: |
+          python - <<'PY'
+          import json,os,time,urllib.request
+          model=os.environ["MODEL"]
+          req=urllib.request.Request(
+            "http://127.0.0.1:11434/api/chat",
+            data=json.dumps({
+              "model":model, "stream":False, "think":False,
+              "messages":[
+                {"role":"system","content":"Return one SQLite SELECT statement only."},
+                {"role":"user","content":"Return SQL selecting the integer 1."}],
+              "keep_alive":"20m",
+              "options":{"temperature":0,"seed":42,"num_predict":128,"num_ctx":4096,"num_thread":4}
+            }).encode(),
+            headers={"Content-Type":"application/json"},method="POST")
+          start=time.monotonic()
+          with urllib.request.urlopen(req,timeout=420) as response:
+            data=json.load(response)
+          text=data.get("message",{}).get("content","")
+          result={
+            "model":model, "done_reason":data.get("done_reason"),
+            "elapsed_s":round(time.monotonic()-start,2),
+            "prompt_eval_count":data.get("prompt_eval_count"),
+            "eval_count":data.get("eval_count"),
+            "sql_start":str(text).strip().upper().startswith("SELECT"),
+          }
+          os.makedirs(".quant/results",exist_ok=True)
+          with open(".quant/results/smoke.json","w") as fh:json.dump(result,fh,indent=2)
+          print("QUANT_SMOKE "+json.dumps(result),flush=True)
+          if result["done_reason"]!="stop" or not result["sql_start"]:
+            raise SystemExit("Q8_OR_Q4_SMOKE_FAILED")
+          PY
+          free -h
+      - name: Run frozen-six BIRD Direct vs Guarded EX, no semantic tuning
+        run: |
+          python -u -m scripts.qwen35_quantization_pilot --quant "$QUANT" --source .quant/data/source-historical.json --database-root "$DB_ROOT" --output-dir .quant/results
+      - name: Preserve complete and incomplete diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quant-${{ matrix.quant }}-cpu-frozen-six
+          path: .quant/results/
+          retention-days: 30
+          if-no-files-found: ignore
+
+  report:
+    needs: quant-ablation
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Collect any available Q4 and Q8 results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: quant-*-cpu-frozen-six
+          path: quant-results
+      - name: Report paired result only if both complete, otherwise label partial
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          reports={}
+          for p in Path("quant-results").rglob("report.json"):
+            d=json.loads(p.read_text())
+            reports[d["quant"]]=d
+          complete=all(q in reports and reports[q].get("status")=="complete" and reports[q].get("cases_completed")==6 for q in ("q4","q8"))
+          comparison={
+            "status":"PAIRED_EX_COMPARISON" if complete else "RESOURCE_OR_INFERENCE_BLOCKED",
+            "models":{k:{"status":v.get("status"),"digest":v.get("digest"),"cases_completed":v.get("cases_completed"),
+                         "direct_ex":sum(c["direct_ex"] for c in v.get("cases",[])),
+                         "guarded_ex":sum(c["guarded_ex"] for c in v.get("cases",[])),
+                         "error_type":v.get("error_type"),
+                         "settings":v.get("settings")} for k,v in reports.items()},
+            "only_intended_variable":"Qwen3.5-9B quantization Q4_K_M vs Q8_0",
+            "case_ids":["38","952","943","622","1366","1139"],
+            "sample_size":6,
+            "not_full_benchmark":True,
+          }
+          if complete:
+            left={c["case_id"]:c for c in reports["q4"]["cases"]}
+            right={c["case_id"]:c for c in reports["q8"]["cases"]}
+            assert set(left)==set(right)==set(comparison["case_ids"])
+            assert reports["q4"]["settings"]==reports["q8"]["settings"]
+            assert reports["q4"]["source_sha256"]==reports["q8"]["source_sha256"]
+            comparison["paired"]=[
+              {"case_id":cid,"q4_direct_ex":left[cid]["direct_ex"],"q8_direct_ex":right[cid]["direct_ex"],
+               "q4_guarded_ex":left[cid]["guarded_ex"],"q8_guarded_ex":right[cid]["guarded_ex"]}
+              for cid in comparison["case_ids"]]
+          Path("quant-comparison.json").write_text(json.dumps(comparison,indent=2))
+          print("QUANT_COMPARISON "+json.dumps(comparison,indent=2))
+          PY
+      - name: Upload honest paired or partial verdict
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen35-q4-vs-q8-cpu-comparison
+          path: quant-comparison.json
+          retention-days: 30
