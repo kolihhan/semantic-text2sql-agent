@@ -30,7 +30,7 @@ class StageRecord:
 
 @dataclass(frozen=True)
 class AgentResult:
-    status: Literal["ok", "verification_failed", "execution_failed"]
+    status: Literal["ok", "semantic_unverified", "verification_failed", "execution_failed"]
     question: str
     candidate: SQLCandidate | None = None
     verification: VerificationResult | None = None
