@@ -115,7 +115,7 @@ def _repair(state: GuardedState, runtime) -> dict[str, Any]:
     )
     repaired = SQLCandidate(sql=_strip_fence(response), attempt=candidate.attempt + 1)
     result = {"candidate": repaired, "stages": _append_stage(state, "repair", f"attempt={repaired.attempt}: {repaired.sql}")}
-    if runtime.context.semantic_cost_guard and state.get("semantic_backup") is not None:
+    if getattr(runtime.context, "semantic_cost_guard", False) and state.get("semantic_backup") is not None:
         result["semantic_repair_attempted"] = True
     return result
 
