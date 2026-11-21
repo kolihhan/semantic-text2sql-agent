@@ -22,7 +22,7 @@ REFERENCE_SHA = "b3b4ec070e63a7106d023917e0f0cc61ea75e2be2f2888b8c7bdaf2064fb3ae
 # First six frozen v5 cases in their *original* order, chosen without looking at correctness.
 CASE_IDS = ("38", "952", "943", "622", "1366", "1139")
 MAX_HTTP_ATTEMPTS = 22
-MIN_GAP_S = 35.0  # anonymous OVH listed at ~2 requests/min per model/IP
+MIN_GAP_S = 75.0  # conservative pacing; observed 429 despite 35s gaps on GitHub shared IP
 MAX_REPAIRS = 2
 
 
@@ -42,18 +42,18 @@ def request_json(url: str, payload: dict | None = None, *, token: str | None = N
 
 class CallBudget:
     def __init__(self) -> None:
-        self.last_start = 0.0
+        self.next_allowed = 0.0
         self.http_attempts = 0
         self.calls: list[dict] = []
 
     def wait_turn(self) -> None:
         if self.http_attempts >= MAX_HTTP_ATTEMPTS:
             raise RuntimeError("anonymous HTTP attempt budget exhausted")
-        sleep = MIN_GAP_S - (time.monotonic() - self.last_start)
+        sleep = self.next_allowed - time.monotonic()
         if sleep > 0:
             print(f"ANONYMOUS_PACING sleep_s={sleep:.1f}", flush=True)
             time.sleep(sleep)
-        self.last_start = time.monotonic()
+        self.next_allowed = time.monotonic() + MIN_GAP_S
         self.http_attempts += 1
 
 
@@ -76,12 +76,20 @@ class MeteredProvider:
             try:
                 content = self.delegate.complete_text(system=system, user=user)
             except urllib.error.HTTPError as exc:
+                retry_header = exc.headers.get("Retry-After") if exc.headers else None
+                try:
+                    retry_after = max(0, int(retry_header)) if retry_header is not None else None
+                except (ValueError, TypeError):
+                    retry_after = None
                 self.budget.calls.append({
                     "http_attempt": self.budget.http_attempts, "error": "HTTPError",
-                    "http_status": exc.code, "latency_s": round(time.perf_counter()-started, 3),
+                    "http_status": exc.code, "retry_after_s": retry_after,
+                    "latency_s": round(time.perf_counter()-started, 3),
                 })
                 if exc.code in (429, 502, 503) and retry == 0:
-                    print(f"ANONYMOUS_RETRY status={exc.code}", flush=True)
+                    delay = max(120.0, min(float(retry_after or 0), 300.0)) if exc.code == 429 else 75.0
+                    self.budget.next_allowed = max(self.budget.next_allowed, time.monotonic() + delay)
+                    print(f"ANONYMOUS_RETRY status={exc.code} backoff_s={delay:.0f}", flush=True)
                     continue
                 raise
             except Exception as exc:
