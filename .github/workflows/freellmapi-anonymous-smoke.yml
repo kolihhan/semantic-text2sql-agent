@@ -103,7 +103,7 @@ jobs:
                       {"role": "system", "content": "Reply with a single SELECT statement only."},
                       {"role": "user", "content": "Return the SQLite SQL statement that evaluates to integer 1."},
                   ],
-                  "temperature": 0, "max_tokens": 1024, "stream": False,
+                  "temperature": 0, "max_tokens": 512, "reasoning_effort": "none", "stream": False,
               })
               result["response_identity"] = str(answer.get("model", "MISSING"))
               result["served_via"] = str(answer.get("_routed_via", "not_advertised"))[:120]
