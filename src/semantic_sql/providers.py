@@ -69,7 +69,7 @@ class FreeLLMAPIProvider:
     timeout_s: float = 90.0
     temperature: float = 0.0
     seed: int = 42
-    max_tokens: int = 384
+    max_tokens: int = 512
 
     def complete_text(self, *, system: str, user: str) -> str:
         if not self.model.strip() or self.model.lower().startswith("auto"):
@@ -92,6 +92,7 @@ class FreeLLMAPIProvider:
                 ],
                 "temperature": self.temperature,
                 "seed": self.seed,
+                "reasoning_effort": "none",
                 "max_tokens": self.max_tokens,
                 "stream": False,
             }).encode("utf-8"),
