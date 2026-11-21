@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypedDict
@@ -39,6 +40,7 @@ class GuardedContext:
     semantic_contract_checks: bool = False
     semantic_cost_guard: bool = False
     semantic_plan_verifier: bool = False
+    semantic_plan_policy: str = "always"
 
 
 class GuardedState(TypedDict, total=False):
@@ -53,6 +55,7 @@ class GuardedState(TypedDict, total=False):
     semantic_plan_extraction: Any
     semantic_plan_state: str
     semantic_plan_repair_attempted: bool
+    semantic_router_action: str
     stages: tuple[StageRecord, ...]
     result: AgentResult | None
 
@@ -97,51 +100,129 @@ def _verify(state: GuardedState, runtime) -> dict[str, Any]:
     if backup is not None:
         result["semantic_backup"] = backup
 
-    # Independent typed semantic plan: question + physical schema ONLY.
-    # Extract once (one additional same-model call), then reuse it after repair.
-    if verification.ok and getattr(runtime.context, "semantic_plan_verifier", False):
-        extraction = state.get("semantic_plan_extraction")
-        if extraction is None:
-            extraction = extract_semantic_contract(
-                provider=runtime.context.provider,
-                question=state["question"],
-                schema_context=state["schema_context"],
-                evidence=state.get("evidence"),
-            )
-            result["semantic_plan_extraction"] = extraction
-        try:
-            from .typed_plan_gate import verify_plan_against_sql
-            verdict = verify_plan_against_sql(
-                extraction=extraction,
-                sql=candidate.sql,
-                catalog=DatabaseCatalog.from_sqlite(runtime.context.database),
-            )
-        except (ImportError, ValueError):
-            # Optional SQL AST dependency may be unavailable; do not accidentally
-            # turn execution success into semantic approval or break default runtime.
-            from types import SimpleNamespace
-            verdict = SimpleNamespace(status="unverified", reason="plan_runtime_unavailable", reasons=())
-        result["semantic_plan_state"] = verdict.status
-        stages = result["stages"]
-        if verdict.status == "conflict":
-            issues = tuple(
-                VerificationIssue(
-                    code="semantic_plan_" + code.casefold(),
-                    message="Independent question/schema semantic contract conflicts with SQL: " + code,
-                )
-                for code in verdict.reasons
-            )
-            result["verification"] = VerificationResult(ok=False, issues=issues)
-            stages = (*stages, StageRecord("semantic_plan_verify",
-                        "CONFLICT: " + ",".join(verdict.reasons)))
-        elif verdict.status == "consistent":
-            stages = (*stages, StageRecord("semantic_plan_verify",
-                        "CONTRACT_CONSISTENT_NOT_GOLD_CORRECT"))
-        else:
-            stages = (*stages, StageRecord("semantic_plan_verify",
-                        "UNVERIFIED: " + verdict.reason))
-        result["stages"] = stages
+
     return result
+
+
+def _semantic_router(state: GuardedState, runtime) -> dict[str, Any]:
+    """Cheap deterministic routing; skipped checks remain UNVERIFIED, never PASS.
+
+    Always-on is the reference arm. Selective routing is explicitly experimental
+    because risk heuristics can miss executable-but-semantically-wrong queries.
+    """
+    policy = runtime.context.semantic_plan_policy
+    q = state["question"].casefold()
+    sql = state["candidate"].sql.casefold()
+    risky = bool(re.search(
+        r"\\b(count|how many|average|sum|total|percentage|percent|ratio|rate|"
+        r"maximum|minimum|most|least|top|first|last|group|per|each|"
+        r"connected|parent|child|between|where|with|whose|which)\\b", q
+    ) or re.search(
+        r"\\b(join|group\\s+by|having|order\\s+by|count\\s*\\(|"
+        r"sum\\s*\\(|avg\\s*\\(|distinct|union|intersect|except)\\b", sql
+    ))
+    action = "semantic_plan_contract" if policy == "always" or risky else "execute"
+    reason = ("always" if policy == "always" else "structural_risk" if risky else "no_trigger_abstain")
+    return {
+        "semantic_router_action": action,
+        "semantic_plan_state": "unverified",
+        "stages": _append_stage(state, "semantic_router", reason + ":" + action),
+    }
+
+
+def _semantic_router_route(state: GuardedState) -> str:
+    return state["semantic_router_action"]
+
+
+def _semantic_plan_contract(state: GuardedState, runtime) -> dict[str, Any]:
+    """Candidate-independent Qwen call, once per query, stored in Graph state."""
+    extraction = extract_semantic_contract(
+        provider=runtime.context.provider,
+        question=state["question"],
+        schema_context=state["schema_context"],
+        evidence=state.get("evidence"),
+    )
+    detail = "ok" if extraction.status == "ok" else "skipped:" + extraction.reason
+    return {
+        "semantic_plan_extraction": extraction,
+        "stages": _append_stage(state, "semantic_plan_contract", detail),
+    }
+
+
+def _semantic_plan_verify(state: GuardedState, runtime) -> dict[str, Any]:
+    """AST/schema comparison. NEVER calls Qwen, uses frozen cached plan."""
+    from types import SimpleNamespace
+
+    try:
+        from .typed_plan_gate import verify_plan_against_sql
+        verdict = verify_plan_against_sql(
+            extraction=state["semantic_plan_extraction"],
+            sql=state["candidate"].sql,
+            catalog=DatabaseCatalog.from_sqlite(runtime.context.database),
+        )
+    except (ImportError, ValueError):
+        verdict = SimpleNamespace(status="unverified", reason="plan_runtime_unavailable", reasons=())
+    result = {"semantic_plan_state": verdict.status}
+    if verdict.status == "conflict":
+        result["verification"] = VerificationResult(ok=False, issues=tuple(
+            VerificationIssue(
+                code="semantic_plan_" + code.casefold(),
+                message="Independent question/schema semantic contract conflicts with SQL: " + code,
+            )
+            for code in verdict.reasons
+        ))
+        detail = "CONFLICT: " + ",".join(verdict.reasons)
+    elif verdict.status == "consistent":
+        detail = "CONTRACT_CONSISTENT_NOT_GOLD_CORRECT"
+    else:
+        detail = "UNVERIFIED: " + verdict.reason
+    result["stages"] = _append_stage(state, "semantic_plan_verify", detail)
+    return result
+
+
+def _semantic_plan_route(state: GuardedState, runtime) -> str:
+    if state.get("semantic_plan_state") != "conflict":
+        return "execute"
+    if (state.get("semantic_plan_repair_attempted", False)
+        or state["candidate"].attempt >= runtime.context.max_repairs):
+        return "semantic_plan_refuse"
+    return "semantic_plan_repair"
+
+
+def _semantic_plan_repair(state: GuardedState, runtime) -> dict[str, Any]:
+    """Exactly one violation-targeted model call, preserving the original plan."""
+    codes = ", ".join(issue.code for issue in state["verification"].issues)
+    prompt = (
+        f"Question:\\n{state['question']}\\n\\n"
+        f"Schema context:\\n{state['schema_context']}\\n\\n"
+        f"SQL with semantic contradictions:\\n{state['candidate'].sql}\\n\\n"
+        f"Verifier violations:\\n{codes}\\n\\n"
+        "Correct only the named contradictions. Preserve unrelated clauses. "
+        "Return one read-only SQLite SELECT or CTE with no explanation."
+    )
+    fixed = runtime.context.provider.complete_text(
+        system="Fix verified SQL semantic contradictions. Return SQLite SQL only.",
+        user=prompt,
+    )
+    candidate = SQLCandidate(
+        sql=_strip_fence(fixed),
+        attempt=state["candidate"].attempt + 1,
+    )
+    return {
+        "candidate": candidate,
+        "semantic_plan_repair_attempted": True,
+        "stages": _append_stage(state, "semantic_plan_repair", codes),
+    }
+
+
+def _semantic_plan_refuse(state: GuardedState) -> dict[str, Any]:
+    return {"result": AgentResult(
+        status="verification_failed", question=state["question"],
+        candidate=state.get("candidate"),
+        verification=state.get("verification"),
+        message="semantic plan contradiction unresolved under one-repair budget; SQL not executed",
+        stages=state.get("stages", ()),
+    )}
 
 
 def _repair(state: GuardedState, runtime) -> dict[str, Any]:
@@ -169,8 +250,6 @@ def _repair(state: GuardedState, runtime) -> dict[str, Any]:
     result = {"candidate": repaired, "stages": _append_stage(state, "repair", f"attempt={repaired.attempt}: {repaired.sql}")}
     if getattr(runtime.context, "semantic_cost_guard", False) and state.get("semantic_backup") is not None:
         result["semantic_repair_attempted"] = True
-    if getattr(runtime.context, "semantic_plan_verifier", False) and state.get("semantic_plan_state") == "conflict":
-        result["semantic_plan_repair_attempted"] = True
     return result
 
 
