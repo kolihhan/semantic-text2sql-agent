@@ -162,8 +162,14 @@ def _semantic_plan_verify(state: GuardedState, runtime) -> dict[str, Any]:
             sql=state["candidate"].sql,
             catalog=DatabaseCatalog.from_sqlite(runtime.context.database),
         )
-    except (ImportError, ValueError):
-        verdict = SimpleNamespace(status="unverified", reason="plan_runtime_unavailable", reasons=())
+    except (ImportError, ValueError, TypeError, AttributeError) as exc:
+        # AST/model-contract structural ambiguity is UNVERIFIED, never a
+        # semantic PASS; don't turn a valid SQL into a crashed Graph run.
+        verdict = SimpleNamespace(
+            status="unverified",
+            reason="plan_runtime_inconclusive:" + type(exc).__name__,
+            reasons=(),
+        )
     result = {"semantic_plan_state": verdict.status}
     if verdict.status == "conflict":
         result["verification"] = VerificationResult(ok=False, issues=tuple(
