@@ -1,0 +1,169 @@
+name: BIRD TRAIN exposed-val64 frozen semantic-feedback pilot (no protected holdout)
+on:
+  push:
+    branches: [research/semantic-feedback-blind-pilot-20261121]
+    paths: [.github/START_GROUNDED_FEEDBACK_PILOT]
+permissions: {contents: read, actions: read}
+concurrency:
+  group: semantic-feedback-train-exposed-pilot-20261121
+  cancel-in-progress: false
+env:
+  QWEN_MODEL: qwen3.5:9b-q4_K_M
+  EXPOSED_VALIDATION64_SHA256: cc112305bc9de33a03cea704f2edecfdfb45e62cc953ae498cea27fbed93b506
+  PYTHONUNBUFFERED: '1'
+jobs:
+  source_freeze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - name: Restore prior USED BIRD TRAIN validation64 (gold NOT passed to inference)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43888747753
+          github-token: ${{ github.token }}
+          name: qwen9b-birdtrain-db-disjoint-original-sql-sft-candidates
+          path: original
+      - name: Freeze all source-only IDs/question/schema inputs, no correctness labels
+        run: |
+          set -euo pipefail
+          echo "$EXPOSED_VALIDATION64_SHA256  original/validation.jsonl" | sha256sum -c -
+          python -m evaluation.birdtrain_grounded_feedback_pilot freeze \
+            --source original/validation.jsonl --out frozen/source-only-12.json
+          python - <<'PY'
+          import json
+          d=json.load(open('frozen/source-only-12.json'))
+          assert d['reference_sql_excluded'] and d['n']==12 and d['n_physical_dbs']==4
+          assert d['heldout_two_train_db_accessed'] is False
+          assert not any('messages' in x or 'SQL' in x for x in d['cases'])
+          print('NO_ORACLE_INPUT_TO_INFERENCE',flush=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: semantic-feedback-val64-sourceonly-frozen
+          path: frozen/source-only-12.json
+          if-no-files-found: error
+          retention-days: 30
+  blind_inference:
+    needs: [source_freeze]
+    runs-on: ubuntu-latest
+    timeout-minutes: 165
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - name: Install existing runtime plus SQL AST parser
+        run: |
+          python -m pip install -q -e '.[dev]' 'sqlglot==25.34.1'
+          python -m pytest -q tests/test_birdtrain_grounded_feedback_pilot.py
+          python -m compileall -q evaluation/birdtrain_grounded_feedback_pilot.py
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: semantic-feedback-val64-sourceonly-frozen
+          path: frozen
+      - name: Load physically identical already-exposed DBs from publisher-pinned TRAIN mirror
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from scripts.prepare_birdtrain_qwen9b_sft_source import fetch_manifest,fetch_database
+          d=json.load(open('frozen/source-only-12.json'))
+          manifest=fetch_manifest()
+          ids=sorted({x['db_id'] for x in d['cases']})
+          assert len(ids)==4
+          assert set(ids)<=set(manifest)
+          for id in ids:
+              assert manifest[id]['size']<=96*1024*1024
+              fetch_database(id,manifest[id],Path('physical'))
+          print('FOUR_PRIOR_EXPOSED_DBS_SHA_VALIDATED',ids,flush=True)
+          PY
+      - name: Install and pin original Qwen3.5-9B model, CPU only
+        run: |
+          set -euo pipefail
+          curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          ollama serve > /tmp/ollama.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 1
+          done
+          ollama pull "$QWEN_MODEL"
+      - name: Run 12 cases, SAME frozen original Guarded SQL, one extra call per review
+        run: |
+          set -euo pipefail
+          mkdir -p blind
+          python -m evaluation.birdtrain_grounded_feedback_pilot infer \
+            --frozen frozen/source-only-12.json --db-root physical \
+            --out blind/gold-blind-12.json
+          python - <<'PY'
+          import json
+          d=json.load(open('blind/gold-blind-12.json'))
+          assert d['phase']=='ALL12_GOLD_BLIND_SEALED'
+          assert d['reference_sql_unavailable'] and len(d['cases'])==12
+          assert d['model_digest']=='56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90'
+          print('ALL_BLIND_MODEL_DECISIONS_SEALED',flush=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: semantic-feedback-val64-goldblind-12
+          path: blind/gold-blind-12.json
+          retention-days: 30
+          if-no-files-found: warn
+  score_after_seal:
+    needs: [blind_inference]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - name: Install existing readonly evaluator, NO MODEL
+        run: python -m pip install -q -e .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: semantic-feedback-val64-sourceonly-frozen
+          path: frozen
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: semantic-feedback-val64-goldblind-12
+          path: blind
+      - name: ONLY NOW download publisher references after all 12 blind model calls
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43888747753
+          github-token: ${{ github.token }}
+          name: qwen9b-birdtrain-db-disjoint-original-sql-sft-candidates
+          path: original
+      - name: Restore same four verified physical DBs
+        run: |
+          set -euo pipefail
+          echo "$EXPOSED_VALIDATION64_SHA256  original/validation.jsonl" | sha256sum -c -
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          from scripts.prepare_birdtrain_qwen9b_sft_source import fetch_manifest,fetch_database
+          f=json.load(open('frozen/source-only-12.json'))
+          b=json.load(open('blind/gold-blind-12.json'))
+          assert b['phase']=='ALL12_GOLD_BLIND_SEALED' and len(b['cases'])==12
+          manifest=fetch_manifest()
+          for db in sorted({x['db_id'] for x in f['cases']}):
+              fetch_database(db,manifest[db],Path('physical'))
+          PY
+      - name: Paired physical STRICT SET and BAG reference scoring, gold access only here
+        run: |
+          mkdir -p scored
+          python -m evaluation.birdtrain_grounded_feedback_pilot score \
+            --source original/validation.jsonl \
+            --frozen frozen/source-only-12.json \
+            --blind blind/gold-blind-12.json \
+            --db-root physical --out scored/three-arm-exposed-val64.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: semantic-feedback-val64-three-arm-strict-ex
+          path: scored/three-arm-exposed-val64.json
+          if-no-files-found: error
+          retention-days: 30
