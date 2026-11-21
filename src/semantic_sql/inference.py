@@ -339,12 +339,11 @@ def _semantic_fallback(state: GuardedState, runtime) -> dict[str, Any]:
 
 
 def _verify_route(state: GuardedState, runtime) -> str:
-    # One independent semantic-plan repair only; do not loop until the SQL passes.
-    # A still-contradictory or syntactically broken repair cannot be executed.
+    # Semantic repair is one-shot and its SQL must pass original preflight.
     if (getattr(runtime.context, "semantic_plan_verifier", False)
         and state.get("semantic_plan_repair_attempted", False)
         and not state["verification"].ok):
-        return "refuse"
+        return "semantic_plan_refuse"
     if (runtime.context.semantic_cost_guard
         and state.get("semantic_backup") is not None
         and not state["verification"].ok
@@ -352,6 +351,10 @@ def _verify_route(state: GuardedState, runtime) -> str:
              or state["candidate"].attempt >= runtime.context.max_repairs)):
         return "semantic_fallback"
     if state["verification"].ok:
+        if getattr(runtime.context, "semantic_plan_verifier", False):
+            return ("semantic_plan_verify"
+                    if state.get("semantic_plan_extraction") is not None
+                    else "semantic_router")
         if runtime.context.semantic_revision and not state.get("semantic_revised", False):
             return "semantic_revision"
         return "execute"
@@ -360,7 +363,11 @@ def _verify_route(state: GuardedState, runtime) -> str:
     return "refuse"
 
 
-def _build_guarded_graph(*, semantic_revision: bool = False, semantic_cost_guard: bool = False):
+def _build_guarded_graph(
+    *, semantic_revision: bool = False,
+    semantic_cost_guard: bool = False,
+    semantic_plan_verifier: bool = False,
+):
     from langgraph.graph import END, START, StateGraph
 
     graph = StateGraph(GuardedState, context_schema=GuardedContext)
@@ -369,6 +376,12 @@ def _build_guarded_graph(*, semantic_revision: bool = False, semantic_cost_guard
     graph.add_node("repair", _repair)
     if semantic_revision:
         graph.add_node("semantic_revision", _semantic_revise)
+    if semantic_plan_verifier:
+        graph.add_node("semantic_router", _semantic_router)
+        graph.add_node("semantic_plan_contract", _semantic_plan_contract)
+        graph.add_node("semantic_plan_verify", _semantic_plan_verify)
+        graph.add_node("semantic_plan_repair", _semantic_plan_repair)
+        graph.add_node("semantic_plan_refuse", _semantic_plan_refuse)
     graph.add_node("execute", _execute)
     graph.add_node("refuse", _refuse)
     if semantic_cost_guard:
@@ -379,12 +392,34 @@ def _build_guarded_graph(*, semantic_revision: bool = False, semantic_cost_guard
     routes = {"execute": "execute", "repair": "repair", "refuse": "refuse"}
     if semantic_revision:
         routes["semantic_revision"] = "semantic_revision"
+    if semantic_plan_verifier:
+        routes.update({
+            "semantic_router": "semantic_router",
+            "semantic_plan_verify": "semantic_plan_verify",
+            "semantic_plan_refuse": "semantic_plan_refuse",
+        })
     if semantic_cost_guard:
         routes["semantic_fallback"] = "semantic_fallback"
     graph.add_conditional_edges("verify", _verify_route, routes)
     graph.add_edge("repair", "verify")
     if semantic_revision:
         graph.add_edge("semantic_revision", "verify")
+    if semantic_plan_verifier:
+        graph.add_conditional_edges(
+            "semantic_router", _semantic_router_route,
+            {"semantic_plan_contract": "semantic_plan_contract", "execute": "execute"},
+        )
+        graph.add_edge("semantic_plan_contract", "semantic_plan_verify")
+        graph.add_conditional_edges(
+            "semantic_plan_verify", _semantic_plan_route,
+            {
+                "execute": "execute",
+                "semantic_plan_repair": "semantic_plan_repair",
+                "semantic_plan_refuse": "semantic_plan_refuse",
+            },
+        )
+        graph.add_edge("semantic_plan_repair", "verify")
+        graph.add_edge("semantic_plan_refuse", END)
     graph.add_edge("execute", END)
     graph.add_edge("refuse", END)
     return graph.compile()
@@ -398,7 +433,10 @@ def run_guarded(
     semantic_contract_checks: bool = False,
     semantic_cost_guard: bool = False,
     semantic_plan_verifier: bool = False,
+    semantic_plan_policy: str = "always",
 ) -> AgentResult:
+    if semantic_plan_policy not in {"always", "selective"}:
+        raise ValueError("semantic_plan_policy must be always or selective")
     if semantic_plan_verifier and (semantic_cost_guard or semantic_contract_checks or semantic_revision):
         raise ValueError("typed semantic plan verifier is exclusive to other experimental semantic layers")
     if semantic_cost_guard and (not semantic_contract_checks or semantic_revision):
@@ -407,7 +445,9 @@ def run_guarded(
         raise ValueError("repair budget must be non-negative")
     database = Path(database)
     output = _build_guarded_graph(
-        semantic_revision=semantic_revision, semantic_cost_guard=semantic_cost_guard
+        semantic_revision=semantic_revision,
+        semantic_cost_guard=semantic_cost_guard,
+        semantic_plan_verifier=semantic_plan_verifier,
     ).invoke(
         {
             "question": question,
@@ -420,6 +460,7 @@ def run_guarded(
             "semantic_plan_extraction": None,
             "semantic_plan_state": "unverified",
             "semantic_plan_repair_attempted": False,
+            "semantic_router_action": "",
             "stages": (),
         },
         config={"recursion_limit": 2 * max(0, max_repairs) + 10},
@@ -432,6 +473,7 @@ def run_guarded(
             semantic_contract_checks=semantic_contract_checks,
             semantic_cost_guard=semantic_cost_guard,
             semantic_plan_verifier=semantic_plan_verifier,
+            semantic_plan_policy=semantic_plan_policy,
         ),
     )
     result = output["result"] if isinstance(output, dict) else output.result
