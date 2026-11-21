@@ -1,0 +1,7 @@
+Owner-authorized source-frozen historical Qwen3.5-9B DEV100 diagnostic 12-case paired run — retry after real SQL mixed ColumnRef qualifier crash.
+
+Previous #44879869215 froze 12 original examples across 7 physical DBs, completed one inference case, then crashed at contract_verifier.py sorting mixed null/non-null ColumnRef.table. This commit includes stable sorting for optional table qualifiers and explicit semantic_unverified fallback on malformed AST/contract errors. CI 133 tests passed (#44882087944).
+
+Protocol unchanged: use the SAME 12 original case IDs and original Qwen3.5-9B SQL, same model SHA/digest and frozen source, compare Baseline / Always-on / Selective, seal blind decisions before scoring strict SET/BAG EX, no SQL training, no final holdout access. Do not interpret previously exposed DEV100 as independent score gain.
+
+This is the first corrected attempt.
