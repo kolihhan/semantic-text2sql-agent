@@ -61,8 +61,9 @@ class FreeLLMAPIProvider:
     match; external outputs MUST be treated as a different inference backend.
     """
 
-    model: str = "Qwen 3.5 9B"
-    expected_response_model: str = "Qwen/Qwen3.5-9B"
+    model: str = "qwen3.5-9b"
+    expected_response_model: str = "Qwen3.5-9B"
+    expected_response_platform: str = "ovh"
     base_url: str = "http://localhost:3001/v1"
     api_key: str | None = field(default=None, repr=False)
     timeout_s: float = 90.0
@@ -104,6 +105,11 @@ class FreeLLMAPIProvider:
             payload = json.loads(response.read().decode("utf-8"))
         if payload.get("model") != self.expected_response_model:
             raise ValueError("FreeLLMAPI model identity mismatch; refuse unknown/substituted model")
+        routed = payload.get("_routed_via")
+        if not isinstance(routed, dict) or routed.get("platform") != self.expected_response_platform:
+            raise ValueError("FreeLLMAPI routed provider mismatch; refuse unknown/substituted backend")
+        if routed.get("model") != self.expected_response_model:
+            raise ValueError("FreeLLMAPI routed provider model mismatch")
         choices = payload.get("choices")
         if not isinstance(choices, list) or not choices:
             raise ValueError("FreeLLMAPI incomplete completion: missing choices")
