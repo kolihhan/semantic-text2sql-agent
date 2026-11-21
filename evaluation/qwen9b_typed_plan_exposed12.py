@@ -212,8 +212,7 @@ def score(*, frozen: Path, blind: Path, source: Path, db_root: Path, output: Pat
     from evaluation.run_bird import _resolve_database
     from semantic_sql.execution import execute_readonly, SQLExecutionError
     from collections import Counter as Bag
-    rows = _load_source(source)
-    labels = {_id(row,i):row for i,row in enumerate(rows)}
+    # Validate sealed model-decision artifact BEFORE opening publisher gold.
     f = json.loads(frozen.read_text())
     d = json.loads(blind.read_text())
     if (d.get("status") != "COMPLETED_GOLD_BLIND_DECISIONS"
@@ -222,6 +221,8 @@ def score(*, frozen: Path, blind: Path, source: Path, db_root: Path, output: Pat
         or len(d.get("cases", [])) != N
         or [c["case_id"] for c in d["cases"]] != [c["case_id"] for c in f["selected"]]):
         raise ValueError("Gold-blind decisions incomplete or source altered")
+    rows = _load_source(source)
+    labels = {_id(row,i):row for i,row in enumerate(rows)}
     scores = []
     for c,source_case in zip(d["cases"],f["selected"]):
         label = labels[c["case_id"]]
