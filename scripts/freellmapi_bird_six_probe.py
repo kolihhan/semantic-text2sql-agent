@@ -144,9 +144,17 @@ def main() -> int:
     api_key = request_json(base + "/api/settings/api-key", token=session["token"])["apiKey"]
     if not isinstance(api_key, str) or not api_key.startswith("freellmapi-"):
         raise ValueError("FreeLLMAPI unified local key unavailable")
-    ready = request_json(base + "/v1/models?execution_status=ready", token=api_key)
-    if not any(str(x.get("id", "")).casefold() == "qwen3.5-9b" for x in ready.get("data", [])):
-        raise ValueError("Qwen3.5-9B not in anonymous ready catalog")
+    qwen_ready = False
+    for check in range(25):
+        ready = request_json(base + "/v1/models?execution_status=ready", token=api_key)
+        qwen_ready = any(str(x.get("id", "")).casefold() == "qwen3.5-9b" for x in ready.get("data", []))
+        if qwen_ready:
+            break
+        if check % 5 == 0:
+            print(f"WAIT_ANONYMOUS_CATALOG check={check + 1} ready_entries={len(ready.get('data', []))}", flush=True)
+        time.sleep(3)
+    if not qwen_ready:
+        raise ValueError("Qwen3.5-9B absent after 75-second anonymous catalog synchronization window")
 
     budget = CallBudget()
     output_file = output_dir / "paired-six.json"
