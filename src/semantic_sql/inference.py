@@ -11,6 +11,9 @@ from .execution import SQLExecutionError, execute_readonly
 from .providers import ModelProvider
 from .verifier import verify_sql_preflight
 from .semantic_contracts import detect_semantic_concerns
+from .semantic_contract import extract_semantic_contract
+from .catalog import DatabaseCatalog
+from .typed_plan_gate import verify_plan_against_sql
 
 
 GUARDED_TREATMENT_ID = "langgraph_preflight_plus_internal_cot_repair_v1"
@@ -35,6 +38,7 @@ class GuardedContext:
     semantic_revision: bool = False
     semantic_contract_checks: bool = False
     semantic_cost_guard: bool = False
+    semantic_plan_verifier: bool = False
 
 
 class GuardedState(TypedDict, total=False):
@@ -46,6 +50,9 @@ class GuardedState(TypedDict, total=False):
     semantic_revised: bool
     semantic_backup: SQLCandidate | None
     semantic_repair_attempted: bool
+    semantic_plan_extraction: Any
+    semantic_plan_state: str
+    semantic_plan_repair_attempted: bool
     stages: tuple[StageRecord, ...]
     result: AgentResult | None
 
@@ -89,6 +96,48 @@ def _verify(state: GuardedState, runtime) -> dict[str, Any]:
     result = {"verification": verification, "stages": stages}
     if backup is not None:
         result["semantic_backup"] = backup
+
+    # Independent typed semantic plan: question + physical schema ONLY.
+    # Extract once (one additional same-model call), then reuse it after repair.
+    if verification.ok and getattr(runtime.context, "semantic_plan_verifier", False):
+        extraction = state.get("semantic_plan_extraction")
+        if extraction is None:
+            extraction = extract_semantic_contract(
+                provider=runtime.context.provider,
+                question=state["question"],
+                schema_context=state["schema_context"],
+                evidence=state.get("evidence"),
+            )
+            result["semantic_plan_extraction"] = extraction
+        try:
+            verdict = verify_plan_against_sql(
+                extraction=extraction,
+                sql=candidate.sql,
+                catalog=DatabaseCatalog.from_sqlite(runtime.context.database),
+            )
+        except (ImportError, ValueError) as exc:
+            from .typed_plan_gate import PlanVerdict
+            verdict = PlanVerdict("unverified", reason="plan_runtime_unavailable")
+        result["semantic_plan_state"] = verdict.status
+        stages = result["stages"]
+        if verdict.status == "conflict":
+            issues = tuple(
+                VerificationIssue(
+                    code="semantic_plan_" + code.casefold(),
+                    message="Independent question/schema semantic contract conflicts with SQL: " + code,
+                )
+                for code in verdict.reasons
+            )
+            result["verification"] = VerificationResult(ok=False, issues=issues)
+            stages = (*stages, StageRecord("semantic_plan_verify",
+                        "CONFLICT: " + ",".join(verdict.reasons)))
+        elif verdict.status == "consistent":
+            stages = (*stages, StageRecord("semantic_plan_verify",
+                        "CONTRACT_CONSISTENT_NOT_GOLD_CORRECT"))
+        else:
+            stages = (*stages, StageRecord("semantic_plan_verify",
+                        "UNVERIFIED: " + verdict.reason))
+        result["stages"] = stages
     return result
 
 
@@ -117,6 +166,8 @@ def _repair(state: GuardedState, runtime) -> dict[str, Any]:
     result = {"candidate": repaired, "stages": _append_stage(state, "repair", f"attempt={repaired.attempt}: {repaired.sql}")}
     if getattr(runtime.context, "semantic_cost_guard", False) and state.get("semantic_backup") is not None:
         result["semantic_repair_attempted"] = True
+    if getattr(runtime.context, "semantic_plan_verifier", False) and state.get("semantic_plan_state") == "conflict":
+        result["semantic_plan_repair_attempted"] = True
     return result
 
 
@@ -177,7 +228,12 @@ def _execute(state: GuardedState, runtime) -> dict[str, Any]:
         stages = _append_stage(state, "execute", f"failed: {exc}")
         return {"result": AgentResult(status="execution_failed", question=state["question"], candidate=candidate, verification=verification, message=str(exc), stages=stages), "stages": stages}
     stages = _append_stage(state, "execute", f"rows={len(execution.rows)}")
-    return {"result": AgentResult(status="ok", question=state["question"], candidate=candidate, verification=verification, rows=execution.rows, columns=execution.columns, truncated=execution.truncated, stages=stages), "stages": stages}
+    semantic_unknown = (getattr(runtime.context, "semantic_plan_verifier", False)
+                        and state.get("semantic_plan_state") != "consistent")
+    status = "semantic_unverified" if semantic_unknown else "ok"
+    message = ("SQL executed but semantic plan could not be independently verified"
+               if semantic_unknown else "")
+    return {"result": AgentResult(status=status, question=state["question"], candidate=candidate, verification=verification, rows=execution.rows, columns=execution.columns, truncated=execution.truncated, message=message, stages=stages), "stages": stages}
 
 
 def _refuse(state: GuardedState) -> dict[str, Any]:
@@ -201,6 +257,12 @@ def _semantic_fallback(state: GuardedState, runtime) -> dict[str, Any]:
 
 
 def _verify_route(state: GuardedState, runtime) -> str:
+    # One independent semantic-plan repair only; do not loop until the SQL passes.
+    # A still-contradictory or syntactically broken repair cannot be executed.
+    if (getattr(runtime.context, "semantic_plan_verifier", False)
+        and state.get("semantic_plan_repair_attempted", False)
+        and not state["verification"].ok):
+        return "refuse"
     if (runtime.context.semantic_cost_guard
         and state.get("semantic_backup") is not None
         and not state["verification"].ok
@@ -253,7 +315,10 @@ def run_guarded(
     max_rows: int = 100, semantic_revision: bool = False,
     semantic_contract_checks: bool = False,
     semantic_cost_guard: bool = False,
+    semantic_plan_verifier: bool = False,
 ) -> AgentResult:
+    if semantic_plan_verifier and (semantic_cost_guard or semantic_contract_checks or semantic_revision):
+        raise ValueError("typed semantic plan verifier is exclusive to other experimental semantic layers")
     if semantic_cost_guard and (not semantic_contract_checks or semantic_revision):
         raise ValueError("cost guard requires semantic contracts and excludes universal semantic revision")
     if max_repairs < 0:
@@ -270,6 +335,9 @@ def run_guarded(
             "semantic_revised": False,
             "semantic_backup": None,
             "semantic_repair_attempted": False,
+            "semantic_plan_extraction": None,
+            "semantic_plan_state": "unverified",
+            "semantic_plan_repair_attempted": False,
             "stages": (),
         },
         config={"recursion_limit": 2 * max(0, max_repairs) + 10},
@@ -281,6 +349,7 @@ def run_guarded(
             semantic_revision=semantic_revision,
             semantic_contract_checks=semantic_contract_checks,
             semantic_cost_guard=semantic_cost_guard,
+            semantic_plan_verifier=semantic_plan_verifier,
         ),
     )
     result = output["result"] if isinstance(output, dict) else output.result
