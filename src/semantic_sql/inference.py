@@ -34,6 +34,7 @@ class GuardedContext:
     max_rows: int = 100
     semantic_revision: bool = False
     semantic_contract_checks: bool = False
+    semantic_cost_guard: bool = False
 
 
 class GuardedState(TypedDict, total=False):
@@ -43,6 +44,8 @@ class GuardedState(TypedDict, total=False):
     candidate: SQLCandidate | None
     verification: VerificationResult | None
     semantic_revised: bool
+    semantic_backup: SQLCandidate | None
+    semantic_repair_attempted: bool
     stages: tuple[StageRecord, ...]
     result: AgentResult | None
 
@@ -65,8 +68,9 @@ def _verify(state: GuardedState, runtime) -> dict[str, Any]:
     candidate = state["candidate"]
     verification = verify_sql_preflight(runtime.context.database, candidate.sql)
     advisories = ()
-    # Explicit experiment switch only. Never read gold/reference SQL or rows.
-    # Keep the default (false) graph/verifier behavior exactly unchanged.
+    backup = None
+    # Opt-in only. Preserve verified executable original before any
+    # speculative semantic repair, rather than losing a safe fallback.
     if verification.ok and runtime.context.semantic_contract_checks:
         concerns = detect_semantic_concerns(state["question"], candidate.sql)
         blocking = tuple(
@@ -75,12 +79,17 @@ def _verify(state: GuardedState, runtime) -> dict[str, Any]:
         )
         advisories = tuple(concern.code for concern in concerns if not concern.blocking)
         if blocking:
+            if runtime.context.semantic_cost_guard and state.get("semantic_backup") is None:
+                backup = candidate
             verification = VerificationResult(ok=False, issues=blocking)
     detail = "PASS" if verification.ok else "; ".join(issue.code for issue in verification.issues)
     stages = _append_stage(state, "verify", detail)
     if advisories:
         stages = (*stages, StageRecord("semantic_advisory", "; ".join(advisories)))
-    return {"verification": verification, "stages": stages}
+    result = {"verification": verification, "stages": stages}
+    if backup is not None:
+        result["semantic_backup"] = backup
+    return result
 
 
 def _repair(state: GuardedState, runtime) -> dict[str, Any]:
@@ -105,7 +114,10 @@ def _repair(state: GuardedState, runtime) -> dict[str, Any]:
         user=prompt,
     )
     repaired = SQLCandidate(sql=_strip_fence(response), attempt=candidate.attempt + 1)
-    return {"candidate": repaired, "stages": _append_stage(state, "repair", f"attempt={repaired.attempt}: {repaired.sql}")}
+    result = {"candidate": repaired, "stages": _append_stage(state, "repair", f"attempt={repaired.attempt}: {repaired.sql}")}
+    if getattr(runtime.context, "semantic_cost_guard", False) and state.get("semantic_backup") is not None:
+        result["semantic_repair_attempted"] = True
+    return result
 
 
 def _semantic_revise(state: GuardedState, runtime) -> dict[str, Any]:
@@ -172,7 +184,29 @@ def _refuse(state: GuardedState) -> dict[str, Any]:
     return {"result": AgentResult(status="verification_failed", question=state["question"], candidate=state.get("candidate"), verification=state.get("verification"), message="deterministic SQL verification failed after repair budget; SQL was not executed", stages=state.get("stages", ()))}
 
 
+def _semantic_fallback(state: GuardedState, runtime) -> dict[str, Any]:
+    """Fail open to original *preflight-valid* SQL; never invent a success score."""
+    original = state.get("semantic_backup")
+    if original is None:
+        raise RuntimeError("semantic fallback requires saved original SQL")
+    checked = verify_sql_preflight(runtime.context.database, original.sql)
+    if not checked.ok:
+        raise RuntimeError("original previously preflight-valid SQL was not stable")
+    return {
+        "candidate": original,
+        "verification": checked,
+        "stages": _append_stage(state, "semantic_fallback",
+                                "original preflight-valid SQL retained; one semantic repair failed or budget=0"),
+    }
+
+
 def _verify_route(state: GuardedState, runtime) -> str:
+    if (runtime.context.semantic_cost_guard
+        and state.get("semantic_backup") is not None
+        and not state["verification"].ok
+        and (state.get("semantic_repair_attempted", False)
+             or state["candidate"].attempt >= runtime.context.max_repairs)):
+        return "semantic_fallback"
     if state["verification"].ok:
         if runtime.context.semantic_revision and not state.get("semantic_revised", False):
             return "semantic_revision"
@@ -182,7 +216,7 @@ def _verify_route(state: GuardedState, runtime) -> str:
     return "refuse"
 
 
-def _build_guarded_graph(*, semantic_revision: bool = False):
+def _build_guarded_graph(*, semantic_revision: bool = False, semantic_cost_guard: bool = False):
     from langgraph.graph import END, START, StateGraph
 
     graph = StateGraph(GuardedState, context_schema=GuardedContext)
@@ -193,11 +227,16 @@ def _build_guarded_graph(*, semantic_revision: bool = False):
         graph.add_node("semantic_revision", _semantic_revise)
     graph.add_node("execute", _execute)
     graph.add_node("refuse", _refuse)
+    if semantic_cost_guard:
+        graph.add_node("semantic_fallback", _semantic_fallback)
+        graph.add_edge("semantic_fallback", "execute")
     graph.add_edge(START, "generate")
     graph.add_edge("generate", "verify")
     routes = {"execute": "execute", "repair": "repair", "refuse": "refuse"}
     if semantic_revision:
         routes["semantic_revision"] = "semantic_revision"
+    if semantic_cost_guard:
+        routes["semantic_fallback"] = "semantic_fallback"
     graph.add_conditional_edges("verify", _verify_route, routes)
     graph.add_edge("repair", "verify")
     if semantic_revision:
@@ -213,15 +252,24 @@ def run_guarded(
     initial_candidate: SQLCandidate | None = None, max_repairs: int = 2,
     max_rows: int = 100, semantic_revision: bool = False,
     semantic_contract_checks: bool = False,
+    semantic_cost_guard: bool = False,
 ) -> AgentResult:
+    if semantic_cost_guard and (not semantic_contract_checks or semantic_revision):
+        raise ValueError("cost guard requires semantic contracts and excludes universal semantic revision")
+    if max_repairs < 0:
+        raise ValueError("repair budget must be non-negative")
     database = Path(database)
-    output = _build_guarded_graph(semantic_revision=semantic_revision).invoke(
+    output = _build_guarded_graph(
+        semantic_revision=semantic_revision, semantic_cost_guard=semantic_cost_guard
+    ).invoke(
         {
             "question": question,
             "schema_context": schema_context,
             "evidence": evidence,
             "candidate": initial_candidate,
             "semantic_revised": False,
+            "semantic_backup": None,
+            "semantic_repair_attempted": False,
             "stages": (),
         },
         config={"recursion_limit": 2 * max(0, max_repairs) + 10},
@@ -232,6 +280,7 @@ def run_guarded(
             max_rows=max_rows,
             semantic_revision=semantic_revision,
             semantic_contract_checks=semantic_contract_checks,
+            semantic_cost_guard=semantic_cost_guard,
         ),
     )
     result = output["result"] if isinstance(output, dict) else output.result
