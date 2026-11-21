@@ -58,7 +58,9 @@ def test_executable_but_wrong_cannot_pass_semantic_verifier(db):
     assert BAD not in model.calls[1][1]  # independent plan, no candidate!
     stages=[x.name for x in result.stages]
     assert stages.count("semantic_plan_verify")==2
-    assert stages.count("repair")==1
+    assert stages.count("semantic_plan_repair")==1
+    assert stages.count("semantic_plan_contract")==1
+    assert stages.count("semantic_router")==1
     assert any("CONFLICT" in x.summary for x in result.stages)
     assert any("CONTRACT_CONSISTENT" in x.summary for x in result.stages)
 
@@ -89,7 +91,7 @@ def test_valid_sql_matching_contract_no_semantic_repair(db):
     result=execute(db, model)
     assert result.status=="ok" and result.rows==((2,),)
     assert len(model.calls)==2  # direct SQL + independent plan
-    assert not any(x.name=="repair" for x in result.stages)
+    assert not any(x.name in {"repair", "semantic_plan_repair"} for x in result.stages)
 
 def test_one_zero_budget_plan_conflict_blocks_execution(db):
     model=Model(BAD, plan())
@@ -144,3 +146,78 @@ def test_unchecked_multi_entity_relation_not_semantic_pass(db):
     assert result.status=="semantic_unverified"
     assert result.rows==((2,),)
     assert len(model.calls)==2
+
+def test_actual_graph_has_separate_langgraph_nodes_and_cycles(db):
+    from semantic_sql.inference import _build_guarded_graph
+    base=_build_guarded_graph().get_graph()
+    assert "semantic_plan_contract" not in base.nodes
+    g=_build_guarded_graph(semantic_plan_verifier=True).get_graph()
+    names=set(g.nodes)
+    assert {"generate","verify","repair","semantic_router",
+            "semantic_plan_contract","semantic_plan_verify",
+            "semantic_plan_repair","semantic_plan_refuse","execute"} <= names
+    edges={(e.source,e.target) for e in g.edges}
+    assert ("semantic_router","semantic_plan_contract") in edges
+    assert ("semantic_router","execute") in edges
+    assert ("semantic_plan_contract","semantic_plan_verify") in edges
+    assert ("semantic_plan_repair","verify") in edges
+    assert ("semantic_plan_verify","semantic_plan_refuse") in edges
+
+
+def test_selective_low_risk_skips_model_plan_but_never_claims_semantic_pass(db):
+    model=Model("SELECT amount FROM orders")
+    result=run_guarded(
+        database=db, provider=model, question="List amounts.",
+        schema_context="orders(id, amount)", semantic_plan_verifier=True,
+        semantic_plan_policy="selective",
+    )
+    assert len(model.calls)==1
+    assert result.status=="semantic_unverified"
+    assert result.rows==((10,), (20,))
+    assert [x.name for x in result.stages].count("semantic_router")==1
+    assert not any(x.name=="semantic_plan_contract" for x in result.stages)
+
+
+def test_selective_high_risk_invokes_independent_plan_once(db):
+    model=Model(GOOD,plan())
+    result=run_guarded(
+        database=db, provider=model, question=QUESTION,
+        schema_context="orders(id, amount)", semantic_plan_verifier=True,
+        semantic_plan_policy="selective",
+    )
+    assert len(model.calls)==2
+    assert result.status=="ok" and result.rows==((2,),)
+    assert [x.name for x in result.stages].count("semantic_plan_contract")==1
+
+
+def test_syntax_failure_at_zero_budget_never_spends_plan_call(db):
+    model=Model("SELECT missing FROM orders")
+    result=run_guarded(
+        database=db, provider=model, question=QUESTION,
+        schema_context="orders(id, amount)", max_repairs=0,
+        semantic_plan_verifier=True,
+    )
+    assert result.status=="verification_failed"
+    assert len(model.calls)==1
+    assert not any(x.name.startswith("semantic_") for x in result.stages)
+
+
+def test_syntax_repair_then_semantic_route_uses_independent_plan(db):
+    model=Model("SELECT missing FROM orders", GOOD, plan())
+    result=run_guarded(
+        database=db, provider=model, question=QUESTION,
+        schema_context="orders(id, amount)", semantic_plan_verifier=True,
+    )
+    assert result.status=="ok" and result.rows==((2,),)
+    assert len(model.calls)==3
+    assert [x.name for x in result.stages].count("repair")==1
+    assert [x.name for x in result.stages].count("semantic_plan_contract")==1
+
+
+def test_invalid_semantic_policy_fails_before_any_model_call(db):
+    p=Model()
+    with pytest.raises(ValueError):
+        run_guarded(database=db,provider=p,question=QUESTION,
+                    schema_context="orders(id, amount)",
+                    semantic_plan_verifier=True,semantic_plan_policy="wat")
+    assert p.calls==[]
