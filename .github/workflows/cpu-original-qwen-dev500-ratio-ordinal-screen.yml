@@ -1,0 +1,84 @@
+name: CPU source-only original Qwen DEV500 ratio and ordinal mechanism coverage
+on:
+  push:
+    branches: [research/source-first-ratio-ordinal-probe-20261121]
+    paths: [.github/DEV500_RATIO_ORDINAL_SCREEN_START]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  source_only_probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - name: Test predeclared rules with synthetic positive and negative controls
+        run: |
+          set -euo pipefail
+          python -m pip install -q 'pytest>=8,<10'
+          python -m pytest -q tests/test_probe_qwen9b_dev500_source_mechanisms.py
+          python -m py_compile scripts/probe_qwen9b_dev500_source_mechanisms.py
+      - name: Download SHA-pinned original BIRD source and freeze ONLY question IDs, DBs and questions
+        run: |
+          set -euo pipefail
+          mkdir -p raw-source gold-free-original-source
+          curl -fLsS --retry 3 "https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true" -o raw-source/pinned-dev.json
+          echo "ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb  raw-source/pinned-dev.json" | sha256sum -c -
+          python -m scripts.probe_qwen9b_dev500_source_mechanisms freeze \
+            --raw-source raw-source/pinned-dev.json \
+            --out gold-free-original-source/questions-only.json
+          rm -f raw-source/pinned-dev.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          s=json.loads(Path('gold-free-original-source/questions-only.json').read_text())
+          assert s['contains_reference_or_label'] is False
+          assert all(set(c)=={'case_id','db_id','question'} for c in s['questions'])
+          assert not Path('raw-source/pinned-dev.json').exists()
+          print('REFERENCE_SQL_REMOVED_BEFORE_ELIGIBILITY_SCREEN',len(s['questions']))
+          PY
+      - name: Restore first two original Qwen3.5-9B K8 SHA-pinned caches
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44086713331
+          github-token: ${{ github.token }}
+          pattern: k8-bird-dev500-prospective-cache-and-offline-score-shard-*
+          merge-multiple: true
+          path: original-cache
+      - name: Restore other thirty original Qwen3.5-9B K8 SHA-pinned caches
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44093103960
+          github-token: ${{ github.token }}
+          pattern: k8-bird-dev500-prospective-cache-and-offline-score-shard-*
+          merge-multiple: true
+          path: original-cache
+      - name: Screen all 500 source questions and original 4,000 SQL candidates (zero Qwen)
+        run: |
+          set -euo pipefail
+          test ! -e raw-source/pinned-dev.json
+          python -m scripts.probe_qwen9b_dev500_source_mechanisms screen \
+            --source gold-free-original-source/questions-only.json \
+            --cache-dir original-cache \
+            --out frozen-original-dev500-ratio-ordinal-source-only-screen.json
+          python - <<'PY'
+          import json
+          j=json.load(open('frozen-original-dev500-ratio-ordinal-source-only-screen.json'))
+          assert j['n_original_cases']==500 and j['n_original_k8_sqls']==4000
+          assert j['no_qwen_calls'] and j['no_label_scoring'] and j['holdout300_untouched']
+          assert j['research_only_no_performance_promotion']
+          for family, result in j['families'].items():
+              print('ELIGIBILITY_MECHANISM',family,'k1_source_flags',result['k1_source_flagged_cases'],
+                    'physical_DBS',result['k1_physical_database_count'],
+                    'cross_db_source_coverage_gate',result['gate_source_coverage_pass'])
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: original-qwen9b-dev500-source-only-ratio-ordinal-research-screen
+          path: frozen-original-dev500-ratio-ordinal-source-only-screen.json
+          if-no-files-found: error
+          retention-days: 60
