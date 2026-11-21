@@ -1,0 +1,114 @@
+name: Blind physical literal binding adjudication (CPU no Qwen)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - research/physical-literal-binding-probe-20261122
+    paths:
+      - .github/workflows/blind-literal-binding-probe.yml
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  PYTHONPATH: src:.
+  ORIGINAL_RUN_ID: '44930911891'
+  DB_ZIP_SHA256: cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630
+
+jobs:
+  physical-probe-no-gold:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install and run synthetic zero-gold controls
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m pytest -q tests/test_blind_literal_binding_probe.py tests/test_blind_physical_semantic_signals.py
+          python -m compileall -q scripts/blind_literal_binding_probe.py
+      - name: Download original frozen NO-LABEL selected Qwen SQL only
+        uses: actions/download-artifact@v4
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44930911891
+          github-token: ${{ github.token }}
+          name: blind-candidates-before-scoring
+          path: .blind/source
+      - name: Download original LABEL-BLIND physical risk flags only
+        uses: actions/download-artifact@v4
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44930911891
+          github-token: ${{ github.token }}
+          name: label-blind-physical-observations
+          path: .blind/flags
+      - name: Fetch original SHA-pinned BIRD DEV physical SQLite, never publisher SQL
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/bird /tmp/bird/databases
+          curl -fL --retry 3 https://huggingface.co/datasets/HAL-9001/bird-dev/resolve/main/dev.zip -o /tmp/bird/dev.zip
+          echo "$DB_ZIP_SHA256  /tmp/bird/dev.zip" | sha256sum -c -
+          unzip -q /tmp/bird/dev.zip -d /tmp/bird/unpacked
+          DB_ZIP="$(find /tmp/bird/unpacked -type f -name dev_databases.zip ! -path '*/__MACOSX/*' | head -n1)"
+          test -n "$DB_ZIP"
+          unzip -q "$DB_ZIP" -d /tmp/bird/databases
+          DB_ROOT="$(find /tmp/bird/databases -type d -name dev_databases ! -path '*/__MACOSX/*' | head -n1)"
+          if [ -z "$DB_ROOT" ]; then DB_ROOT=/tmp/bird/databases; fi
+          test -d "$DB_ROOT"
+          echo "DB_ROOT=$DB_ROOT" >> "$GITHUB_ENV"
+          rm -rf /tmp/bird/dev.zip /tmp/bird/unpacked
+      - name: Freeze literal evidence before exposing EX labels
+        run: |
+          python -u -m scripts.blind_literal_binding_probe probe \
+            --candidates .blind/source/candidates.json \
+            --signals .blind/flags/signals.json \
+            --database-root "$DB_ROOT" \
+            --output .blind/frozen/physical-literal-evidence.json
+      - name: Store immutable NO-GOLD physical finding artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: literal-binding-pre-label-physical-evidence
+          path: .blind/frozen/physical-literal-evidence.json
+          if-no-files-found: error
+          retention-days: 30
+
+  score-frozen-original-ex:
+    needs: physical-probe-no-gold
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: literal-binding-pre-label-physical-evidence
+          path: .blind/frozen
+      - name: Download original EX labels ONLY in second scoring job
+        uses: actions/download-artifact@v4
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44930911891
+          github-token: ${{ github.token }}
+          name: original-labels-isolated-from-detector
+          path: .blind/labels
+      - name: Match frozen physical findings against original EX labels
+        run: |
+          python -u -m scripts.blind_literal_binding_probe score \
+            --probes .blind/frozen/physical-literal-evidence.json \
+            --labels .blind/labels/labels.json \
+            --output .blind/scored/physical-binding-historical-ex.json
+      - name: Save noncausal evidence report
+        uses: actions/upload-artifact@v4
+        with:
+          name: historical-original-EX-label-cross-tab-after-freeze
+          path: .blind/scored/physical-binding-historical-ex.json
+          if-no-files-found: error
+          retention-days: 30
