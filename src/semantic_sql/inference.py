@@ -114,12 +114,12 @@ def _semantic_router(state: GuardedState, runtime) -> dict[str, Any]:
     q = state["question"].casefold()
     sql = state["candidate"].sql.casefold()
     risky = bool(re.search(
-        r"\\b(count|how many|average|sum|total|percentage|percent|ratio|rate|"
+        r"\b(count|how many|average|sum|total|percentage|percent|ratio|rate|"
         r"maximum|minimum|most|least|top|first|last|group|per|each|"
-        r"connected|parent|child|between|where|with|whose|which)\\b", q
+        r"connected|parent|child|between|where|with|whose|which)\b", q
     ) or re.search(
-        r"\\b(join|group\\s+by|having|order\\s+by|count\\s*\\(|"
-        r"sum\\s*\\(|avg\\s*\\(|distinct|union|intersect|except)\\b", sql
+        r"\b(join|group\s+by|having|order\s+by|count\s*\(|"
+        r"sum\s*\(|avg\s*\(|distinct|union|intersect|except)\b", sql
     ))
     action = "semantic_plan_contract" if policy == "always" or risky else "execute"
     reason = ("always" if policy == "always" else "structural_risk" if risky else "no_trigger_abstain")
@@ -193,10 +193,10 @@ def _semantic_plan_repair(state: GuardedState, runtime) -> dict[str, Any]:
     """Exactly one violation-targeted model call, preserving the original plan."""
     codes = ", ".join(issue.code for issue in state["verification"].issues)
     prompt = (
-        f"Question:\\n{state['question']}\\n\\n"
-        f"Schema context:\\n{state['schema_context']}\\n\\n"
-        f"SQL with semantic contradictions:\\n{state['candidate'].sql}\\n\\n"
-        f"Verifier violations:\\n{codes}\\n\\n"
+        f"Question:\n{state['question']}\n\n"
+        f"Schema context:\n{state['schema_context']}\n\n"
+        f"SQL with semantic contradictions:\n{state['candidate'].sql}\n\n"
+        f"Verifier violations:\n{codes}\n\n"
         "Correct only the named contradictions. Preserve unrelated clauses. "
         "Return one read-only SQLite SELECT or CTE with no explanation."
     )
