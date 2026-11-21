@@ -103,7 +103,7 @@ def verify_semantic_contract(
                 SCVViolation(
                     code="PROJECTION_MISMATCH",
                     expected=_refs_text(list(expected_projection)),
-                    actual=_refs_text(sorted(actual)),
+                    actual=_refs_text(sorted(actual, key=lambda ref: ((ref.table or ""), ref.column))),
                     evidence="resolved requested projection is absent from the SQL projection",
                     confidence=contract.confidence,
                 )
