@@ -38,6 +38,8 @@ def test_freellmapi_uses_explicit_model_and_no_auto_fallback(monkeypatch):
     assert captured["body"]["stream"] is False
     assert captured["body"]["temperature"] == 0
     assert captured["body"]["seed"] == 42
+    assert captured["body"]["reasoning_effort"] == "none"
+    assert captured["body"]["max_tokens"] == 512
     assert captured["timeout"] == 15
     assert captured["headers"]["Authorization"] == "Bearer test-only"
     assert "auto" not in captured["body"]["model"].lower()
