@@ -36,7 +36,7 @@ _SQL_EQ = re.compile(
     flags=re.I,
 )
 _TABLE = re.compile(
-    r"""(?:\bFROM\b|\bJOIN\b)\s+(?P<table>"?[A-Za-z_]\w*"?)\s*(?:(?:AS\s+)?(?P<alias>"?[A-Za-z_]\w*"?))?""",
+    r"""(?:\bFROM\b|\bJOIN\b)\s+(?P<table>"?[A-Za-z_]\w*"?)\s*(?:(?:AS\s+)?(?!(?:WHERE|JOIN|ON|LEFT|RIGHT|INNER|OUTER|GROUP|ORDER|LIMIT|HAVING|CROSS|FULL|UNION|BY)\b)(?P<alias>"?[A-Za-z_]\w*"?))?""",
     re.I,
 )
 _SQL_LITERAL = re.compile(r"'((?:''|[^'])*)'")
@@ -145,9 +145,8 @@ def _exists(conn: sqlite3.Connection, table: str, column: str, value: str, *, no
     clause = " COLLATE NOCASE" if nocase else " COLLATE BINARY"
     query = f"SELECT 1 FROM {_quote(table)} WHERE {_quote(column)}{clause} = ? LIMIT 1"
     # Safety budget for each read-only probe: max 2M VM instructions; no SQL from model executed.
-    conn.set_progress_handler(lambda: 1, 2000)
     try:
-        # Abort handler above intentionally too tight? Run with normal bounded VM counter below.
+        # Bounded read-only physical evidence query: abort above 2M SQLite VM steps.
         count = [0]
         def limited() -> int:
             count[0] += 1
