@@ -113,14 +113,16 @@ def _semantic_router(state: GuardedState, runtime) -> dict[str, Any]:
     policy = runtime.context.semantic_plan_policy
     q = state["question"].casefold()
     sql = state["candidate"].sql.casefold()
-    risky = bool(re.search(
-        r"\b(count|how many|average|sum|total|percentage|percent|ratio|rate|"
-        r"maximum|minimum|most|least|top|first|last|group|per|each|"
-        r"connected|parent|child|between|where|with|whose|which)\b", q
-    ) or re.search(
-        r"\b(join|group\s+by|having|order\s+by|count\s*\(|"
-        r"sum\s*\(|avg\s*\(|distinct|union|intersect|except)\b", sql
-    ))
+    risky = bool(
+        re.search(
+            r"\b(count|how many|average|sum|total|percentage|percent|ratio|rate|"
+            r"maximum|minimum|most|least|top|first|last|group|per|each|"
+            r"connected|parent|child|between|where|with|whose|which)\b",
+            q,
+        )
+        or re.search(r"\b(join|group\s+by|having|order\s+by|distinct|union|intersect|except)\b", sql)
+        or re.search(r"\b(count|sum|avg)\s*\(", sql)
+    )
     action = "semantic_plan_contract" if policy == "always" or risky else "execute"
     reason = ("always" if policy == "always" else "structural_risk" if risky else "no_trigger_abstain")
     return {
