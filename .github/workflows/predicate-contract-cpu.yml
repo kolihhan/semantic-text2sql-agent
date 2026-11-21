@@ -1,0 +1,21 @@
+name: Predicate contract synthetic CPU gate
+on:
+  workflow_dispatch:
+  push:
+    branches: [research/physical-signal-blind-audit-20261122]
+    paths:
+      - 'scripts/predicate_contract_probe.py'
+      - 'tests/test_predicate_contract_probe.py'
+      - '.github/workflows/predicate-contract-cpu.yml'
+permissions:
+  contents: read
+jobs:
+  synthetic:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install pytest 'sqlglot==27.29.0'
+      - run: python -m pytest -q tests/test_predicate_contract_probe.py
