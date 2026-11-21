@@ -37,6 +37,7 @@ def db(tmp_path):
     path=tmp_path/"orders.sqlite"
     with sqlite3.connect(path) as con:
         con.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY, amount INTEGER)")
+        con.execute("CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT)")
         con.executemany("INSERT INTO orders(amount) VALUES (?)", [(10,), (20,)])
     return path
 
@@ -137,7 +138,7 @@ def test_aggregate_match_but_unverified_question_filter_not_semantic_pass(db):
     assert "UNVERIFIED" in [x.summary for x in result.stages if x.name=="semantic_plan_verify"][0]
 
 def test_unchecked_multi_entity_relation_not_semantic_pass(db):
-    requirement=plan(join_entities=["orders","orders"])
+    requirement=plan(join_entities=["orders","customers"])
     model=Model(GOOD, requirement)
     result=execute(db, model)
     assert result.status=="semantic_unverified"
