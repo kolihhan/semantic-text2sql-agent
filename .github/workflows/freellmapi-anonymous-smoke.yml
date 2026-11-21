@@ -80,7 +80,7 @@ jobs:
               for attempt in range(20):
                   models = req("/v1/models?execution_status=ready", token=api_key)
                   ready = models.get("data", [])
-                  qwen9b = [m for m in ready if m.get("id") == "Qwen 3.5 9B"]
+                  qwen9b = [m for m in ready if m.get("id", "").lower() == "qwen3.5-9b"]
                   if qwen9b: break
                   time.sleep(3)
               result["ready_models_count"] = len(ready)
@@ -95,9 +95,21 @@ jobs:
                   print(json.dumps(result, indent=2))
                   open("freellmapi-smoke-result.json", "w").write(json.dumps(result, indent=2))
                   raise SystemExit(2)
-              query = FreeLLMAPIProvider(base_url=base + "/v1", api_key=api_key, timeout_s=60)
-              sql = query.complete_text(system="Reply with a single SELECT statement only.", user="Return the SQLite SQL statement that evaluates to integer 1.")
-              result["response_identity"] = "Qwen/Qwen3.5-9B"
+              # Query the *catalog's actual* id and record upstream identity
+              # instead of assuming it is identical to the CLōD-specific alias.
+              answer = req("/v1/chat/completions", token=api_key, payload={
+                  "model": "qwen3.5-9b",
+                  "messages": [
+                      {"role": "system", "content": "Reply with a single SELECT statement only."},
+                      {"role": "user", "content": "Return the SQLite SQL statement that evaluates to integer 1."},
+                  ],
+                  "temperature": 0, "max_tokens": 128, "stream": False,
+              })
+              result["response_identity"] = str(answer.get("model", "MISSING"))
+              result["served_via"] = str(answer.get("_routed_via", "not_advertised"))[:120]
+              choices = answer.get("choices", [])
+              sql = choices[0].get("message", {}).get("content", "") if choices else ""
+              result["returned_content_type"] = type(sql).__name__
               result["returned_select"] = sql.lstrip().upper().startswith("SELECT")
               result["status"] = "LIVE_RESPONSE" if result["returned_select"] else "NON_SQL_RESPONSE"
               open("freellmapi-smoke-result.json", "w").write(json.dumps(result, indent=2))
