@@ -106,12 +106,29 @@ def _semantic_revise(state: GuardedState, runtime) -> dict[str, Any]:
             prompt += f"External evidence:\n{state['evidence']}\n\n"
         prompt += (
             f"Original SQL:\n{candidate.sql}\n\n"
-            f"Specific issue to check:\n{hint}\n\n"
-            "Return one SQLite SELECT or CTE only. Preserve unrelated conditions. "
-            "If the original SQL already answers the question, return it unchanged."
+            f"Suspected mismatch (hypothesis, NOT a guaranteed error):\n{hint}\n\n"
+            "Compare the user question with the SQL before making any changes:\n"
+            "1. Answer/output: which entities, fields, and number of rows are requested?\n"
+            "2. Grain and calculation: one record or per-entity total? Check "
+            "SUM/COUNT/DISTINCT/AVG, grouping keys, ratio numerator and denominator.\n"
+            "3. Relationships: check JOIN keys and whether joins multiply the counted entity.\n"
+            "4. Constraints: preserve the requested values, dates, ranges, and WHERE conditions.\n"
+            "5. Ranking: order by the REQUESTED metric AFTER aggregation; "
+            "check direction, LIMIT, offset, and ties.\n"
+            "Use the hint only if the question and schema support that mismatch. "
+            "If it is unproven or the SQL already satisfies the question, return "
+            "the ORIGINAL SQL exactly. Otherwise make the smallest supported change, "
+            "preserving all unaffected clauses and output fields. "
+            "Never invent schema fields, facts, or filters. "
+            "Return exactly ONE read-only SQLite SELECT/CTE statement; "
+            "no JSON, markdown, reasoning, or explanation."
         )
         response = runtime.context.provider.complete_text(
-            system="Review SQL semantics. Return executable SQLite SQL only; no explanation.",
+            system=(
+                "You are a conservative SQL semantic editor, not a SQL generator. "
+                "Treat any suggested error as a hypothesis; follow the user question "
+                "and available schema over the hint. Emit SQL only."
+            ),
             user=prompt,
         )
         proposed = _strip_fence(response)
