@@ -18,3 +18,34 @@ def test_contract_negative_controls(tmp_path):
         assert inspect_predicate(question, sql, db)["status"] == expected
     assert inspect_predicate('Find "Rome" residents', "SELECT name FROM people WHERE city='Rome'", db)["observations"][0]["exact_exists"] is False
     assert inspect_predicate('Find "Paris" residents', "SELECT name FROM people WHERE city='Paris'", db)["observations"][0]["exact_exists"] is True
+
+def test_fail_closed_and_no_mutation(tmp_path):
+    db = tmp_path / "readonly.db"
+    with sqlite3.connect(db) as conn:
+        conn.execute("CREATE TABLE people(name TEXT, city TEXT)")
+        conn.execute("INSERT INTO people VALUES ('Alice', 'Paris')")
+    original = db.read_bytes()
+    cases = [
+        ('Find "Paris" residents', "SELECT name FROM missing WHERE city='Paris'", "ABSTAIN"),
+        ('Find "Paris" residents', "SELECT name FROM people WHERE nonexistent='Paris'", "ABSTAIN"),
+        ('Find "Paris" residents', "SELECT name FROM people WHERE city='Paris' OR name='Alice'", "ABSTAIN"),
+        ('Find "Paris" residents', "SELECT name FROM people WHERE city='Paris' AND name='Alice'", "ABSTAIN"),
+        ('Find "Paris" residents', "SELECT name FROM people WHERE city='Paris' UNION SELECT name FROM people", "ABSTAIN"),
+        ('Find "Paris" residents', "SELECT name FROM people WHERE city='Paris' AND 1=1", "ABSTAIN"),
+        ('Find Paris residents', "SELECT name FROM people WHERE city='Paris'", "ABSTAIN"),
+        ('Find "Paris" residents', "SELECT name FROM people WHERE city=42", "ABSTAIN"),
+        ('Find "Paris" residents', "SELECT name FROM people WHERE city='Paris'", "OBSERVED"),
+    ]
+    for question, sql, status in cases:
+        before_sql = sql
+        output = inspect_predicate(question, sql, db)
+        assert output["status"] == status, (sql, output)
+        assert sql == before_sql
+        assert all(x.get("semantic_correctness") == "UNKNOWN" for x in output["observations"])
+    assert db.read_bytes() == original
+
+def test_missing_database_does_not_create_file(tmp_path):
+    db = tmp_path / "nonexistent.db"
+    result = inspect_predicate('Find "Paris" residents', "SELECT name FROM people WHERE city='Paris'", db)
+    assert result["status"] == "ABSTAIN"
+    assert not db.exists()
