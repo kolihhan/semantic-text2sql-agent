@@ -7,6 +7,7 @@ on:
       - research/freellmapi-transport-probe-20261122
     paths:
       - .github/workflows/freellmapi-bird-six.yml
+      - scripts/freellmapi_bird_six_probe.py
 
 permissions:
   contents: read
