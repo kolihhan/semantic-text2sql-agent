@@ -103,7 +103,7 @@ jobs:
                       {"role": "system", "content": "Reply with a single SELECT statement only."},
                       {"role": "user", "content": "Return the SQLite SQL statement that evaluates to integer 1."},
                   ],
-                  "temperature": 0, "max_tokens": 128, "stream": False,
+                  "temperature": 0, "max_tokens": 1024, "stream": False,
               })
               result["response_identity"] = str(answer.get("model", "MISSING"))
               result["served_via"] = str(answer.get("_routed_via", "not_advertised"))[:120]
@@ -113,6 +113,7 @@ jobs:
               result["finish_reason"] = str(choices[0].get("finish_reason", "missing")) if choices else "missing"
               result["output_characters"] = len(str(sql))
               result["output_preview"] = str(sql)[:180]
+              result["output_tail"] = str(sql)[-200:]
               result["returned_select"] = sql.lstrip().upper().startswith("SELECT")
               result["status"] = "LIVE_RESPONSE" if result["returned_select"] else "NON_SQL_RESPONSE"
               open("freellmapi-smoke-result.json", "w").write(json.dumps(result, indent=2))
