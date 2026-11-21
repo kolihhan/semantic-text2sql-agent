@@ -70,6 +70,7 @@ class FreeLLMAPIProvider:
     temperature: float = 0.0
     seed: int = 42
     max_tokens: int = 512
+    last_usage: dict[str, int] | None = field(default=None, init=False, repr=False)
 
     def complete_text(self, *, system: str, user: str) -> str:
         if not self.model.strip() or self.model.lower().startswith("auto"):
@@ -104,6 +105,12 @@ class FreeLLMAPIProvider:
         )
         with urllib.request.urlopen(request, timeout=self.timeout_s) as response:
             payload = json.loads(response.read().decode("utf-8"))
+        self.last_usage = None
+        usage = payload.get("usage")
+        if isinstance(usage, dict):
+            clean = {key: value for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+                     if isinstance((value := usage.get(key)), int) and not isinstance(value, bool) and value >= 0}
+            self.last_usage = clean or None
         if payload.get("model") != self.expected_response_model:
             raise ValueError("FreeLLMAPI model identity mismatch; refuse unknown/substituted model")
         routed = payload.get("_routed_via")
