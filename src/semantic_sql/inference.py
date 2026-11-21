@@ -32,6 +32,7 @@ class GuardedContext:
     max_repairs: int = 2
     max_rows: int = 100
     semantic_revision: bool = False
+    semantic_v2: bool = False
 
 
 class GuardedState(TypedDict, total=False):
@@ -41,6 +42,7 @@ class GuardedState(TypedDict, total=False):
     candidate: SQLCandidate | None
     verification: VerificationResult | None
     semantic_revised: bool
+    semantic_v2_checked: bool
     stages: tuple[StageRecord, ...]
     result: AgentResult | None
 
@@ -138,6 +140,28 @@ def _semantic_revise(state: GuardedState, runtime) -> dict[str, Any]:
         "stages": _append_stage(state, "semantic_revision", summary),
     }
 
+ 
+def _semantic_v2(state: GuardedState, runtime) -> dict[str, Any]:
+    # This evidence-gated path is independent of the old LLM-only semantic
+    # revision and never consumes evaluation labels or mutates the source DB.
+    from .semantic_v2 import evidence_gated_literal_revision
+
+    previous = state["candidate"]
+    decision = evidence_gated_literal_revision(
+        database=runtime.context.database,
+        question=state["question"],
+        sql=previous.sql,
+    )
+    accepted = SQLCandidate(sql=decision.sql, attempt=previous.attempt) if decision.changed else previous
+    return {
+        "candidate": accepted,
+        "semantic_v2_checked": True,
+        "stages": _append_stage(
+            state, "semantic_v2",
+            f"{decision.reason}: changed={str(decision.changed).lower()}",
+        ),
+    }
+
 
 def _execute(state: GuardedState, runtime) -> dict[str, Any]:
     candidate = state["candidate"]
@@ -157,6 +181,8 @@ def _refuse(state: GuardedState) -> dict[str, Any]:
 
 def _verify_route(state: GuardedState, runtime) -> str:
     if state["verification"].ok:
+        if runtime.context.semantic_v2 and not state.get("semantic_v2_checked", False):
+            return "semantic_v2"
         if runtime.context.semantic_revision and not state.get("semantic_revised", False):
             return "semantic_revision"
         return "execute"
@@ -165,7 +191,9 @@ def _verify_route(state: GuardedState, runtime) -> str:
     return "refuse"
 
 
-def _build_guarded_graph(*, semantic_revision: bool = False):
+def _build_guarded_graph(*, semantic_revision: bool = False, semantic_v2: bool = False):
+    if semantic_revision and semantic_v2:
+        raise ValueError("old LLM semantic revision and evidence-gated v2 cannot run together")
     from langgraph.graph import END, START, StateGraph
 
     graph = StateGraph(GuardedState, context_schema=GuardedContext)
@@ -174,6 +202,8 @@ def _build_guarded_graph(*, semantic_revision: bool = False):
     graph.add_node("repair", _repair)
     if semantic_revision:
         graph.add_node("semantic_revision", _semantic_revise)
+    if semantic_v2:
+        graph.add_node("semantic_v2", _semantic_v2)
     graph.add_node("execute", _execute)
     graph.add_node("refuse", _refuse)
     graph.add_edge(START, "generate")
@@ -181,10 +211,14 @@ def _build_guarded_graph(*, semantic_revision: bool = False):
     routes = {"execute": "execute", "repair": "repair", "refuse": "refuse"}
     if semantic_revision:
         routes["semantic_revision"] = "semantic_revision"
+    if semantic_v2:
+        routes["semantic_v2"] = "semantic_v2"
     graph.add_conditional_edges("verify", _verify_route, routes)
     graph.add_edge("repair", "verify")
     if semantic_revision:
         graph.add_edge("semantic_revision", "verify")
+    if semantic_v2:
+        graph.add_edge("semantic_v2", "verify")
     graph.add_edge("execute", END)
     graph.add_edge("refuse", END)
     return graph.compile()
@@ -195,15 +229,17 @@ def run_guarded(
     schema_context: str, evidence: str | None = None,
     initial_candidate: SQLCandidate | None = None, max_repairs: int = 2,
     max_rows: int = 100, semantic_revision: bool = False,
+    semantic_v2: bool = False,
 ) -> AgentResult:
     database = Path(database)
-    output = _build_guarded_graph(semantic_revision=semantic_revision).invoke(
+    output = _build_guarded_graph(semantic_revision=semantic_revision, semantic_v2=semantic_v2).invoke(
         {
             "question": question,
             "schema_context": schema_context,
             "evidence": evidence,
             "candidate": initial_candidate,
             "semantic_revised": False,
+            "semantic_v2_checked": False,
             "stages": (),
         },
         config={"recursion_limit": 2 * max(0, max_repairs) + 10},
@@ -213,6 +249,7 @@ def run_guarded(
             max_repairs=max_repairs,
             max_rows=max_rows,
             semantic_revision=semantic_revision,
+            semantic_v2=semantic_v2,
         ),
     )
     result = output["result"] if isinstance(output, dict) else output.result
