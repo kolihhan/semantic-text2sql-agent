@@ -1,0 +1,1 @@
+One-shot owner-authorized source-only CPU coverage research for two predeclared semantic mechanisms. Frozen original Qwen3.5-9B 500 questions x8 original SQLs. Never open publisher SQL in detector, call Qwen, run SQL against DB, modify model, or touch HOLDOUT300.
