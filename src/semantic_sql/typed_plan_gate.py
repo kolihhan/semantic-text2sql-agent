@@ -104,5 +104,10 @@ def verify_plan_against_sql(
         # Do not assert consistency when other semantic concerns remain.
         return PlanVerdict("unverified", reasons=tuple(v.code for v in check.violations),
                            reason="unproven_projection_relation_filter_or_expression")
-    # Consistent == checked requirements did not contradict SQL, NOT SQL correctness.
+    # A matched COUNT/ORDER alone cannot certify an unverified requested FILTER
+    # or relational path. SQL can execute and match aggregate yet answer the
+    # WRONG population. Treat unsupported semantic dimensions as UNKNOWN.
+    if plan.filters or len(plan.join_entities) > 1 or plan.projection:
+        return PlanVerdict("unverified", reason="filters_relations_or_projection_not_fully_verified")
+    # Consistent == checked requirements did not contradict SQL, NOT gold correctness.
     return PlanVerdict("consistent")
