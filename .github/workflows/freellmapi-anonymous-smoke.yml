@@ -110,6 +110,9 @@ jobs:
               choices = answer.get("choices", [])
               sql = choices[0].get("message", {}).get("content", "") if choices else ""
               result["returned_content_type"] = type(sql).__name__
+              result["finish_reason"] = str(choices[0].get("finish_reason", "missing")) if choices else "missing"
+              result["output_characters"] = len(str(sql))
+              result["output_preview"] = str(sql)[:180]
               result["returned_select"] = sql.lstrip().upper().startswith("SELECT")
               result["status"] = "LIVE_RESPONSE" if result["returned_select"] else "NON_SQL_RESPONSE"
               open("freellmapi-smoke-result.json", "w").write(json.dumps(result, indent=2))
