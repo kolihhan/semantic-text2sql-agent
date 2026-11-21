@@ -13,7 +13,7 @@ from .verifier import verify_sql_preflight
 from .semantic_contracts import detect_semantic_concerns
 from .semantic_contract import extract_semantic_contract
 from .catalog import DatabaseCatalog
-from .typed_plan_gate import verify_plan_against_sql
+# Typed SQLGlot plan verification is lazy-loaded ONLY when explicitly opted in.
 
 
 GUARDED_TREATMENT_ID = "langgraph_preflight_plus_internal_cot_repair_v1"
@@ -110,14 +110,17 @@ def _verify(state: GuardedState, runtime) -> dict[str, Any]:
             )
             result["semantic_plan_extraction"] = extraction
         try:
+            from .typed_plan_gate import verify_plan_against_sql
             verdict = verify_plan_against_sql(
                 extraction=extraction,
                 sql=candidate.sql,
                 catalog=DatabaseCatalog.from_sqlite(runtime.context.database),
             )
-        except (ImportError, ValueError) as exc:
-            from .typed_plan_gate import PlanVerdict
-            verdict = PlanVerdict("unverified", reason="plan_runtime_unavailable")
+        except (ImportError, ValueError):
+            # Optional SQL AST dependency may be unavailable; do not accidentally
+            # turn execution success into semantic approval or break default runtime.
+            from types import SimpleNamespace
+            verdict = SimpleNamespace(status="unverified", reason="plan_runtime_unavailable", reasons=())
         result["semantic_plan_state"] = verdict.status
         stages = result["stages"]
         if verdict.status == "conflict":
