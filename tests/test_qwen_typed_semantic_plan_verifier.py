@@ -221,3 +221,17 @@ def test_invalid_semantic_policy_fails_before_any_model_call(db):
                     schema_context="orders(id, amount)",
                     semantic_plan_verifier=True,semantic_plan_policy="wat")
     assert p.calls==[]
+
+def test_unexpected_ast_mixed_qualifier_error_abstains_not_crashes(db, monkeypatch):
+    from semantic_sql import typed_plan_gate
+
+    def raise_ambiguous_schema(*, extraction, sql, catalog):
+        raise TypeError("'<' not supported between instances of 'NoneType' and 'str'")
+
+    monkeypatch.setattr(typed_plan_gate, "verify_plan_against_sql", raise_ambiguous_schema)
+    model = Model(GOOD, plan())
+    result = execute(db, model)
+    assert len(model.calls) == 2
+    assert result.status == "semantic_unverified"
+    assert result.rows == ((2,),)
+    assert any("plan_runtime_inconclusive:TypeError" in s.summary for s in result.stages)
