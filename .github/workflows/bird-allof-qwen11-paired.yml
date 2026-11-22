@@ -1,0 +1,208 @@
+name: BIRD TRAIN11 fixed Qwen9B real ALL-of LangGraph paired Strict EX
+on:
+  push:
+    branches: [research/bird-relational-allof-graph-v1-20261123]
+    paths:
+      - '.github/workflows/bird-allof-qwen11-paired.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  gold-free-source-freeze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - run: python -m pip install -e .
+      - name: Download pre-frozen source-only eligible question hashes (no publisher SQL)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 45056158610
+          github-token: ${{ github.token }}
+          name: BIRD-ALLOF-QUESTION-ONLY-SOURCE-ELIGIBILITY
+          path: prior
+      - name: Read pinned original publisher source to produce ONLY questions+evidence
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/Emulated-Inc/text-to-sql-with-evidence-training-pool/resolve/cd2c4ea321075aa53ce7dfe52deaaffa505d046a/raw/bird/train.json' \
+            -o original-bird-train.json
+          echo 'cd5884489dffd7c76d73509b396bd919fbe8b486efbc4ba2f48f89460de7d69f  original-bird-train.json' | sha256sum -c -
+          mkdir -p frozen
+          cp prior/BIRD-ALLOF-source-only-readiness.json frozen/selection.json
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          from scripts.prepare_birdtrain_qwen9b_sft_source import fetch_manifest
+          src=json.load(open('original-bird-train.json'))
+          frozen=Path('frozen/selection.json')
+          sel=json.loads(frozen.read_text())
+          assert sel['selected_question_only_n']==11 and sel['selected_db_count']==9
+          metadata=fetch_manifest()
+          rows=[]
+          for x in sel['selected']:
+              original=src[x['source_index']]
+              db=x['db_id']
+              assert original['db_id']==db
+              assert db not in ('simpson_episodes','works_cycles')
+              assert metadata[db]['size']<=96*1024*1024, f'RESOURCE_BLOCKED: {db}'
+              assert hashlib.sha256(original['question'].encode()).hexdigest()==x['question_sha256']
+              rows.append({
+                  'source_index':x['source_index'],'db_id':db,
+                  'question':original['question'],
+                  'evidence':original.get('evidence') or '',
+                  'question_sha256':x['question_sha256'],
+              })
+          packed={'status':'BIRD_ALLOF_GOLD_FREE_QUESTION_ONLY',
+                  'original_source_sha256':sel['original_source_sha256'],
+                  'selection_sha256':hashlib.sha256(frozen.read_bytes()).hexdigest(),
+                  'cases':rows}
+          assert all('SQL' not in x and 'sql' not in x and 'answer' not in x for x in rows)
+          Path('frozen/questions-only.json').write_text(json.dumps(packed,indent=2,ensure_ascii=False))
+          print('BIRD_ALLOF_SOURCE_SEALED_NO_PUBLISHER_GOLD',
+                len(rows),len({x['db_id'] for x in rows}),flush=True)
+          PY
+          rm original-bird-train.json
+      - name: Export original question+evidence source ONLY (publisher gold excluded)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: BIRD-ALLOF-TRAIN11-GOLD-FREE-SOURCE-BEFORE-QWEN
+          path: frozen/
+          retention-days: 30
+          if-no-files-found: error
+
+  matched-real-qwen:
+    needs: gold-free-source-freeze
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        shard: [0,1,2]
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_CONTEXT_LENGTH: '8192'
+      OLLAMA_NUM_PARALLEL: '1'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - run: python -m pip install -e .
+      - name: Download gold-free source to Qwen runner (no publisher SQL)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: BIRD-ALLOF-TRAIN11-GOLD-FREE-SOURCE-BEFORE-QWEN
+          path: frozen
+      - name: Start pinned original Qwen3.5-9B only
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          for i in {1..60}; do curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break; sleep 2; done
+          curl -fsS http://127.0.0.1:11434/api/tags >/dev/null
+          ollama pull qwen3.5:9b-q4_K_M
+      - name: Qwen generation once shared; old Guarded vs new no-extra-Qwen LangGraph
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python -m experiments.bird_allof_qwen11 infer \
+            --source frozen/questions-only.json --frozen frozen/selection.json \
+            --physical physical --shard "$SHARD" --out "generated-$SHARD.json"
+          python - <<'PY'
+          import json,glob
+          fs=glob.glob('generated-*.json')
+          assert len(fs)==1
+          d=json.load(open(fs[0]))
+          assert d['phase']=='GOLD_BLIND_ORIGINAL_QWEN_PREDICTIONS_SEALED'
+          assert d['no_gold_in_model_or_graph'] and d['model_digest']=='56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90'
+          assert all(x['model_calls_shared']<=3 and x['model_calls_added_by_graph']==0 for x in d['cases'])
+          print('SEALED_PRE_GOLD_BIRD_ALLOF_QWEN_SHARD',d['shard'],d['n'],flush=True)
+          PY
+      - name: FIRST upload Qwen SQL predictions before publisher gold available
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: BIRD-ALLOF-TRAIN11-QWEN-GOLD-BLIND-SHARD-${{ matrix.shard }}
+          path: generated-*.json
+          retention-days: 30
+          if-no-files-found: error
+      - name: ONLY AFTER seal: download exact publisher gold for BIRD Strict SET/BAG EX
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/Emulated-Inc/text-to-sql-with-evidence-training-pool/resolve/cd2c4ea321075aa53ce7dfe52deaaffa505d046a/raw/bird/train.json' \
+            -o original-bird-train.json
+          echo 'cd5884489dffd7c76d73509b396bd919fbe8b486efbc4ba2f48f89460de7d69f  original-bird-train.json' | sha256sum -c -
+      - name: Official BIRD question/source-matched physical SET/BAG scoring
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python -m experiments.bird_allof_qwen11 score \
+            --source original-bird-train.json --frozen frozen/selection.json \
+            --physical physical --generated "generated-$SHARD.json" \
+            --shard "$SHARD" --out "scored-$SHARD.json"
+      - name: Upload scored shard only AFTER both blinded SQL arms sealed
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: BIRD-ALLOF-TRAIN11-STRICT-EX-SHARD-${{ matrix.shard }}
+          path: scored-*.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  final-gold-freeze-and-score:
+    needs: matched-real-qwen
+    if: always() && needs.matched-real-qwen.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - run: python -m pip install -e .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: BIRD-ALLOF-TRAIN11-GOLD-FREE-SOURCE-BEFORE-QWEN
+          path: frozen
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: BIRD-ALLOF-TRAIN11-STRICT-EX-SHARD-*
+          merge-multiple: true
+          path: scored
+      - name: Fetch original publisher source only for post-seal scorer
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/Emulated-Inc/text-to-sql-with-evidence-training-pool/resolve/cd2c4ea321075aa53ce7dfe52deaaffa505d046a/raw/bird/train.json' \
+            -o original-bird-train.json
+          echo 'cd5884489dffd7c76d73509b396bd919fbe8b486efbc4ba2f48f89460de7d69f  original-bird-train.json' | sha256sum -c -
+      - name: Aggregate real BIRD Strict SET/BAG EX plus Qwen call and wall cost
+        run: |
+          set -euo pipefail
+          test "$(find scored -name 'scored-*.json' | wc -l)" -eq 3
+          python -m experiments.bird_allof_qwen11 aggregate \
+            --source original-bird-train.json --frozen frozen/selection.json \
+            --parts scored/scored-0.json scored/scored-1.json scored/scored-2.json \
+            --out BIRD-ALLOF-TRAIN11-final-strict-EX.json
+          python - <<'PY'
+          import json
+          d=json.load(open('BIRD-ALLOF-TRAIN11-final-strict-EX.json'))
+          assert d['status']=='COMPLETE_BIRD_ORIGINAL_QWEN_ALLOF_PAIRED_TRAIN11'
+          assert d['n']==11 and d['counts']['graph_additional_model_calls']==0
+          assert d['protected_BIRD_HOLDOUT300_unused'] and d['protected_two_TRAIN_DBS_unused']
+          assert d['promotion_allowed'] is False and d['not_independent_or_historical_DEV100']
+          print('FINAL_REAL_ORIGINAL_QWEN_BIRD_ALLOF_STRICT_EX',json.dumps(d,sort_keys=True),flush=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: FINAL-BIRD-ALLOF-QWEN9B-TRAIN11-STRICT-EX-COST
+          path: BIRD-ALLOF-TRAIN11-final-strict-EX.json
+          retention-days: 30
+          if-no-files-found: error
