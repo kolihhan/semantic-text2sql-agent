@@ -10,6 +10,7 @@ from .direct import _strip_fence, generate_direct_sql
 from .execution import SQLExecutionError, execute_readonly
 from .providers import ModelProvider
 from .verifier import verify_sql_preflight
+from .relational_allof import find_allof_counterexample
 
 
 GUARDED_TREATMENT_ID = "langgraph_preflight_plus_internal_cot_repair_v1"
@@ -32,6 +33,7 @@ class GuardedContext:
     max_repairs: int = 2
     max_rows: int = 100
     semantic_revision: bool = False
+    allof_counterexample: bool = False
 
 
 class GuardedState(TypedDict, total=False):
@@ -41,6 +43,10 @@ class GuardedState(TypedDict, total=False):
     candidate: SQLCandidate | None
     verification: VerificationResult | None
     semantic_revised: bool
+    allof_witness: Any
+    allof_original: SQLCandidate | None
+    allof_attempted: bool
+    allof_route: str
     stages: tuple[StageRecord, ...]
     result: AgentResult | None
 
@@ -139,6 +145,60 @@ def _semantic_revise(state: GuardedState, runtime) -> dict[str, Any]:
     }
 
 
+def _allof_decide(state: GuardedState, runtime) -> dict[str, Any]:
+    """Question/SQL/physical-FK observation: only route on real counterexample."""
+    witness=find_allof_counterexample(
+        runtime.context.database,state["question"],state["candidate"].sql)
+    if witness is None:
+        return {
+            "allof_route":"execute",
+            "stages":_append_stage(state,"allof_decide","ABSTAIN: no grounded ALL-of witness"),
+        }
+    return {
+        "allof_witness":witness,
+        "allof_original":state["candidate"],
+        "allof_route":"allof_rewrite",
+        "stages":_append_stage(state,"allof_decide",
+            f"WITNESS:union={witness.union_count}:intersection={witness.intersection_count}"),
+    }
+
+
+def _allof_route(state: GuardedState) -> str:
+    return state["allof_route"]
+
+
+def _allof_rewrite(state: GuardedState, runtime) -> dict[str, Any]:
+    """Graph action: synthesize one FK-grounded relational-division candidate."""
+    witness=state.get("allof_witness")
+    backup=state.get("allof_original")
+    if witness is None or backup is None or state.get("allof_attempted",False):
+        raise RuntimeError("invalid ALL-of witness/retry")
+    proposal=SQLCandidate(sql=witness.alternative,attempt=backup.attempt)
+    checked=verify_sql_preflight(runtime.context.database,proposal.sql)
+    return {
+        "candidate":proposal if checked.ok else backup,
+        "allof_attempted":True,
+        "allof_route":"verify" if checked.ok else "execute",
+        "stages":_append_stage(state,"allof_rewrite",
+            "READONLY_PREFLIGHT_OK" if checked.ok else "FALLBACK_INVALID"),
+    }
+
+
+def _allof_fallback(state: GuardedState, runtime) -> dict[str, Any]:
+    original=state.get("allof_original")
+    if original is None:
+        raise RuntimeError("ALL-of fallback without original SQL")
+    checked=verify_sql_preflight(runtime.context.database,original.sql)
+    if not checked.ok:
+        raise RuntimeError("ALL-of original query no longer safe")
+    return {
+        "candidate":original,
+        "verification":checked,
+        "stages":_append_stage(state,"allof_fallback","ORIGINAL_SAFE_SQL_RESTORED"),
+    }
+
+
+
 def _execute(state: GuardedState, runtime) -> dict[str, Any]:
     candidate = state["candidate"]
     verification = state["verification"]
@@ -156,7 +216,11 @@ def _refuse(state: GuardedState) -> dict[str, Any]:
 
 
 def _verify_route(state: GuardedState, runtime) -> str:
+    if runtime.context.allof_counterexample and state.get("allof_attempted",False):
+        return "execute" if state["verification"].ok else "allof_fallback"
     if state["verification"].ok:
+        if runtime.context.allof_counterexample:
+            return "allof_decide"
         if runtime.context.semantic_revision and not state.get("semantic_revised", False):
             return "semantic_revision"
         return "execute"
@@ -165,7 +229,7 @@ def _verify_route(state: GuardedState, runtime) -> str:
     return "refuse"
 
 
-def _build_guarded_graph(*, semantic_revision: bool = False):
+def _build_guarded_graph(*, semantic_revision: bool = False, allof_counterexample: bool = False):
     from langgraph.graph import END, START, StateGraph
 
     graph = StateGraph(GuardedState, context_schema=GuardedContext)
@@ -174,17 +238,31 @@ def _build_guarded_graph(*, semantic_revision: bool = False):
     graph.add_node("repair", _repair)
     if semantic_revision:
         graph.add_node("semantic_revision", _semantic_revise)
+    if allof_counterexample:
+        graph.add_node("allof_decide", _allof_decide)
+        graph.add_node("allof_rewrite", _allof_rewrite)
+        graph.add_node("allof_fallback", _allof_fallback)
     graph.add_node("execute", _execute)
     graph.add_node("refuse", _refuse)
     graph.add_edge(START, "generate")
     graph.add_edge("generate", "verify")
     routes = {"execute": "execute", "repair": "repair", "refuse": "refuse"}
+    if allof_counterexample:
+        routes["allof_decide"]="allof_decide"
+        routes["allof_fallback"]="allof_fallback"
     if semantic_revision:
         routes["semantic_revision"] = "semantic_revision"
     graph.add_conditional_edges("verify", _verify_route, routes)
     graph.add_edge("repair", "verify")
     if semantic_revision:
         graph.add_edge("semantic_revision", "verify")
+    if allof_counterexample:
+        graph.add_conditional_edges(
+            "allof_decide",_allof_route,
+            {"execute":"execute", "allof_rewrite":"allof_rewrite"}
+        )
+        graph.add_edge("allof_rewrite","verify")
+        graph.add_edge("allof_fallback","execute")
     graph.add_edge("execute", END)
     graph.add_edge("refuse", END)
     return graph.compile()
@@ -195,24 +273,34 @@ def run_guarded(
     schema_context: str, evidence: str | None = None,
     initial_candidate: SQLCandidate | None = None, max_repairs: int = 2,
     max_rows: int = 100, semantic_revision: bool = False,
+    allof_counterexample: bool = False,
 ) -> AgentResult:
     database = Path(database)
-    output = _build_guarded_graph(semantic_revision=semantic_revision).invoke(
+    if semantic_revision and allof_counterexample:
+        raise ValueError("legacy semantic_revision and experimental allof_counterexample are mutually exclusive")
+    output = _build_guarded_graph(
+        semantic_revision=semantic_revision,allof_counterexample=allof_counterexample,
+    ).invoke(
         {
             "question": question,
             "schema_context": schema_context,
             "evidence": evidence,
             "candidate": initial_candidate,
             "semantic_revised": False,
+            "allof_witness": None,
+            "allof_original": None,
+            "allof_attempted": False,
+            "allof_route": "",
             "stages": (),
         },
-        config={"recursion_limit": 2 * max(0, max_repairs) + 10},
+        config={"recursion_limit": 2 * max(0, max_repairs) + (18 if allof_counterexample else 10)},
         context=GuardedContext(
             database=database,
             provider=provider,
             max_repairs=max_repairs,
             max_rows=max_rows,
             semantic_revision=semantic_revision,
+            allof_counterexample=allof_counterexample,
         ),
     )
     result = output["result"] if isinstance(output, dict) else output.result
