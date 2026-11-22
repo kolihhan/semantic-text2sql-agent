@@ -58,3 +58,29 @@ def test_low_confidence_and_unknown_original_do_not_rewrite():
     low = replace(REQUIRED, confidence="medium")
     assert select_joint_repair(ORIGINAL, [CORRECT_SHAPE], low).status == "ABSTAIN"
     assert select_joint_repair("SELECT FROM", [CORRECT_SHAPE], REQUIRED).status == "ABSTAIN"
+
+
+def test_physical_sqlite_join_repair_and_unrelated_filter_regression():
+    """Execute real SQLite rows; compatible AST alone cannot validate extra predicates."""
+    import sqlite3
+
+    original = (
+        "SELECT customer.name, COUNT(DISTINCT orders.id) FROM customer "
+        "JOIN orders ON customer.id = orders.seller_id "
+        "WHERE orders.amount >= 50 GROUP BY customer.name"
+    )
+    correct = original.replace("seller_id", "customer_id")
+    bad_filter = correct.replace("amount >= 50", "amount < 50")
+    with sqlite3.connect(":memory:") as db:
+        db.executescript("""
+        CREATE TABLE customer (id INTEGER PRIMARY KEY, name TEXT);
+        CREATE TABLE orders (id INTEGER PRIMARY KEY, customer_id INT, seller_id INT, amount INT);
+        INSERT INTO customer VALUES (1, 'Alice'), (2, 'Bob');
+        INSERT INTO orders VALUES (1,1,2,80), (2,1,2,70), (3,2,1,60), (4,2,1,20);
+        """)
+        assert db.execute(original).fetchall() == [('Alice', 1), ('Bob', 2)]
+        assert db.execute(correct).fetchall() == [('Alice', 2), ('Bob', 1)]
+        assert db.execute(bad_filter).fetchall() != db.execute(correct).fetchall()
+    assert select_joint_repair(original, [correct], REQUIRED).status == "SELECT_REPAIR"
+    # A repair may satisfy entity+relation+grain while changing a correct filter.
+    assert select_joint_repair(original, [bad_filter], REQUIRED).status == "ABSTAIN"
