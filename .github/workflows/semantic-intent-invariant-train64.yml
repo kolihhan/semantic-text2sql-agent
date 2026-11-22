@@ -1,0 +1,84 @@
+name: Locked semantic intent invariants — TRAIN64 replay with labels after freeze
+on:
+  workflow_dispatch:
+  push:
+    branches: [research/semantic-intent-guard-20261122]
+    paths:
+      - .github/workflows/semantic-intent-invariant-train64.yml
+      - scripts/semantic_intent_invariant_gate.py
+      - scripts/replay_semantic_intent_guard_train64.py
+      - tests/test_semantic_intent_invariant_gate.py
+permissions:
+  contents: read
+  actions: read
+jobs:
+  gold-blind-candidate-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: |
+          python -m pip install -q pytest
+          python -m pytest -q tests/test_semantic_intent_invariant_gate.py
+      - uses: actions/download-artifact@v4
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44997285352
+          github-token: ${{ github.token }}
+          name: ZR-TRAIN64-NO-GOLD-INPUT
+          path: .input/unlabeled
+      - uses: actions/download-artifact@v4
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44997285352
+          github-token: ${{ github.token }}
+          name: ZR-TRAIN64-FROZEN-CANDIDATES-BEFORE-LABELS
+          path: .input/frozen
+      - name: Lock question-SQL intent invariant decisions without publisher answers
+        run: |
+          PYTHONPATH=src:. python -u -m scripts.replay_semantic_intent_guard_train64 freeze \
+            --unlabeled .input/unlabeled/qwen9b-original-val64-sql-only.json \
+            --frozen .input/frozen/zero-row-repair-val64-no-gold.json \
+            --output .frozen/semantic-intent-gated-decisions.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SQL64-SEMANTIC-INTENT-GOLD-BLIND-DECISIONS
+          path: .frozen/semantic-intent-gated-decisions.json
+          if-no-files-found: error
+          retention-days: 30
+
+  score-after-decision-freeze:
+    needs: gold-blind-candidate-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: SQL64-SEMANTIC-INTENT-GOLD-BLIND-DECISIONS
+          path: .frozen
+      - uses: actions/download-artifact@v4
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44997285352
+          github-token: ${{ github.token }}
+          name: ZR-TRAIN64-REPLAY-SCORE
+          path: .labels
+      - name: Retrospectively score original recorded outcomes, not new EX claims
+        run: |
+          PYTHONPATH=src:. python -u -m scripts.replay_semantic_intent_guard_train64 score \
+            --decisions .frozen/semantic-intent-gated-decisions.json \
+            --original-score .labels/zero-row-paired-val64.json \
+            --output .score/semantic-intent-exposed64-retrospective.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SQL64-SEMANTIC-INTENT-HISTORICAL-SET-BAG-RETROSPECTIVE
+          path: .score/semantic-intent-exposed64-retrospective.json
+          if-no-files-found: error
+          retention-days: 30
