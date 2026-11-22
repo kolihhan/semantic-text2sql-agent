@@ -49,9 +49,24 @@ class Meter:
             self.model_wall_s+=time.monotonic()-start
 
 
-def sources(source:Path, frozen:Path)->tuple[list[dict],dict]:
-    train=load_checked(source,TRAIN_SHA)
+def sources(source:Path, frozen:Path, *, inference:bool=False)->tuple[list[dict],dict]:
     m=json.loads(frozen.read_text(encoding="utf-8"))
+    if inference:
+        packed=json.loads(source.read_text(encoding="utf-8"))
+        if (packed.get("status")!="BIRD_ALLOF_GOLD_FREE_QUESTION_ONLY"
+            or packed.get("original_source_sha256")!=TRAIN_SHA
+            or packed.get("selection_sha256")!=sha256(frozen.read_bytes()).hexdigest()
+            or len(packed.get("cases",[]))!=11):
+            raise ValueError("inference must use sealed NO-GOLD questions, not original BIRD publisher data")
+        for row in packed["cases"]:
+            if "SQL" in row or "sql" in row or "answer" in row or "gold" in row:
+                raise ValueError("publisher SQL or answer leaked to Qwen job")
+        max_index=max(x["source_index"] for x in packed["cases"])
+        train=[{} for _ in range(max_index+1)]
+        for item in packed["cases"]:
+            train[item["source_index"]]=item
+    else:
+        train=load_checked(source,TRAIN_SHA)
     items=m.get("selected")
     if (m.get("protocol")!=SOURCE_PROTOCOL
         or m.get("original_source_sha256")!=TRAIN_SHA
@@ -80,7 +95,7 @@ def sources(source:Path, frozen:Path)->tuple[list[dict],dict]:
 
 
 def infer(source:Path,frozen:Path,physical:Path,shard:int,out:Path)->dict:
-    train,m=sources(source,frozen)
+    train,m=sources(source,frozen,inference=True)
     if shard not in range(N_SHARDS):
         raise ValueError("bad shard")
     if _ollama_model_digest("http://localhost:11434",MODEL)!=DIGEST:
