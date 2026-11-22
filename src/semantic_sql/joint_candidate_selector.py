@@ -104,10 +104,11 @@ def select_joint_repair(
     statuses = [_covers_joint_obligation(sql, obligation) for sql in candidates]
     if any(status is None for status in statuses):
         return abstain("ambiguous_candidate_structure")
-    supported = [
-        sql for sql, status in zip(candidates, statuses)
-        if status and _preserves_unchecked_semantics(original_sql, sql)
-    ]
+    supported = [sql for sql, status in zip(candidates, statuses) if status]
     if len(supported) != 1:
         return abstain("zero_or_multiple_joint_compatible_candidates")
+    # Even among structurally valid candidates, unrelated clauses may have
+    # changed. Reject rather than choosing a conveniently matching fragment.
+    if not _preserves_unchecked_semantics(original_sql, supported[0]):
+        return abstain("unverified_predicate_or_source_change")
     return JointDecision("SELECT_REPAIR", supported[0], "unique_joint_compatible_candidate")
