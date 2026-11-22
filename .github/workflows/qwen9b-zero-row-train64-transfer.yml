@@ -1,0 +1,144 @@
+name: Locked zero-row Qwen9B repair transfer — historical BIRD TRAIN64 (research only)
+on:
+  workflow_dispatch:
+  push:
+    branches: [research/qwen9b-zero-row-train64-transfer-20261122]
+    paths: [.github/workflows/qwen9b-zero-row-train64-transfer.yml]
+permissions:
+  contents: read
+  actions: read
+env:
+  PYTHONPATH: src:.
+  MODEL: qwen3.5:9b-q4_K_M
+jobs:
+  strip-original-gold:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install research scripts and run safety tests
+        run: |
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_qwen9b_empty_result_targeted_repair.py tests/test_experimental_literal_normalization_replay.py
+          python -m compileall -q scripts/transfer_zero_row_repair_train64.py
+      - name: Retrieve hash-identified historical TRAIN64 source and Qwen9B baseline
+        uses: actions/download-artifact@v4
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43888747753
+          github-token: ${{ github.token }}
+          name: qwen9b-birdtrain-db-disjoint-original-sql-sft-candidates
+          path: /tmp/original-source
+      - uses: actions/download-artifact@v4
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 43892823922
+          github-token: ${{ github.token }}
+          name: original-qwen9b-birdtrain-val64-complete
+          path: /tmp/original-model
+      - name: Physically remove publisher SQL/outcomes from the candidate payload
+        run: |
+          python -u -m scripts.transfer_zero_row_repair_train64 prepare \
+            --source /tmp/original-source/validation.jsonl \
+            --baseline /tmp/original-model/original-qwen9b-validation64-summary.json \
+            --unlabeled .transfer/unlabeled/qwen9b-original-val64-sql-only.json \
+            --labels .transfer/sealed/original-publisher-reference-and-ex.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ZR-TRAIN64-NO-GOLD-INPUT
+          path: .transfer/unlabeled/qwen9b-original-val64-sql-only.json
+          if-no-files-found: error
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ZR-TRAIN64-SEALED-GOLD-INPUT
+          path: .transfer/sealed/original-publisher-reference-and-ex.json
+          if-no-files-found: error
+          retention-days: 30
+
+  infer-with-no-gold:
+    needs: strip-original-gold
+    runs-on: ubuntu-latest
+    timeout-minutes: 170
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install unchanged original read-only SQL runtime
+        run: python -m pip install -e '.[dev]'
+      - uses: actions/download-artifact@v4
+        with:
+          name: ZR-TRAIN64-NO-GOLD-INPUT
+          path: .transfer/unlabeled
+      - name: Pull identical original Qwen9B on CPU, digest will be checked in Python
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          ollama serve >/tmp/ollama.log 2>&1 &
+          for i in {1..40}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          ollama pull "$MODEL"
+      - name: Evaluate untouched DEV-frozen zero-row trigger against 4 original TRAIN databases
+        run: |
+          python -u -m scripts.transfer_zero_row_repair_train64 infer \
+            --unlabeled .transfer/unlabeled/qwen9b-original-val64-sql-only.json \
+            --database-root /tmp/train64-physical \
+            --output .transfer/frozen/zero-row-repair-val64-no-gold.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ZR-TRAIN64-FROZEN-CANDIDATES-BEFORE-LABELS
+          path: .transfer/frozen/zero-row-repair-val64-no-gold.json
+          if-no-files-found: error
+          retention-days: 30
+
+  score-after-freeze:
+    needs: infer-with-no-gold
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[dev]'
+      - uses: actions/download-artifact@v4
+        with:
+          name: ZR-TRAIN64-NO-GOLD-INPUT
+          path: .transfer/unlabeled
+      - uses: actions/download-artifact@v4
+        with:
+          name: ZR-TRAIN64-FROZEN-CANDIDATES-BEFORE-LABELS
+          path: .transfer/frozen
+      - name: Load sealed labels only AFTER Qwen model proposals are frozen
+        uses: actions/download-artifact@v4
+        with:
+          name: ZR-TRAIN64-SEALED-GOLD-INPUT
+          path: .transfer/sealed
+      - name: Independently reexecute all 64 original and revised SQL with SET/BAG
+        run: |
+          python -u -m scripts.transfer_zero_row_repair_train64 score \
+            --frozen .transfer/frozen/zero-row-repair-val64-no-gold.json \
+            --unlabeled .transfer/unlabeled/qwen9b-original-val64-sql-only.json \
+            --labels .transfer/sealed/original-publisher-reference-and-ex.json \
+            --database-root /tmp/train64-physical \
+            --output .transfer/scored/zero-row-paired-val64.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ZR-TRAIN64-REPLAY-SCORE
+          path: .transfer/scored/zero-row-paired-val64.json
+          if-no-files-found: warn
+          retention-days: 30
