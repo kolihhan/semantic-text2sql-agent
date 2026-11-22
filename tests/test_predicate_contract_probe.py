@@ -49,3 +49,20 @@ def test_missing_database_does_not_create_file(tmp_path):
     result = inspect_predicate('Find "Paris" residents', "SELECT name FROM people WHERE city='Paris'", db)
     assert result["status"] == "ABSTAIN"
     assert not db.exists()
+
+
+def test_ambiguous_unqualified_column_and_multi_statement_abstain(tmp_path):
+    """A physical match is not a binding proof without explicit SQL scope."""
+    db = tmp_path / "scope.db"
+    with sqlite3.connect(db) as conn:
+        conn.execute("CREATE TABLE people(name TEXT, city TEXT)")
+        conn.execute("INSERT INTO people VALUES ('Alice', 'Paris')")
+    question = 'Find "Paris" residents'
+    cases = [
+        "SELECT name FROM people WHERE city='Paris'",
+        "SELECT name FROM people WHERE people.city='Paris'; SELECT 1",
+        "SELECT name FROM people WHERE people.city='Paris' -- trailing comment",
+    ]
+    for sql in cases:
+        assert inspect_predicate(question, sql, db)["status"] == "ABSTAIN", sql
+    assert inspect_predicate(question, "SELECT name FROM people WHERE people.city='Paris'", db)["status"] == "OBSERVED"
