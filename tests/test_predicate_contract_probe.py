@@ -66,3 +66,5 @@ def test_single_table_unqualified_column_and_multi_statement_rejection(tmp_path)
     for sql in cases:
         assert inspect_predicate(question, sql, db)["status"] == "ABSTAIN", sql
     assert inspect_predicate(question, "SELECT name FROM people WHERE people.city='Paris'", db)["status"] == "OBSERVED"
+    assert inspect_predicate(question, "SELECT name FROM people WHERE people.city='Paris';", db)["status"] == "OBSERVED"
+    assert inspect_predicate(question, "SELECT name FROM people WHERE people.city='Paris';;", db)["status"] == "ABSTAIN"
