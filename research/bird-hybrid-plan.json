@@ -23,15 +23,38 @@
       "ordinary_k4_set": 8,
       "physical_k4_set": 10,
       "verdict": "POSITIVE exploratory screen, 2.161x inference wall; not yet demonstrated to be due to physical evidence"
+    },
+    "physical_k4_replica": {
+      "run_id": 45047299606,
+      "cohort": "BIRD TRAIN16 four different historically exposed database families",
+      "ordinary_k4_set": 9,
+      "physical_k4_set": 9,
+      "ordinary_bag": 9,
+      "physical_bag": 9,
+      "oracle_delta": 0,
+      "rescues": 0,
+      "regressions": 0,
+      "baseline_model_generation_wall_s": 1150.7,
+      "physical_model_generation_wall_s": 3144.6,
+      "ratio": 2.733,
+      "verdict": "REJECT same-physical-evidence-template expansion; no replicated gain"
     }
   },
   "experiments": [
     {
       "id": "physical-evidence-causal-ablation-v1",
-      "status": "design_required",
-      "reason": "Research executor must first implement/review a BIRD-only fixed-Qwen equal-length/equal-budget no-physical-evidence control, frozen source + strict EX gate + cost cap; no new Qwen run approved yet.",
+      "status": "rejected",
+      "reason": "STOP: new real Qwen3.5-9B BIRD TRAIN16 physical K4 replication (Actions 45047299606) scored 9/16→9/16 SET, BAG 9→9, Oracle@4 9→9, 0 rescues/0 regressions, model-generation wall 1150.7→3144.6 seconds (2.73x); original 8→10/16 did NOT replicate. Do not spend further Qwen on this physical prompting template before distinct high-leverage hypothesis.",
       "proposed_test": "Matched same-Qwen no-physical vs physical SQLite evidence, with actual LangGraph conditional state routing, gold-blind SQL choices and source-disjoint verification.",
-      "next_action": "Research and preregister the hypothesis and source; implement a bounded approved worker on main only after full CI and owner-reviewed budget. Do not repeat the disproved low-recall adaptive risk gate."
+      "next_action": "Do not repeat this K4 physical evidence treatment or tune against already exposed sample; reject. Retain results."
+    },
+    {
+      "id": "relational-meaning-counterexample-v1",
+      "status": "design_required",
+      "benchmark": "BIRD",
+      "fixed_model": "qwen3.5:9b-q4_K_M",
+      "reason": "Design falsifiable new GEN/repair mechanism exploiting LangGraph stateful observation, not lexical risk or expensive K4. Require BIRD-only source frozen independent question IDs/DB family, gold-blind scorer, matched old Guarded, actual wall/model call budget, new correct SQL candidates vs old, and source-disjoint validation; protect HOLDOUT300 and two TRAIN DBs.",
+      "next_action": "Construct a narrowly scoped question-to-relation/aggregation semantic counterexample mechanism and CPU fixtures before new Qwen approval. Stop if no credible high-coverage source without protected holdout."
     }
   ]
 }
