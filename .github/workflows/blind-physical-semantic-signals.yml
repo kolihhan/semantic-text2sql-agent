@@ -67,38 +67,6 @@ jobs:
         with:
           name: label-blind-physical-observations
           path: /tmp/blind-signals/signals.json
-      - name: Gold-blind predicate contract on 75 original valid-shard SQLs
-        run: |
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          from scripts.blind_physical_semantic_signals import _db_path
-          from scripts.blind_predicate_contract_batch import diagnose, sha256
-          source=json.loads(Path('/tmp/blind-source/candidates.json').read_text())
-          db_root=Path(os.environ['DB_ROOT'])
-          rows=[]
-          for case in source['cases']:
-              if case['shard']==3:
-                  continue  # invalid original model shard
-              db=_db_path(db_root,case['db_id'])
-              if db is None:
-                  raise RuntimeError('Missing physical database: '+case['db_id'])
-              rows.append({'case_id':case['case_id'],'question':case['question'],
-                           'selected_sql':case['selected_sql'],'database':str(db),
-                           'database_sha256':sha256(db)})
-          report=diagnose(rows,db_root)
-          assert report['count']==75
-          out=Path('/tmp/predicate-contract/report.json')
-          out.parent.mkdir(parents=True,exist_ok=True)
-          out.write_text(json.dumps(report,indent=2)+'\n')
-          print('PREDICATE_CONTRACT_REAL75_UNLABELED',json.dumps({
-              k:report[k] for k in ('count','database_count','status_counts','reason_counts')}))
-          PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: predicate-contract-original-valid75-gold-blind
-          path: /tmp/predicate-contract/report.json
-          if-no-files-found: error
   score_only_after_freeze:
     needs: detect_unlabeled
     runs-on: ubuntu-latest
@@ -112,34 +80,6 @@ jobs:
         with:
           name: original-labels-isolated-from-detector
           path: /tmp/blind-labels
-      - uses: actions/download-artifact@v4
-        with:
-          name: predicate-contract-original-valid75-gold-blind
-          path: /tmp/predicate-contract
-      - name: Evaluate frozen predicate flags against original strict EX
-        run: |
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          p=json.loads(Path('/tmp/predicate-contract/report.json').read_text())
-          raw=json.loads(Path('/tmp/blind-labels/labels.json').read_text())
-          labels={x['case_id']:x for x in raw['labels']}
-          flagged=[(x,labels[x['case_id']]) for x in p['cases'] if x['status']=='OBSERVED']
-          missed=[(x,labels[x['case_id']]) for x in p['cases'] if x['status']=='ABSTAIN']
-          assert len(p['cases'])==75 and len(flagged)+len(missed)==75
-          result={'original_valid_n':75,'observed':len(flagged),
-                  'observed_original_ex_wrong':sum(not y['strict_ex'] for x,y in flagged),
-                  'observed_original_ex_right':sum(y['strict_ex'] for x,y in flagged),
-                  'reason_counts':p['reason_counts'],
-                  'accuracy_improvement':None,'no_sql_rewrites':True}
-          print('PREDICATE_CONTRACT_REAL75_POST_FREEZE',json.dumps(result))
-          Path('/tmp/predicate-contract/score.json').write_text(json.dumps(result,indent=2)+'\n')
-          PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: predicate-contract-valid75-historical-ex-crosstab
-          path: /tmp/predicate-contract/score.json
-          if-no-files-found: error
       - name: Cross-tab original Strict EX only after detector froze
         run: |
           python -m scripts.blind_physical_semantic_signals score --signals /tmp/blind-signals/signals.json --labels /tmp/blind-labels/labels.json --output /tmp/final-score/report.json
