@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 _QUOTED = re.compile(r''''((?:''|[^']){2,120})'|"([^"]{2,120})"''', re.I)
-_EXPLICIT_ID = re.compile(r"\b(?:id|identifier)\b\s*(?:is|equals|=|:|#)?\s*(\d{1,15})\b", re.I)
+_EXPLICIT_ID = re.compile(r'''\b(?:id|identifier)\b\s*(?:is|equals|=|:|#)?\s*['"]?(\d{1,15})['"]?(?![A-Za-z0-9])''', re.I)
 _NUMERIC_PRED = re.compile(r'''\b(?:(?P<alias>[A-Za-z_]\w*)\s*\.\s*)?(?P<column>"?[A-Za-z_]\w*"?)\s*(?P<op>=|LIKE)\s*['"]?(?P<value>\d{1,15})(?P<wildcard>%?)['"]?''', re.I)
 _AGG = re.compile(r"\b(?:COUNT|SUM|AVG|MIN|MAX)\s*\(", re.I)
 _LIKE = re.compile(r"\bLIKE\b", re.I)
