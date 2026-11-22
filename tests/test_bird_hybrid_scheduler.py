@@ -46,7 +46,9 @@ class FakeGithub:
             source=(
                 "# BIRD_APPROVED_EXP_HANDLER_V1\n"
                 "workflow_dispatch:\n"
+                "run-name: BIRD-APPROVED:${{ inputs.experiment_id }}\n"
                 "inputs.experiment_id inputs.max_model_calls\n"
+                "inputs.max_wall_minutes inputs.frozen_source_sha256\n"
                 "qwen3.5:9b-q4_K_M BIRD\n"
             ) if self.worker_ok else "workflow_dispatch:\n"
             return {"content":base64.b64encode(source.encode()).decode()}
