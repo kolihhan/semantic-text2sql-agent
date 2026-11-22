@@ -96,10 +96,6 @@ def summarize(
         ksc=tables["k4_scored"][i]
         # This *exact* SQL was pre-generated in the older sealed original Qwen
         # control K4 run; it is the same original input for both LangGraph arms.
-        if (ag["original_sql"] != kg["control_sql"][0]
-            or ag["control_sql"] != asc.get("control_sql", ag["control_sql"]) if False else False):
-            # Retain explicit identity check below; this conditional is unused.
-            raise ValueError("source SQL mismatch")
         if ag["original_sql"]!=kg["control_sql"][0]:
             raise ValueError("LangGraph and K4 do not share the same original SQL")
         if (ag["control_calls"]!=asc["control_calls"]
@@ -165,6 +161,13 @@ def summarize(
     }
     runtime["adaptive_minus_guarded_post_generation_model_wall_s"]=round(
         time_s["adaptive_extra_model_wall_s"]-time_s["guarded_extra_model_wall_s"],2)
+    runtime["physical_k4_over_k4_model_wall_ratio"]=round(
+        time_s["physical_k4_total_original_generation_wall_s"]
+        / max(time_s["k4_total_original_generation_wall_s"],1e-9),3)
+    runtime["guarded_incremental_model_wall_s_per_question"]=round(
+        time_s["guarded_extra_model_wall_s"]/N,2)
+    runtime["adaptive_incremental_model_wall_s_per_question"]=round(
+        time_s["adaptive_extra_model_wall_s"]/N,2)
     runtime["initial_first_candidate_generation_wall_s"]=None
     runtime["sqlite_probe_wall_s"]=None
     runtime["end_to_end_latency_s"]=None
@@ -188,6 +191,12 @@ def summarize(
         "coverage":{"adaptive_probed_questions":sums["probed_questions"],
                     "adaptive_fallback_questions":sums["fallback_questions"]},
         "model_calls":calls,"runtime_seconds":runtime,
+        "cost_efficiency":{
+            "guarded_logical_calls_per_correct_SET":round(calls["guarded_total_logical_calls"]/sums["guarded_set"],3) if sums["guarded_set"] else None,
+            "adaptive_logical_calls_per_correct_SET":round(calls["adaptive_total_logical_calls"]/sums["adaptive_set"],3) if sums["adaptive_set"] else None,
+            "k4_logical_calls_per_correct_SET":round(calls["k4_total_logical_calls"]/sums["k4_set"],3) if sums["k4_set"] else None,
+            "physical_k4_logical_calls_per_correct_SET":round(calls["physical_k4_total_logical_calls"]/sums["physical_k4_set"],3) if sums["physical_k4_set"] else None,
+        },
         "physical_database_stratified":{k:dict(v) for k,v in sorted(dbs.items())},
         "prior_k4_is_not_legacy_Guarded":True,
         "historic_BIRD_DEV100_33_to_39_is_NOT_same_cohort":True,
