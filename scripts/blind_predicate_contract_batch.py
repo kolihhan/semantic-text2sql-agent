@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from collections import Counter
 from pathlib import Path
 from scripts.predicate_contract_probe import inspect_predicate
 
@@ -40,7 +41,13 @@ def diagnose(rows: list[dict], allowed_root: Path) -> dict:
         out.append({"case_id": case_id, "db_sha256": actual,
                     "candidate_sha256": hashlib.sha256(row["selected_sql"].encode()).hexdigest(),
                     "status": observation["status"], "reason": observation["reason"]})
-    return {"protocol": "blind-predicate-contract-v1", "count": len(out), "cases": out}
+    # Aggregate *unlabeled* coverage only. No correctness or rescue claims.
+    by_reason = dict(sorted(Counter(item["reason"] for item in out).items()))
+    by_status = dict(sorted(Counter(item["status"] for item in out).items()))
+    db_digests = {item["db_sha256"] for item in out}
+    return {"protocol": "blind-predicate-contract-v1", "count": len(out),
+            "database_count": len(db_digests), "status_counts": by_status,
+            "reason_counts": by_reason, "cases": out}
 
 def main() -> None:
     p = argparse.ArgumentParser()
