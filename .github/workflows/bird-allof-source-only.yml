@@ -1,0 +1,52 @@
+name: BIRD original source-only ALL-of relational feasibility (zero Qwen)
+on:
+  push:
+    branches: [research/bird-relational-allof-graph-v1-20261123]
+    paths:
+      - '.github/workflows/bird-allof-source-only.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  physical-relational-source-readiness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - name: Install project and prove graph / physically witnessed invariant
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_relational_allof.py tests/test_bird_allof_langgraph.py
+      - name: Fetch original pinned BIRD TRAIN question source only
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 4 \
+            'https://huggingface.co/datasets/Emulated-Inc/text-to-sql-with-evidence-training-pool/resolve/cd2c4ea321075aa53ce7dfe52deaaffa505d046a/raw/bird/train.json' \
+            -o original-bird-train.json
+          echo 'cd5884489dffd7c76d73509b396bd919fbe8b486efbc4ba2f48f89460de7d69f  original-bird-train.json' | sha256sum -c -
+      - name: Verify question-only 'both' candidate coverage without Qwen or publisher SQL labels
+        run: |
+          set -euo pipefail
+          python -m experiments.bird_allof_source_probe \
+            --train original-bird-train.json --out BIRD-ALLOF-source-only-readiness.json
+          python - <<'PY'
+          import json
+          m=json.load(open("BIRD-ALLOF-source-only-readiness.json"))
+          assert m["real_Qwen_calls"]==0
+          assert m["protected_two_TRAIN_DBS_untouched"]
+          assert m["HOLDOUT300_unused"]
+          assert m["source_question_only_gold_SQL_not_accessed"]
+          print("BIRD_ALLOF_NOGOLD_ELIGIBILITY",json.dumps(
+                {k:v for k,v in m.items() if k!="selected"},sort_keys=True),flush=True)
+          PY
+      - name: Preserve immutable source-only selection (never benchmark gold)
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: BIRD-ALLOF-QUESTION-ONLY-SOURCE-ELIGIBILITY
+          path: BIRD-ALLOF-source-only-readiness.json
+          retention-days: 30
+          if-no-files-found: error
