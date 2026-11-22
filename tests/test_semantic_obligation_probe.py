@@ -78,3 +78,29 @@ def test_query_with_literal_id_and_correct_column_is_not_flagged():
     q="Which record has identifier 16?"
     ret=detect_obligations(q,"SELECT name FROM items WHERE id = '16'")
     assert "EXPLICIT_ID_BOUND_TO_NON_ID_ATTRIBUTE" not in ret["flags"]
+
+
+def test_count_target_noun_phrase_does_not_confuse_contextual_join():
+    # These are synthetic controls, NOT publisher correctness or GAIA gold.
+    controls=[
+        (
+            "How many matches in the 2015 season were held in the Premier League?",
+            "SELECT COUNT(*) FROM Match m JOIN League l ON m.league_id = l.id WHERE l.name='Premier League'",
+        ),
+        (
+            "How many events did the member with the phone number 1234 attend?",
+            "SELECT COUNT(*) FROM attendance a JOIN member m ON a.link_to_member = m.member_id WHERE m.phone='1234'",
+        ),
+        (
+            "Among the students who attended the event, how many of them want a medium T-shirt?",
+            "SELECT COUNT(*) FROM attendance a JOIN event e ON a.event_id = e.id JOIN member m ON a.member_id=m.id",
+        ),
+    ]
+    for question,sql in controls:
+        assert "PARENT_COUNT_ON_JOINED_CHILD_ROWS" not in flags(question,sql)
+
+
+def test_count_target_noun_phrase_remains_sensitive_to_molecules():
+    q="How many carcinogenic molecules that consisted of Nitrogen?"
+    sql="SELECT COUNT(*) FROM atom a JOIN molecule m ON a.molecule_id=m.molecule_id WHERE a.element='N'"
+    assert "PARENT_COUNT_ON_JOINED_CHILD_ROWS" in flags(q,sql)
