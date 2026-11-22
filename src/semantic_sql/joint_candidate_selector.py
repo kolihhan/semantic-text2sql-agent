@@ -12,6 +12,9 @@ from typing import Literal
 
 from .sql_semantics import ColumnRef, NormalizedJoin, parse_sql_semantics
 
+import sqlglot
+from sqlglot import exp
+
 
 @dataclass(frozen=True)
 class JointObligation:
@@ -56,6 +59,30 @@ def _covers_joint_obligation(sql: str, req: JointObligation) -> bool | None:
     )
 
 
+
+
+def _preserves_unchecked_semantics(original: str, candidate: str) -> bool:
+    """Never let a repair alter filters, grouping, ranking, or source tables.
+
+    This is intentionally conservative. Only entity projection, aggregate
+    expression and ON equality are variable; unsupported cases abstain.
+    """
+    try:
+        a, b = (sqlglot.parse_one(s, read="sqlite") for s in (original, candidate))
+    except Exception:
+        return False
+    if not isinstance(a, exp.Select) or not isinstance(b, exp.Select):
+        return False
+    for key in ("where", "having", "group", "order", "limit", "offset", "qualify"):
+        x, y = a.args.get(key), b.args.get(key)
+        if (x.sql(dialect="sqlite", normalize=True) if x is not None else None) != (
+            y.sql(dialect="sqlite", normalize=True) if y is not None else None
+        ):
+            return False
+    # Named source tables must be identical, not just a matching join edge.
+    names = lambda tree: tuple(sorted(t.name.casefold() for t in tree.find_all(exp.Table)))
+    return names(a) == names(b)
+
 def select_joint_repair(
     original_sql: str, candidate_sqls: list[str], obligation: JointObligation,
 ) -> JointDecision:
@@ -77,7 +104,10 @@ def select_joint_repair(
     statuses = [_covers_joint_obligation(sql, obligation) for sql in candidates]
     if any(status is None for status in statuses):
         return abstain("ambiguous_candidate_structure")
-    supported = [sql for sql, status in zip(candidates, statuses) if status]
+    supported = [
+        sql for sql, status in zip(candidates, statuses)
+        if status and _preserves_unchecked_semantics(original_sql, sql)
+    ]
     if len(supported) != 1:
         return abstain("zero_or_multiple_joint_compatible_candidates")
     return JointDecision("SELECT_REPAIR", supported[0], "unique_joint_compatible_candidate")
