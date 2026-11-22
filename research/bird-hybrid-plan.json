@@ -1,0 +1,37 @@
+{
+  "protocol": "BIRD-LANGGRAPH-HYBRID-SCHEDULER-V1",
+  "benchmark": "BIRD",
+  "fixed_model": "qwen3.5:9b-q4_K_M",
+  "model_digest": "56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90",
+  "goal": "Demonstrate real LangGraph stateful routing/tool/recheck advantages while increasing BIRD strict SET/BAG execution correctness above a matched Qwen3.5-9B Guarded baseline; measure real rescue/regression and incremental inference calls, wall, token and USD when available.",
+  "protected_data": {
+    "reserved_BIRD_HOLDOUT300": true,
+    "remaining_two_TRAIN_DBs": true
+  },
+  "known_evidence": {
+    "adaptive_graph": {
+      "run_id": 45047859446,
+      "cohort": "exposed BIRD TRAIN16",
+      "old_guarded_set": 9,
+      "adaptive_set": 9,
+      "net": 0,
+      "verdict": "REJECT, no gain, +2 model calls"
+    },
+    "physical_k4": {
+      "run_id": 45039635210,
+      "cohort": "exposed BIRD TRAIN16",
+      "ordinary_k4_set": 8,
+      "physical_k4_set": 10,
+      "verdict": "POSITIVE exploratory screen, 2.161x inference wall; not yet demonstrated to be due to physical evidence"
+    }
+  },
+  "experiments": [
+    {
+      "id": "physical-evidence-causal-ablation-v1",
+      "status": "design_required",
+      "reason": "Research executor must first implement/review a BIRD-only fixed-Qwen equal-length/equal-budget no-physical-evidence control, frozen source + strict EX gate + cost cap; no new Qwen run approved yet.",
+      "proposed_test": "Matched same-Qwen no-physical vs physical SQLite evidence, with actual LangGraph conditional state routing, gold-blind SQL choices and source-disjoint verification.",
+      "next_action": "Research and preregister the hypothesis and source; implement a bounded approved worker on main only after full CI and owner-reviewed budget. Do not repeat the disproved low-recall adaptive risk gate."
+    }
+  ]
+}
