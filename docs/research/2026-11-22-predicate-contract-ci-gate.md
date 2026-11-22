@@ -17,3 +17,11 @@ Status: **CPU TEST GATE PASS; SEMANTIC EFFICACY UNTESTED**.
 
 ## Stop rule
 Reject this signal if it has zero eligible conflicts or unacceptable false positives; do not tune on observed EX labels. Do not repeat the prior literal-normalization intervention (31/64 to 32/64 with BAG regression). No promotion PR until both paired DEV100 and independent transfer gates pass.
+
+
+## 08:00 local executor continuation — fail-closed parser boundary
+- Independently checked main README/PRO gates, production `src/semantic_sql/inference.py` and `verifier.py`, PR #135, and the prior gate. CI for commit `9c81684` succeeded: [run 44959876589](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/44959876589), one successful test job, no evaluation artifacts.
+- Identified an untested SQLGlot `parse_one` boundary: the detector could treat the first SELECT as the entire candidate despite an additional statement or trailing comment. Added a negative-control test and narrow fail-closed refusal in the diagnostic only; no production graph change.
+- Final implementation commit `d064436d9bbd94a8ec3f4367ecd515ce17588aa5`. CI associated with that SHA was not yet visible at inspection time. **Do not claim this fix passed CI until the exact commit is verified.**
+- Detector still yields physical observations, not semantic correctness. No independent DB cohort or new Qwen paired EX exists. Historical 39/100 remains the comparison target.
+- **Next single action:** verify CI for `d064436`; if green, run label-blind frozen SQL cohort diagnostic with physical DB hashes and eligible/abstained counts, without gold SQL or protected DBs. If failing, fix test/code and rerun before any Qwen call.
