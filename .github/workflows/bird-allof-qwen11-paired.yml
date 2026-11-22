@@ -132,7 +132,7 @@ jobs:
           path: generated-*.json
           retention-days: 30
           if-no-files-found: error
-      - name: ONLY AFTER seal: download exact publisher gold for BIRD Strict SET/BAG EX
+      - name: "ONLY AFTER seal: download exact publisher gold for BIRD Strict SET/BAG EX"
         run: |
           set -euo pipefail
           curl -fsSL --retry 5 \
