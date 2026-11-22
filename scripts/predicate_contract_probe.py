@@ -13,6 +13,7 @@ def inspect_predicate(question: str, sql: str, database: str | Path) -> dict:
     result = {"status": "ABSTAIN", "reason": "UNSUPPORTED", "observations": []}
     # Fail closed on comments and statement separators, including trailing comments.
     # This diagnostic is intentionally narrower than the production SQL verifier.
+    sql = sql.strip().removesuffix(";")  # One terminal SQL delimiter is valid.
     if any(token in sql for token in (";", "--", "/*", "*/")):
         return {**result, "reason": "MULTI_STATEMENT_OR_COMMENT"}
     try:
