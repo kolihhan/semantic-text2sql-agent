@@ -1,0 +1,75 @@
+name: BIRD DEV100 gold-blind executable SQL semantic obligations CPU probe
+on:
+  workflow_dispatch:
+  push:
+    branches: [research/nonempty-semantic-error-signal-v1-20261122]
+    paths:
+      - .github/workflows/semantic-obligations-dev100-cpu.yml
+      - scripts/semantic_obligation_probe.py
+      - scripts/score_semantic_obligation_dev100.py
+      - tests/test_semantic_obligation_probe.py
+permissions:
+  contents: read
+  actions: read
+jobs:
+  detect-without-publisher-labels:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - name: Run synthetic positive/negative controls without Qwen
+        run: |
+          python -m pip install -q pytest
+          PYTHONPATH=src:. python -m pytest -q tests/test_semantic_obligation_probe.py
+      - uses: actions/download-artifact@v4
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44979827050
+          github-token: ${{ github.token }}
+          name: blind-candidates-before-scoring
+          path: .input
+      - name: Freeze signals from the original source question and selected SQL, no EX labels
+        run: |
+          PYTHONPATH=src:. python -u -m scripts.score_semantic_obligation_dev100 detect \
+            --source .input/candidates.json --output .freeze/semantic-obligations-dev100-no-gold.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: semantic-obligations-DEV100-before-scoring
+          path: .freeze/semantic-obligations-dev100-no-gold.json
+          if-no-files-found: error
+          retention-days: 30
+  retrospective-score-after-seal:
+    needs: detect-without-publisher-labels
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - uses: actions/download-artifact@v4
+        with:
+          name: semantic-obligations-DEV100-before-scoring
+          path: .freeze
+      - uses: actions/download-artifact@v4
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 44979827050
+          github-token: ${{ github.token }}
+          name: original-labels-isolated-from-detector
+          path: .labels
+      - name: Join original EX flags only after detector output is frozen
+        run: |
+          PYTHONPATH=src:. python -u -m scripts.score_semantic_obligation_dev100 score \
+            --frozen .freeze/semantic-obligations-dev100-no-gold.json \
+            --labels .labels/labels.json \
+            --output .score/semantic-obligation-dev100-exposed-cohort.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: semantic-obligations-DEV100-historical-EX-association
+          path: .score/semantic-obligation-dev100-exposed-cohort.json
+          if-no-files-found: error
+          retention-days: 30
