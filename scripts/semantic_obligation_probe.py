@@ -46,7 +46,28 @@ def _norm_plural(value: str) -> str:
     v=value.casefold().strip('"')
     if v.endswith("ies"):
         return v[:-3]+"y"
-    return v[:-1] if v.endswith("s") and not v.endswith("ss") else v
+    if v.endswith(("ches", "shes", "xes", "sses", "zzes")):
+        return v[:-2]
+    return v[:-1] if v.endswith("s") and not v.endswith(("ss", "is")) else v
+
+
+def _requested_count_entity(question: str, tables: list[tuple[str, str]]) -> str | None:
+    marker=_COUNT_TARGET.search(question)
+    if marker is None:
+        return None
+    # Only the noun phrase immediately after 'how many' / 'number of' is
+    # eligible; later-mentioned joined entities are not the count target.
+    tail=re.findall(r"[A-Za-z_]+",question[marker.end():])[:9]
+    boundaries={"of","in","on","at","with","who","whose","that","which",
+                "were","was","did","do","does","from","for","by","among","have","has"}
+    nouns=set(t for _,t in tables)
+    for token in tail:
+        w=_norm_plural(token)
+        if w in boundaries:
+            return None
+        if w in nouns:
+            return w
+    return None
 
 
 def detect_obligations(question: str, sql: str) -> dict:
@@ -103,8 +124,8 @@ def detect_obligations(question: str, sql: str) -> dict:
     if _COUNT.search(sql) and not _COUNT_DISTINCT.search(sql) and not _GROUP.search(sql) and _COUNT_TARGET.search(question) and len(tables)>=2:
         src=tables[0][1]
         joined={t for _,t in tables[1:]}
-        qwords={_norm_plural(x) for x in re.findall(r"[A-Za-z_]+",question)}
-        if src not in qwords and any(t in qwords for t in joined):
+        target=_requested_count_entity(question, tables)
+        if target is not None and target != src and target in joined:
             flags.append("PARENT_COUNT_ON_JOINED_CHILD_ROWS")
 
     return {"flags":sorted(set(flags)), "abstentions":sorted(set(skip))}
