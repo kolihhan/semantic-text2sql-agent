@@ -50,11 +50,22 @@
     },
     {
       "id": "relational-meaning-counterexample-v1",
-      "status": "design_required",
+      "status": "running_research",
       "benchmark": "BIRD",
       "fixed_model": "qwen3.5:9b-q4_K_M",
-      "reason": "Design falsifiable new GEN/repair mechanism exploiting LangGraph stateful observation, not lexical risk or expensive K4. Require BIRD-only source frozen independent question IDs/DB family, gold-blind scorer, matched old Guarded, actual wall/model call budget, new correct SQL candidates vs old, and source-disjoint validation; protect HOLDOUT300 and two TRAIN DBs.",
-      "next_action": "Construct a narrowly scoped question-to-relation/aggregation semantic counterexample mechanism and CPU fixtures before new Qwen approval. Stop if no credible high-coverage source without protected holdout."
+      "reason": "Original fixed-Qwen3.5-9B BIRD TRAIN11 paired real LangGraph ALL-of physical counterexample inference launched in isolated Draft PR #145, Actions #45056668936; 3 shards, 11 source-only selected tasks from 9 exposed BIRD TRAIN DBs, 0 extra Qwen calls for treatment, strict SET/BAG EX scored post-seal. DO NOT duplicate. Experimental not approved for promotion.",
+      "next_action": "Inspect actual 3-shard completion and final strict SET/BAG EX; do not restart this exact Qwen run, do not increase budget or touch holdouts. If no net gain, REJECT and stop.",
+      "run_id": 45056668936,
+      "draft_pr": 145,
+      "branch": "research/bird-relational-allof-graph-v1-20261123",
+      "status_scope": "not independent of previously exposed BIRD DBs; no historical DEV100 gain claim",
+      "max_total_Qwen_calls": 33,
+      "metric_gate": {
+        "metric": "strict_set_ex",
+        "scorable_min": 10,
+        "net_correct_min": 2,
+        "regressions_max": 0
+      }
     }
   ]
 }
