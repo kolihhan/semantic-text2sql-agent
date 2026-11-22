@@ -18,16 +18,6 @@ import sqlite3
 _IDENT = r"[A-Za-z_][A-Za-z_0-9]*"
 _SRC = rf"(?P<parent>{_IDENT})\s+(?:AS\s+)?(?P<pa>{_IDENT})"
 _CHILD = rf"(?P<child>{_IDENT})\s+(?:AS\s+)?(?P<ca>{_IDENT})"
-_SQL = re.compile(
-    rf"^\s*SELECT\s+COUNT\s*\(\s*DISTINCT\s+(?P=pa)\.(?P<pk>{_IDENT})\s*\)"
-    rf"\s+FROM\s+{_SRC}\s+JOIN\s+{_CHILD}"
-    rf"\s+ON\s+(?P<left>{_IDENT}\.{_IDENT})\s*=\s*(?P<right>{_IDENT}\.{_IDENT})"
-    rf"\s+WHERE\s+(?P<filter_alias>{_IDENT})\.(?P<label>{_IDENT})\s+IN\s*"
-    rf"\(\s*'(?P<first>[^']{{1,60}})'\s*,\s*'(?P<second>[^']{{1,60}})'\s*\)"
-    rf"\s*;?\s*$",
-    re.I,
-)
-
 # The parent alias backreference must be checked after table alias binding,
 # so selection uses a simple independent primary-projection prefix.
 _PREFIX = re.compile(rf"^\s*SELECT\s+COUNT\s*\(\s*DISTINCT\s+(?P<pa>{_IDENT})\.(?P<pk>{_IDENT})\s*\)",re.I)
@@ -90,9 +80,6 @@ def find_allof_counterexample(database: str | Path, question: str, sql: str) -> 
             or prefix["pa"].casefold()==m["ca"].casefold()):
         return None
     left,right=m["left"].casefold(),m["right"].casefold()
-    expected={
-        prefix["pa"].casefold()+"."+prefix["pk"].casefold(),
-        m["ca"].casefold()+"."}
     if left==right or prefix["pa"].casefold()+"."+prefix["pk"].casefold() not in (left,right):
         return None
     child_col=(right if left==prefix["pa"].casefold()+"."+prefix["pk"].casefold() else left)
