@@ -51,15 +51,15 @@ def test_missing_database_does_not_create_file(tmp_path):
     assert not db.exists()
 
 
-def test_ambiguous_unqualified_column_and_multi_statement_abstain(tmp_path):
-    """A physical match is not a binding proof without explicit SQL scope."""
+def test_single_table_unqualified_column_and_multi_statement_rejection(tmp_path):
+    """Unqualified names resolve in a single-table scope; extra statements must abstain."""
     db = tmp_path / "scope.db"
     with sqlite3.connect(db) as conn:
         conn.execute("CREATE TABLE people(name TEXT, city TEXT)")
         conn.execute("INSERT INTO people VALUES ('Alice', 'Paris')")
     question = 'Find "Paris" residents'
+    assert inspect_predicate(question, "SELECT name FROM people WHERE city='Paris'", db)["status"] == "OBSERVED"
     cases = [
-        "SELECT name FROM people WHERE city='Paris'",
         "SELECT name FROM people WHERE people.city='Paris'; SELECT 1",
         "SELECT name FROM people WHERE people.city='Paris' -- trailing comment",
     ]
