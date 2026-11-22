@@ -1,0 +1,203 @@
+name: PROOF BIRD TRAIN16 Qwen9B conditional LangGraph Strict EX
+# One-time full real-model A/B after all CPU guardrail tests passed on this branch.
+on:
+  push:
+    branches: [research/bird-langgraph-conditional-physical-v1-20261123]
+    paths:
+      - '.github/workflows/bird-langgraph-adaptive16-qwen9b.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  source-freeze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - run: |
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_bird_langgraph_adaptive_physical.py
+      - name: Download pinned, pre-gold BIRD TRAIN16 source (reused / exposed)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 45039635210
+          github-token: ${{ github.token }}
+          name: original-Qwen9B-newTRAIN16-k4-frozen-question-source
+          path: frozen
+      - name: Verify immutable original question-only BIRD source
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from experiments.bird_qwen9b_physical_answer_contract16 import checked_source
+          rows,m=checked_source(Path('frozen/source16.jsonl'),Path('frozen/freeze.json'))
+          assert len(rows)==16 and len(m['dbs'])==4
+          assert m['excluded_prior_source_indices']==759
+          assert m['DEV500_unused'] and m['HOLDOUT300_unused']
+          assert m['last_two_protected_physical_train_dbs_unused']
+          print('BIRD_TRAIN16_FROZEN_SOURCE_SHA',m['source_sha256'],flush=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: adaptive-langgraph-original-BIRD-TRAIN16-source
+          path: frozen/
+          if-no-files-found: error
+          retention-days: 30
+  original-physical-model:
+    needs: source-freeze
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        shard: [0,1,2,3]
+    env:
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_CONTEXT_LENGTH: '8192'
+      OLLAMA_NUM_PARALLEL: '1'
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: adaptive-langgraph-original-BIRD-TRAIN16-source
+          path: frozen
+      - name: Fetch original physical BIRD TRAIN DB by pinned publisher file SHA
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from scripts.prepare_birdtrain_qwen9b_sft_source import fetch_manifest,fetch_database
+          from experiments.bird_qwen9b_physical_answer_contract16 import checked_source,MAX_DB_BYTES
+          _,info=checked_source(Path('frozen/source16.jsonl'),Path('frozen/freeze.json'))
+          db=info['dbs'][int(os.environ['SHARD'])]
+          meta=fetch_manifest()[db]
+          assert 0<meta['size']<=MAX_DB_BYTES
+          file=fetch_database(db,meta,Path('physical'))
+          print('PINNED_PHYSICAL_BIRD_TRAIN_DB',db,file.stat().st_size,flush=True)
+          PY
+      - name: Reuse sealed original Qwen base SQL on exactly the same BIRD tasks
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 45039635210
+          github-token: ${{ github.token }}
+          name: original-Qwen9B-k4-physical16-generated-sealed-${{ matrix.shard }}
+          path: prior
+      - name: Pull exact original Qwen3.5-9B (no teacher, no new adapter)
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &
+          for i in {1..60}; do curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break; sleep 2; done
+          curl -fsS http://127.0.0.1:11434/api/tags >/dev/null
+          ollama pull qwen3.5:9b-q4_K_M
+      - name: Real Qwen matched original Guarded graph vs stateful conditional physical route
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python -m experiments.bird_langgraph_adaptive16 infer \
+            --source frozen/source16.jsonl --manifest frozen/freeze.json \
+            --dbroot physical --shard "$SHARD" \
+            --previous "prior/generated-$SHARD.json" \
+            --out "generated-$SHARD.json"
+          python - <<'PY'
+          import glob,json
+          files=glob.glob('generated-*.json')
+          assert len(files)==1
+          d=json.load(open(files[0]))
+          assert d['status']=='BIRD_LANGGRAPH_CANDIDATE_SEALED_PRE_GOLD'
+          assert d['no_gold_in_model_or_route'] and d['n']==4
+          assert len(d['cases'])==4
+          print('LANGGRAPH_BIRD_GOLD_BLIND_SEALED',d['shard'],flush=True)
+          PY
+      - name: FIRST upload Qwen Guarded vs adaptive graph candidates without gold
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: adaptive-BIRD-LangGraph16-candidates-${{ matrix.shard }}
+          path: generated-*.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: ONLY AFTER SEALED choices fetch exact original BIRD TRAIN publisher gold SQL
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/Emulated-Inc/text-to-sql-with-evidence-training-pool/resolve/cd2c4ea321075aa53ce7dfe52deaaffa505d046a/raw/bird/train.json' \
+            -o train.json
+          echo 'cd5884489dffd7c76d73509b396bd919fbe8b486efbc4ba2f48f89460de7d69f  train.json' | sha256sum -c -
+      - name: Strict physical BIRD SET/BAG EX for two real LangGraph routes
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          python -m experiments.bird_langgraph_adaptive16 score \
+            --source frozen/source16.jsonl --manifest frozen/freeze.json \
+            --dbroot physical --shard "$SHARD" \
+            --sealed "generated-$SHARD.json" --train train.json \
+            --out "scored-$SHARD.json"
+      - name: Preserve physical original publisher-score shard
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: adaptive-BIRD-LangGraph16-score-${{ matrix.shard }}
+          path: scored-*.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  strict-complete-final:
+    needs: original-physical-model
+    if: always() && needs.original-physical-model.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: adaptive-langgraph-original-BIRD-TRAIN16-source
+          path: frozen
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: adaptive-BIRD-LangGraph16-score-*
+          merge-multiple: true
+          path: scored
+      - name: Original BIRD TRAIN16 post-seal real Qwen LangGraph task correctness
+        run: |
+          set -euo pipefail
+          test "$(find scored -maxdepth 1 -name 'scored-*.json' | wc -l)" -eq 4
+          python -m experiments.bird_langgraph_adaptive16 aggregate \
+            --manifest frozen/freeze.json \
+            --parts scored/scored-0.json scored/scored-1.json \
+                    scored/scored-2.json scored/scored-3.json \
+            --out final-BIRD-Qwen9B-LangGraph-conditional-TRAIN16.json
+          python - <<'PY'
+          import json
+          x=json.load(open('final-BIRD-Qwen9B-LangGraph-conditional-TRAIN16.json'))
+          assert x['n']==16 and x['scorable']>=0
+          assert x['status']=='COMPLETE_REAL_BIRD_LANGGRAPH_PAIRED_TRAIN16'
+          assert x['previously_exposed_BIRD_train_questions_and_db']
+          assert x['do_not_promote_or_compare_as_DEV100']
+          assert not x['DEV500_used'] and not x['HOLDOUT300_used']
+          print('FINAL_BIRD_QWEN9B_LANGGRAPH_CONDITIONAL_TRAIN16_EX',json.dumps(x,sort_keys=True),flush=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: final-BIRD-Qwen9B-LangGraph-conditional-TRAIN16
+          path: final-BIRD-Qwen9B-LangGraph-conditional-TRAIN16.json
+          if-no-files-found: error
+          retention-days: 30
