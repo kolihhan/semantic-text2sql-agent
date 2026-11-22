@@ -4,7 +4,7 @@ name: BIRD 5-minute Research Coordinator
 # unproven adaptive LangGraph behavior are not merged or promoted here.
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '2-59/5 * * * *' # UTC minutes 02,07,...57; avoids busiest :00 slot
   workflow_dispatch:
   push:
     branches: [main]
