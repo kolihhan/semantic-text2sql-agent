@@ -1,0 +1,58 @@
+name: Original Qwen9B DEV100 historical score integrity — four frozen shards CPU only
+on:
+  workflow_dispatch:
+  push:
+    branches: [research/qwen9b-zero-row-train64-transfer-20261122]
+    paths: [.github/workflows/qwen9b-dev100-history-integrity.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  audit-archived-original-100:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Retrieve original October 2026 Qwen9B shard 0
+        uses: actions/download-artifact@v4
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 37307108955
+          github-token: ${{ github.token }}
+          name: qwen9b-xiyan-style-shard-0
+          path: evidence/sql-shard-0
+      - name: Retrieve original Qwen9B shard 1
+        uses: actions/download-artifact@v4
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 37307108955
+          github-token: ${{ github.token }}
+          name: qwen9b-xiyan-style-shard-1
+          path: evidence/sql-shard-1
+      - name: Retrieve original Qwen9B shard 2
+        uses: actions/download-artifact@v4
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 37307108955
+          github-token: ${{ github.token }}
+          name: qwen9b-xiyan-style-shard-2
+          path: evidence/sql-shard-2
+      - name: Retrieve original invalid Qwen9B shard 3
+        uses: actions/download-artifact@v4
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 37307108955
+          github-token: ${{ github.token }}
+          name: qwen9b-xiyan-style-shard-3
+          path: evidence/sql-shard-3
+      - name: Recompute 100 historical EX flags and enforce invalid-shard evidence
+        run: python -u scripts/audit_original_qwen9b_dev100_shard_integrity.py
+      - name: Upload audit record without any raw question, SQL, or reference answer
+        uses: actions/upload-artifact@v4
+        with:
+          name: qwen9b-historical-dev100-integrity-provisional
+          path: audit/qwen9b-dev100-original-score-integrity.json
+          if-no-files-found: error
+          retention-days: 30
