@@ -1,0 +1,169 @@
+name: PROOF Spider12 real Qwen3.5-9B paired joint SQL physical SET BAG EX
+on:
+  push:
+    branches: [research/spider-joint-ex-proof-20261122]
+    paths: [.github/workflows/spider-real-joint-ex-20261122.yml]
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: spider12-fixed-physical-20261122
+  cancel-in-progress: false
+env:
+  SPIDER_REV: 4a01bbac6520cd35b216db9e1724e5e1ada60aa4
+  MODEL: qwen3.5:9b-q4_K_M
+
+jobs:
+  freeze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - name: CPU tests before inference
+        run: |
+          python -m pip install -e '.[dev,semantic_plan_verifier]'
+          python -m pytest -q tests/test_spider_joint_proof.py tests/test_joint_candidate_selector.py
+      - name: Download immutable Spider original source and freeze 12 DB questions without source SQL
+        run: |
+          set -euo pipefail
+          curl -fL --retry 4 "https://huggingface.co/datasets/HAL-9001/spider-databases/resolve/${SPIDER_REV}/spider_data.zip" -o spider_data.zip
+          python -m evaluation.prove_spider_joint freeze --archive spider_data.zip --out frozen.json
+          python - <<'PY'
+          import json
+          f=json.load(open('frozen.json'))
+          assert f['gold_exposed_to_inference'] is False
+          assert len(f['cases'])==12 and len({x['db_id'] for x in f['cases']})==12
+          assert all(set(x)=={'source_index','db_id','question','question_sha256'} for x in f['cases'])
+          print('FROZEN_12_DB_BEFORE_ANY_INFERENCE')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: spider12-gold-free-frozen-source
+          path: frozen.json
+          if-no-files-found: error
+          retention-days: 30
+
+  blind:
+    needs: freeze
+    runs-on: ubuntu-latest
+    timeout-minutes: 210
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - name: Install exact repo and test
+        run: |
+          python -m pip install -e '.[dev,semantic_plan_verifier]'
+          python -m pytest -q tests/test_spider_joint_proof.py tests/test_joint_candidate_selector.py
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: spider12-gold-free-frozen-source
+          path: frozen
+      - name: Restore only physical Spider databases and schema annotations; remove all gold labels
+        run: |
+          set -euo pipefail
+          curl -fL --retry 4 "https://huggingface.co/datasets/HAL-9001/spider-databases/resolve/${SPIDER_REV}/spider_data.zip" -o spider_data.zip
+          sha256sum spider_data.zip | cut -d' ' -f1 > archive-sha.txt
+          python - <<'PY'
+          import json
+          f=json.load(open('frozen/frozen.json'))
+          a=open('archive-sha.txt').read().strip()
+          assert a==f['archive_sha256'], 'source archive drift'
+          PY
+          mkdir -p spider-unpacked
+          unzip -q spider_data.zip -d spider-unpacked
+          find spider-unpacked -type f \( -name 'dev.json' -o -name 'train_spider.json' -o -name 'train_others.json' -o -name '*gold*.sql' \) -delete
+          rm spider_data.zip
+          DBROOT=$(find spider-unpacked -type d -name database | head -n1)
+          TABLES=$(find spider-unpacked -type f -name tables.json | head -n1)
+          test -n "$DBROOT" && test -n "$TABLES"
+          echo "DB_ROOT=$DBROOT" >> "$GITHUB_ENV"
+          echo "TABLES_FILE=$TABLES" >> "$GITHUB_ENV"
+      - name: Pinned original Qwen3.5-9B CPU Ollama
+        run: |
+          set -euo pipefail
+          curl -fsSL https://ollama.com/download/ollama-linux-amd64.tar.zst | sudo tar --zstd -x -C /usr
+          ollama serve > /tmp/spider-ollama-private.log 2>&1 &
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then break; fi
+            sleep 1
+          done
+          ollama pull "$MODEL"
+          python - <<'PY'
+          from evaluation.prove_spider_joint import MODEL_DIGEST,_model_digest
+          assert _model_digest()==MODEL_DIGEST, "Qwen model digest mismatch"
+          print('QWEN9B_ORIGINAL_DIGEST_VERIFIED')
+          PY
+      - name: Run 4 real Qwen base SQL and candidate-independent joint repair decisions
+        run: |
+          set -euo pipefail
+          mkdir -p blind
+          python -m evaluation.prove_spider_joint infer \
+            --frozen frozen/frozen.json --db-root "$DB_ROOT" --annotations "$TABLES_FILE" \
+            --shard "${{ matrix.shard }}" --out "blind/shard-${{ matrix.shard }}.json"
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          p=Path('blind/shard-${{ matrix.shard }}.json')
+          r=json.loads(p.read_text())
+          assert r['reference_sql_accessed'] is False
+          assert r['status']=='GOLD_BLIND_COMPLETE' and len(r['cases'])==4
+          print('FOUR_GOLD_BLIND_QWEN_OUTPUTS_SEALED')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: spider12-blind-shard-${{ matrix.shard }}
+          path: blind/shard-${{ matrix.shard }}.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  score:
+    needs: [freeze, blind]
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - name: Install exact physical SQLite scorer
+        run: python -m pip install -e '.[dev,semantic_plan_verifier]'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: spider12-gold-free-frozen-source
+          path: frozen
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: spider12-blind-shard-0
+          path: blind0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: spider12-blind-shard-1
+          path: blind1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: spider12-blind-shard-2
+          path: blind2
+      - name: Open original gold SQL ONLY after all three blind Qwen shards exist
+        run: |
+          set -euo pipefail
+          curl -fL --retry 4 "https://huggingface.co/datasets/HAL-9001/spider-databases/resolve/${SPIDER_REV}/spider_data.zip" -o spider_data.zip
+          mkdir -p spider-unpacked
+          unzip -q spider_data.zip -d spider-unpacked
+          python -m evaluation.prove_spider_joint score \
+            --frozen frozen/frozen.json --archive spider_data.zip \
+            --db-root spider-unpacked \
+            --shards blind0/shard-0.json blind1/shard-1.json blind2/shard-2.json \
+            --out spider12-physical-ex-result.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: spider12-physical-paired-set-bag-ex-final
+          path: spider12-physical-ex-result.json
+          if-no-files-found: error
+          retention-days: 30
