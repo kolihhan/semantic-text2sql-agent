@@ -1,0 +1,69 @@
+name: PROOF Spider12 post-seal Strict EX score (reuse actual Qwen inference)
+on:
+  push:
+    branches: [research/spider-joint-ex-proof-20261122]
+    paths: [.github/workflows/spider-real-joint-score-only-20261122.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  score_existing_sealed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - name: Install scorer, never make model calls
+        run: python -m pip install -e '.[dev,semantic_plan_verifier]'
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 45036029182
+          github-token: ${{ github.token }}
+          name: spider12-gold-free-frozen-source
+          path: frozen
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 45036029182
+          github-token: ${{ github.token }}
+          name: spider12-blind-shard-0
+          path: blind0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 45036029182
+          github-token: ${{ github.token }}
+          name: spider12-blind-shard-1
+          path: blind1
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 45036029182
+          github-token: ${{ github.token }}
+          name: spider12-blind-shard-2
+          path: blind2
+      - name: Score identical sealed Qwen outputs on exact same Spider physical DB root
+        shell: bash
+        env:
+          SPIDER_REV: 4a01bbac6520cd35b216db9e1724e5e1ada60aa4
+        run: |
+          set -euo pipefail
+          curl -fL --retry 4 "https://huggingface.co/datasets/HAL-9001/spider-databases/resolve/${SPIDER_REV}/spider_data.zip" -o spider_data.zip
+          mkdir -p spider-unpacked
+          unzip -q spider_data.zip -d spider-unpacked
+          DBROOT=$(find spider-unpacked -type d -name database | head -n1)
+          test -n "$DBROOT" && test -d "$DBROOT"
+          echo "SCORING_PHYSICAL_DATABASE_ROOT_FOUND"
+          python -m evaluation.prove_spider_joint score \
+            --frozen frozen/frozen.json --archive spider_data.zip \
+            --db-root "$DBROOT" \
+            --shards blind0/shard-0.json blind1/shard-1.json blind2/shard-2.json \
+            --out spider12-physical-ex-result.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: spider12-PROOF-scored-identical-sealed-Qwen
+          path: spider12-physical-ex-result.json
+          if-no-files-found: error
+          retention-days: 30
