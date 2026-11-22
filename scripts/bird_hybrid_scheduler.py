@@ -101,7 +101,9 @@ def validate_worker(client: GitHub, name: str) -> None:
     except (TypeError, KeyError, ValueError) as exc:
         raise Blocked("reviewed worker cannot be read") from exc
     for marker in ("# BIRD_APPROVED_EXP_HANDLER_V1", "workflow_dispatch:",
-                   "inputs.experiment_id", "inputs.max_model_calls", MODEL, "BIRD"):
+                   "run-name:", RUN_PREFIX, "inputs.experiment_id",
+                   "inputs.max_model_calls", "inputs.max_wall_minutes",
+                   "inputs.frozen_source_sha256", MODEL, "BIRD"):
         if marker not in content:
             raise Blocked("worker is missing mandatory BIRD/budget/identity contract: " + marker)
 
