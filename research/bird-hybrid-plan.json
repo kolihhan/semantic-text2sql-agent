@@ -68,7 +68,7 @@
     },
     {
       "id": "count-grain-witness-train19-v1",
-      "status": "running_research",
+      "status": "rejected",
       "benchmark": "BIRD",
       "fixed_model": "qwen3.5:9b-q4_K_M",
       "workflow": ".github/workflows/bird-count-grain-qwen19-paired.yml",
@@ -87,8 +87,25 @@
       },
       "protected_data_excluded": true,
       "no_gold_in_model_or_selection": true,
-      "reason": "REAL ORIGINAL QWEN9B BIRD paired experiment launched, 4 shards; original Guarded SQL shared with conditional LangGraph FK/unique-entity fanout witness; publisher SQL only after candidate seal. Do not launch duplicate or call this a new score until final scorer succeeds.",
-      "next_action": "Consume exact run 45100836322 and sealed scorer; if failed repair only reproducible tooling blocker, not change mechanism after looking at publisher EX; report matched strict SET/BAG, rescued/regressed, graph trigger count, model calls and wall. If no >0 net or control regressions, REJECT immediately. Previous family exposure makes pilot exploratory only."
+      "reason": "FINAL original Qwen9B BIRD TRAIN19 paired run #45100836322 SUCCESS: 19/19 scorable across 13 historically exposed DB families; strict SET 11/19 -> 11/19, BAG 11/19 -> 11/19, rescues 0, regressions 0, SQL changed 0, 21 shared Qwen calls, 543.98s shared model wall, +0.11s graph wall, token/USD unmeasured. Failed preregistered >=2 net SET gate; reject and do not rerun/tune on exposed cohort.",
+      "next_action": "STOP COUNT-grain lexical/witness mechanism; no promotion. Investigate separate generation-level hypothesis only with pre-gold source-independent falsification and protection exclusions.",
+      "final_score_run_id": 45100836322,
+      "final_scorable": 19,
+      "final_strict_set": {
+        "guarded": 11,
+        "langgraph": 11
+      },
+      "final_strict_bag": {
+        "guarded": 11,
+        "langgraph": 11
+      },
+      "final_rescues": 0,
+      "final_regressions": 0,
+      "final_changed_sql": 0,
+      "final_shared_model_calls": 21,
+      "final_shared_model_wall_s": 543.98,
+      "final_graph_extra_wall_s": 0.11,
+      "token_usd_cost": "UNKNOWN"
     }
   ]
 }
