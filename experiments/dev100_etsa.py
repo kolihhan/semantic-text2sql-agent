@@ -244,12 +244,30 @@ def run(args) -> None:
     outpath=Path(args.output)
     output={"status":"incomplete","model":MODEL,"digest":MODEL_DIGEST,
             "cohort_sha256":frozen["cohort_sha256"],"shard":shard,"cases":[]}
+    previous={}
+    if args.resume_from:
+        old=json.loads(Path(args.resume_from).read_text(encoding="utf-8"))
+        assert old["model"]==MODEL and old["digest"]==MODEL_DIGEST
+        assert old["cohort_sha256"]==frozen["cohort_sha256"] and old["shard"]==shard
+        expected={str(c["case_id"]):c for c in selected}
+        for existing in old["cases"]:
+            cid=str(existing["case_id"])
+            assert cid in expected and cid not in previous, "resume case identity mismatch"
+            assert existing["question"]==expected[cid]["question"]
+            assert existing["database_id"]==expected[cid]["database_id"]
+            previous[cid]=existing
     write_atomic(outpath,output)
     app=graph()
     cache={}
     for i,case in enumerate(selected):
         row={"case_id":str(case["case_id"]),"database_id":str(case["database_id"]),
              "question":case["question"]}
+        restored=previous.get(row["case_id"])
+        if restored and restored["status"]=="complete":
+            output["cases"].append(restored)
+            write_atomic(outpath,output)
+            print(f"ETSA {shard} {i+1}/25 {row['case_id']} reused_completed",flush=True)
+            continue
         try:
             db_id=case["database_id"]
             if db_id not in cache:
@@ -258,9 +276,9 @@ def run(args) -> None:
             db,catalog=cache[db_id]
             schema,_diag=select_schema_context(catalog,Path(args.database_root),db_id,case["question"])
             evidence=case.get("evidence") or None
-            g0=OllamaProvider(model=MODEL,timeout_s=600,capture_usage=True)
-            g1=OllamaProvider(model=MODEL,timeout_s=600,capture_usage=True,temperature=0,num_predict=512)
-            g2=OllamaProvider(model=MODEL,timeout_s=600,capture_usage=True,temperature=0,num_predict=512)
+            g0=OllamaProvider(model=MODEL,timeout_s=args.timeout_s,capture_usage=True)
+            g1=OllamaProvider(model=MODEL,timeout_s=args.timeout_s,capture_usage=True,temperature=0,num_predict=512)
+            g2=OllamaProvider(model=MODEL,timeout_s=args.timeout_s,capture_usage=True,temperature=0,num_predict=512)
             t0=time.perf_counter()
             first=generate_direct_sql(case["question"],schema,g0,external_evidence=evidence)
             baseline=run_guarded(database=db,provider=g0,question=case["question"],
@@ -390,6 +408,8 @@ def main():
     p.add_argument("--source")
     p.add_argument("--shards")
     p.add_argument("--shard",type=int,default=0)
+    p.add_argument("--resume-from",help="Existing identical shard artifact; reuse completed cases")
+    p.add_argument("--timeout-s",type=float,default=600.0)
     args=p.parse_args()
     if args.mode=="run":
         run(args)
