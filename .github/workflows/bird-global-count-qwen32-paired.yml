@@ -60,7 +60,7 @@ jobs:
                   'question_sha256':x['question_sha256'],
               })
           packed={'status':'BIRD_GLOBAL32_GOLD_FREE_QUESTION_ONLY',
-                  'original_source_sha256':sel['source_sha256'],
+                  'original_source_sha256':sel['original_source_sha256'],
                   'selection_sha256':hashlib.sha256(frozen.read_bytes()).hexdigest(),
                   'cases':rows}
           assert len(rows)==32 and len({x['db_id'] for x in rows})==32
