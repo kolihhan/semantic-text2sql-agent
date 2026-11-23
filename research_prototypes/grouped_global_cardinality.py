@@ -78,6 +78,10 @@ def find_global_cardinality_contradiction(
     if (_FORBIDDEN.search(match["source"])
             or _FORBIDDEN.search(match["having"])):
         return None
+    # A nontrivial aggregate-level HAVING selects qualifying entity groups.
+    # A tautological HAVING COUNT(DISTINCT same_key)>0 is insufficient evidence.
+    if re.search(r"\b(?:SUM|AVG|MIN|MAX)\s*\(",match["having"],re.I) is None:
+        return None
     # Avoid lexically or semantically ambiguous multiple group expressions.
     if re.search(r",|\bGROUP\s+BY\b|\bHAVING\b", match["having"], re.I):
         # Commas in SQL functions are valid, but this narrow version abstains.
