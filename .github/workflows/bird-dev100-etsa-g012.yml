@@ -1,0 +1,111 @@
+name: Fixed BIRD DEV100 G0-G1-G2 ETSA Paired Strict EX and Cost
+on:
+  push:
+    branches: [research/dev100-matched-etsa-g012-20261123]
+    paths:
+      - .github/workflows/bird-dev100-etsa-g012.yml
+      - experiments/dev100_etsa.py
+      - experiments/dev100_freeze.py
+      - tests/test_dev100_etsa.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_URL: https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true
+  SOURCE_SHA: ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb
+  DB_ZIP_SHA: cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630
+  MODEL: qwen3.5:9b-q4_K_M
+  MODEL_DIGEST: 56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90
+
+jobs:
+  freeze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+      - name: Gate on LangGraph routing tests
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m pytest -q tests/test_dev100_etsa.py
+      - name: Freeze exact DEV100 without gold SQL in inference artifacts
+        run: |
+          mkdir -p frozen
+          curl -fL --retry 3 "$SOURCE_URL" -o frozen/publisher.json
+          echo "$SOURCE_SHA  frozen/publisher.json" | sha256sum -c -
+          python experiments/dev100_freeze.py --source frozen/publisher.json --output frozen/dev100-gold-free.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gold-free-fixed-dev100
+          path: frozen/dev100-gold-free.json
+
+  infer:
+    needs: freeze
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e ".[dev]"
+      - uses: actions/download-artifact@v4
+        with:
+          name: gold-free-fixed-dev100
+          path: frozen
+      - run: bash experiments/dev100_setup_bird.sh
+      - run: bash experiments/dev100_setup_qwen.sh
+      - name: Matched G0 G1 G2 on identical questions and initial SQL
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python experiments/dev100_etsa.py --mode run --input frozen/dev100-gold-free.json --database-root "$DB_ROOT" --shard "$SHARD" --output "etsa-shard-$SHARD.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: etsa-data-${{ matrix.shard }}
+          path: etsa-shard-*.json
+          if-no-files-found: warn
+
+  score:
+    needs: [freeze, infer]
+    if: ${{ always() && needs.freeze.result == 'success' && needs.infer.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+      - run: python -m pip install -e ".[dev]"
+      - uses: actions/download-artifact@v4
+        with:
+          name: gold-free-fixed-dev100
+          path: frozen
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: etsa-data-*
+          path: shards
+          merge-multiple: true
+      - name: Load publisher reference SQL only after all four inference shards seal
+        run: |
+          curl -fL --retry 3 "$SOURCE_URL" -o frozen/publisher.json
+          echo "$SOURCE_SHA  frozen/publisher.json" | sha256sum -c -
+          bash experiments/dev100_setup_bird.sh
+      - name: Score Strict SET and BAG per same fixed 100 cases
+        run: |
+          python experiments/dev100_etsa.py --mode score --input frozen/dev100-gold-free.json --shards shards --source frozen/publisher.json --database-root "$DB_ROOT" --output dev100-g012-scored.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dev100-g012-true-set-bag-ex-cost
+          path: dev100-g012-scored.json
+          if-no-files-found: warn
