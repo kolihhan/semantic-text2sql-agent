@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
 import urllib.request
 
@@ -18,6 +18,24 @@ class OllamaProvider:
     temperature: float | None = None
     seed: int | None = None
     num_predict: int | None = None
+    # Opt-in model-server telemetry; defaults preserve old call API and outputs.
+    # No API-priced USD estimate is inferred from local Ollama execution.
+    capture_usage: bool = False
+    usage_records: list[dict[str, int | None]] = field(default_factory=list, repr=False)
+
+    @property
+    def usage_totals(self) -> dict[str, int | None]:
+        """Aggregate only fully observed metrics; missing is unknown, not 0."""
+        names = ("prompt_eval_count", "eval_count", "total_duration",
+                 "load_duration", "prompt_eval_duration", "eval_duration")
+        return {
+            name: (
+                sum(record[name] for record in self.usage_records)
+                if self.usage_records and all(record[name] is not None for record in self.usage_records)
+                else None
+            )
+            for name in names
+        }
 
     def _chat(self, *, system: str, user: str) -> str:
         payload = {
@@ -43,7 +61,23 @@ class OllamaProvider:
         )
         with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
             body = json.loads(resp.read().decode("utf-8"))
-        return str(body["message"]["content"])
+        # Preserve original return semantics exactly; telemetry must never
+        # affect model output, SQL decoding or inference control flow.
+        text = str(body["message"]["content"])
+        if self.capture_usage:
+            # Ollama /api/chat reports token counts and durations (nanoseconds).
+            # Missing/malformed fields stay None; never silently count as 0.
+            metrics = ("prompt_eval_count", "eval_count", "total_duration",
+                       "load_duration", "prompt_eval_duration", "eval_duration")
+            self.usage_records.append({
+                name: body[name]
+                if isinstance(body.get(name), int)
+                and not isinstance(body[name], bool)
+                and body[name] >= 0
+                else None
+                for name in metrics
+            })
+        return text
 
     def complete_text(self, *, system: str, user: str) -> str:
         return self._chat(system=system, user=user)
