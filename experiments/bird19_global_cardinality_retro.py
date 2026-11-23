@@ -14,7 +14,7 @@ from hashlib import sha256
 import json
 from pathlib import Path
 
-from research_prototypes.grouped_global_cardinality import (
+from semantic_sql.grouped_global_cardinality import (
     _QUERY,_COUNT_REQUEST,find_global_cardinality_contradiction,
 )
 from scripts.prepare_birdtrain_qwen9b_sft_source import (
