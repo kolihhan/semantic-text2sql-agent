@@ -1,0 +1,115 @@
+name: BIRD19 retro physical grouped-cardinality witness & strict EX (zero Qwen)
+on:
+  push:
+    branches: [research/bird-global-cardinality-after-group-v1-20261123]
+    paths: [.github/workflows/bird19-global-cardinality-retro.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  blind-proposals:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - name: Test physical group-to-global semantic witness
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_grouped_global_cardinality.py
+      - name: Get OLD original Qwen9B gold-blind SQL (no new inference)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 45100836322
+          github-token: ${{ github.token }}
+          pattern: BIRD-COUNT-GRAIN-TRAIN19-QWEN-GOLD-BLIND-SHARD-*
+          merge-multiple: true
+          path: frozen-sql
+      - name: Get OLD BIRD question-only source (no publisher SQL)
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 45100836322
+          github-token: ${{ github.token }}
+          name: BIRD-COUNT-GRAIN-TRAIN19-GOLD-FREE-SOURCE-BEFORE-QWEN
+          path: question-only
+      - name: Run only question-to-query grouped-cardinality physical witness, never gold
+        run: |
+          set -euo pipefail
+          python -m experiments.bird19_global_cardinality_retro infer \
+            --source question-only/questions-only.json \
+            --generated frozen-sql/generated-{0,1,2,3}.json \
+            --work physical --out blind-grouped-count.json
+          python - <<'PY'
+          import json
+          d=json.load(open('blind-grouped-count.json'))
+          assert d['n']==19 and d['no_publisher_gold_in_selection']
+          assert d['extra_Qwen_calls']==0 and not d['protected_last_2_TRAIN_DBs_used']
+          print('BIRD19_GLOBAL_COUNT_BLIND_SEAL',json.dumps(
+            {k:v for k,v in d.items() if k!='cases'},sort_keys=True),flush=True)
+          PY
+      - name: FIRST upload original Qwen candidate and grouped count proposed SQL before publisher gold
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: BIRD19-GLOBAL-GROUPED-COUNT-BLIND-PROPOSALS
+          path: blind-grouped-count.json
+          if-no-files-found: error
+          retention-days: 30
+
+  score-after-seal:
+    needs: blind-proposals
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - run: python -m pip install -e .
+      - name: Retrieve previous candidate blind seal
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: BIRD19-GLOBAL-GROUPED-COUNT-BLIND-PROPOSALS
+          path: blind
+      - name: Retrieve immutable original paired BIRD19 EX scores
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 45100836322
+          github-token: ${{ github.token }}
+          pattern: BIRD-COUNT-GRAIN-TRAIN19-STRICT-EX-SHARD-*
+          merge-multiple: true
+          path: old-scores
+      - name: Read publisher source ONLY AFTER proposal sealed and uploaded
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/Emulated-Inc/text-to-sql-with-evidence-training-pool/resolve/cd2c4ea321075aa53ce7dfe52deaaffa505d046a/raw/bird/train.json' \
+            -o original-bird-train.json
+          echo 'cd5884489dffd7c76d73509b396bd919fbe8b486efbc4ba2f48f89460de7d69f  original-bird-train.json' | sha256sum -c -
+      - name: Evaluate real BIRD publisher SET/BAG EX for all 19 paired original SQLs
+        run: |
+          set -euo pipefail
+          python -m experiments.bird19_global_cardinality_retro score \
+            --source original-bird-train.json \
+            --blind blind/blind-grouped-count.json \
+            --scored old-scores/scored-{0,1,2,3}.json \
+            --work physical --out BIRD19-global-grouped-cardinality-retrospective-EX.json
+          python - <<'PY'
+          import json
+          d=json.load(open('BIRD19-global-grouped-cardinality-retrospective-EX.json'))
+          assert d['status']=='BIRD_TRAIN19_POSTHOC_GROUPED_GLOBAL_COUNT_STRICT_EX'
+          assert d['n']==19 and d['new_Qwen_calls']==0
+          assert d['known_exposed_before_hypothesis'] and not d['promotion_allowed']
+          print('FINAL_REAL_BIRD19_GROUPED_COUNT_RETRO_STRICT_EX',
+            json.dumps({k:v for k,v in d.items() if k!='cases'},sort_keys=True),flush=True)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: FINAL-BIRD19-GROUPED-GLOBAL-CARDINALITY-RETROSPECTIVE-SET-BAG
+          path: BIRD19-global-grouped-cardinality-retrospective-EX.json
+          if-no-files-found: error
+          retention-days: 30
