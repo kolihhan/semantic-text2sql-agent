@@ -1,0 +1,106 @@
+name: BIRD DEV100 equal-budget strict EX CPU replay (no Qwen)
+on:
+  push:
+    branches: [research/dev100-equal-budget-abc-20261123]
+    paths: [.github/workflows/dev100-equal-budget-score-replay.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_URL: https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true
+  SOURCE_SHA: ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb
+  DB_ZIP_SHA: cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630
+
+jobs:
+  replay-score-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: "3.11"
+      - run: |
+          python -m pip install -e ".[dev]"
+          python -m pytest -q tests/test_dev100_equal_budget.py
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45107955598
+          github-token: ${{ github.token }}
+          name: gold-free-fixed-dev100
+          path: frozen
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45124972570
+          github-token: ${{ github.token }}
+          name: equal-budget-plan-no-gold
+          path: frozen
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45124972570
+          github-token: ${{ github.token }}
+          pattern: budget-shard-*
+          merge-multiple: true
+          path: results
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45107955598
+          github-token: ${{ github.token }}
+          name: etsa-data-0
+          path: old
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45107955598
+          github-token: ${{ github.token }}
+          name: etsa-data-2
+          path: old
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45107955598
+          github-token: ${{ github.token }}
+          name: etsa-data-3
+          path: old
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45119482993
+          github-token: ${{ github.token }}
+          name: etsa-shard-1-recovered
+          path: old
+      - name: Fetch SHA-pinned publisher SQL only for scoring
+        run: |
+          curl -fL --retry 3 "$SOURCE_URL" -o frozen/publisher.json
+          echo "$SOURCE_SHA  frozen/publisher.json" | sha256sum -c -
+          bash experiments/dev100_setup_bird.sh
+      - name: CPU-only score all three matched 127-call strategies using sealed data
+        run: |
+          python -m experiments.dev100_equal_budget --mode score \
+            --frozen frozen/dev100-gold-free.json \
+            --plan frozen/equal-budget-plan.json \
+            --shards old --results results \
+            --source frozen/publisher.json --db-root "$DB_ROOT" \
+            --output equal-budget-strict-ex.json
+      - name: Assert expected pre-registered case identities, counts, and regressions
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path("equal-budget-strict-ex.json").read_text())
+          assert r["status"]=="complete" and len(r["cases"])==100
+          assert len({c["case_id"] for c in r["cases"]})==100
+          m=r["metrics"]
+          assert m["calls"]=={"direct":100,"a_budget":127,"workflow":127,"graph":127}
+          assert m["strict_ex"]["workflow"]["set"]==38
+          assert m["strict_ex"]["workflow"]["bag"]==33
+          assert m["strict_ex"]["graph"]["set"]==36
+          assert m["strict_ex"]["graph"]["bag"]==31
+          print(json.dumps(m,indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dev100-127call-abc-verified-strict-ex
+          path: equal-budget-strict-ex.json
+          if-no-files-found: warn
