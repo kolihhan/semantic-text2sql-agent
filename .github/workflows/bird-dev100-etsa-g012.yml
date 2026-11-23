@@ -67,7 +67,7 @@ jobs:
         env:
           SHARD: ${{ matrix.shard }}
         run: |
-          python experiments/dev100_etsa.py --mode run --input frozen/dev100-gold-free.json --database-root "$DB_ROOT" --shard "$SHARD" --output "etsa-shard-$SHARD.json"
+          python -m experiments.dev100_etsa --mode run --input frozen/dev100-gold-free.json --database-root "$DB_ROOT" --shard "$SHARD" --output "etsa-shard-$SHARD.json"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -102,7 +102,7 @@ jobs:
           bash experiments/dev100_setup_bird.sh
       - name: Score Strict SET and BAG per same fixed 100 cases
         run: |
-          python experiments/dev100_etsa.py --mode score --input frozen/dev100-gold-free.json --shards shards --source frozen/publisher.json --database-root "$DB_ROOT" --output dev100-g012-scored.json
+          python -m experiments.dev100_etsa --mode score --input frozen/dev100-gold-free.json --shards shards --source frozen/publisher.json --database-root "$DB_ROOT" --output dev100-g012-scored.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
