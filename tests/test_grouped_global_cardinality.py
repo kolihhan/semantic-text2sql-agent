@@ -4,7 +4,7 @@ import sqlite3
 
 import pytest
 
-from research_prototypes.grouped_global_cardinality import find_global_cardinality_contradiction
+from semantic_sql.grouped_global_cardinality import find_global_cardinality_contradiction
 
 SQL = (
     "SELECT COUNT(DISTINCT o.orderNumber) FROM orders o "
