@@ -89,6 +89,8 @@ def sources(source:Path, frozen:Path, *, inference:bool=False)->tuple[list[dict]
             raise ValueError("physical BIRD database source changed")
         if sha256(original["question"].encode()).hexdigest()!=row.get("question_sha256"):
             raise ValueError("original publisher question identity changed")
+        if sha256(str(original.get("evidence") or "").encode()).hexdigest()!=row.get("evidence_sha256"):
+            raise ValueError("original publisher evidence identity changed")
         if row["db_id"] in ("simpson_episodes","works_cycles"):
             raise ValueError("protected BIRD source family")
     return train,m
