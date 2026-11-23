@@ -140,6 +140,28 @@ def execute(plan: dict, client: GitHub, dry_run: bool = False) -> list[dict]:
     out = []
     for job in jobs:
         identifier = job["id"]
+        if job.get("status") == "running_research":
+            # This is an already dispatched user-authorized research branch run.
+            # Monitor it instead of incorrectly calling all running work "idle".
+            run_id = job.get("github_run_id")
+            if type(run_id) is not int or run_id < 1:
+                out.append({"id": identifier, "state": "BLOCKED_INVALID_RUNNING_RUN_ID"})
+                continue
+            try:
+                run = client.request(f"actions/runs/{run_id}")
+                if (run.get("id") != run_id
+                        or run.get("head_branch") != job.get("ref")
+                        or "BIRD" not in str(run.get("name","")).upper()):
+                    raise Blocked("active run identity / branch mismatch")
+                status, conclusion = run.get("status"), run.get("conclusion")
+                state = ("RUNNING_REAL_EXPERIMENT" if status in ("queued","in_progress")
+                         else "COMPLETED_REQUIRES_STRICT_EX_SCORE_REVIEW" if status=="completed" and conclusion=="success"
+                         else "FAILED_REQUIRES_TOOLING_DIAGNOSIS")
+                out.append({"id":identifier, "state":state,
+                            "run_id":run_id,"status":status,"conclusion":conclusion})
+            except Blocked as exc:
+                out.append({"id":identifier, "state":"BLOCKED", "reason":str(exc)})
+            continue
         if job.get("status") != "approved":
             out.append({"id": identifier, "state": "NEEDS_RESEARCH", "reason": job.get("reason","not approved")})
             continue
