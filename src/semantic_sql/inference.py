@@ -10,7 +10,7 @@ from .direct import _strip_fence, generate_direct_sql
 from .execution import SQLExecutionError, execute_readonly
 from .providers import ModelProvider
 from .verifier import verify_sql_preflight
-from research_prototypes.grouped_global_cardinality import find_global_cardinality_contradiction
+from .grouped_global_cardinality import find_global_cardinality_contradiction
 
 
 GUARDED_TREATMENT_ID = "langgraph_preflight_plus_internal_cot_repair_v1"
