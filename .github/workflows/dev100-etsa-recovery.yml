@@ -1,0 +1,109 @@
+name: BIRD DEV100 recover only failed case 121 then score 100
+on:
+  push:
+    branches: [research/dev100-matched-etsa-g012-20261123]
+    paths: [.github/workflows/dev100-etsa-recovery.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+env:
+  ORIGINAL_RUN: "45107955598"
+  SOURCE_URL: https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true
+  SOURCE_SHA: ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb
+  DB_ZIP_SHA: cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630
+  MODEL: qwen3.5:9b-q4_K_M
+  MODEL_DIGEST: 56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90
+
+jobs:
+  recover-one:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Stop accidental duplicate full-100 job (preserve compute budget)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X POST repos/${{ github.repository }}/actions/runs/45119421164/cancel || true
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e ".[dev]"
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45107955598
+          github-token: ${{ github.token }}
+          name: gold-free-fixed-dev100
+          path: frozen
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45107955598
+          github-token: ${{ github.token }}
+          name: etsa-data-1
+          path: old
+      - run: bash experiments/dev100_setup_bird.sh
+      - run: bash experiments/dev100_setup_qwen.sh
+      - name: Preserve prior 24 results, rerun only case_id 121
+        run: |
+          python -m experiments.dev100_etsa --mode run --input frozen/dev100-gold-free.json --database-root "$DB_ROOT" --shard 1 --resume-from old/etsa-shard-1.json --timeout-s 900 --output etsa-shard-1.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: etsa-shard-1-recovered
+          path: etsa-shard-1.json
+          if-no-files-found: warn
+
+  score-100:
+    needs: recover-one
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e ".[dev]"
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45107955598
+          github-token: ${{ github.token }}
+          name: gold-free-fixed-dev100
+          path: frozen
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45107955598
+          github-token: ${{ github.token }}
+          name: etsa-data-0
+          path: shards
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45107955598
+          github-token: ${{ github.token }}
+          name: etsa-data-2
+          path: shards
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45107955598
+          github-token: ${{ github.token }}
+          name: etsa-data-3
+          path: shards
+      - uses: actions/download-artifact@v4
+        with:
+          name: etsa-shard-1-recovered
+          path: shards
+      - name: Reference labels only after all inference is sealed
+        run: |
+          curl -fL --retry 3 "$SOURCE_URL" -o frozen/publisher.json
+          echo "$SOURCE_SHA  frozen/publisher.json" | sha256sum -c -
+          bash experiments/dev100_setup_bird.sh
+      - name: Score identical DEV100 G0 G1 G2 Strict SET/BAG EX
+        run: |
+          python -m experiments.dev100_etsa --mode score --input frozen/dev100-gold-free.json --shards shards --source frozen/publisher.json --database-root "$DB_ROOT" --output dev100-g012-scored.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dev100-g012-strict-ex-cost-recovered
+          path: dev100-g012-scored.json
+          if-no-files-found: warn
