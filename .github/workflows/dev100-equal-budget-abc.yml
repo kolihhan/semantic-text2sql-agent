@@ -1,0 +1,183 @@
+name: BIRD DEV100 equal 127-call Direct Workflow Semantic LangGraph
+on:
+  push:
+    branches: [research/dev100-equal-budget-abc-20261123]
+    paths: [.github/workflows/dev100-equal-budget-abc.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_URL: https://huggingface.co/datasets/birdsql/bird_sql_dev_20251106/resolve/3c11fb193e5439b338e23677fa0aae11e8b85db9/data/dev_20251106-00000-of-00001.json?download=true
+  SOURCE_SHA: ffd8018378ddb1a8794753e0a31cfc81862ff7318a5184c22f3dc4ce03a03feb
+  DB_ZIP_SHA: cdd6d19faeb45a23970b98d3ef6c40a87987c95459c2cf12076897a60cf5a630
+  MODEL: qwen3.5:9b-q4_K_M
+  MODEL_DIGEST: 56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90
+
+jobs:
+  source-blind-freeze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install -e ".[dev]"
+          python -m pytest -q tests/test_dev100_equal_budget.py
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45107955598
+          github-token: ${{ github.token }}
+          name: gold-free-fixed-dev100
+          path: frozen
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45107955598
+          github-token: ${{ github.token }}
+          name: etsa-data-0
+          path: old
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45107955598
+          github-token: ${{ github.token }}
+          name: etsa-data-2
+          path: old
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45107955598
+          github-token: ${{ github.token }}
+          name: etsa-data-3
+          path: old
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45119482993
+          github-token: ${{ github.token }}
+          name: etsa-shard-1-recovered
+          path: old
+      - run: bash experiments/dev100_setup_bird.sh
+      - name: Freeze 27 source-only cases BEFORE any publisher SQL is available
+        run: |
+          python -m experiments.dev100_equal_budget --mode plan \
+            --frozen frozen/dev100-gold-free.json --shards old \
+            --db-root "$DB_ROOT" --output equal-budget-plan.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: equal-budget-plan-no-gold
+          path: equal-budget-plan.json
+
+  two-extra-arms:
+    needs: source-blind-freeze
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e ".[dev]"
+      - uses: actions/download-artifact@v4
+        with:
+          name: gold-free-fixed-dev100
+          run-id: 45107955598
+          github-token: ${{ github.token }}
+          path: frozen
+      - uses: actions/download-artifact@v4
+        with:
+          name: equal-budget-plan-no-gold
+          path: frozen
+      - run: bash experiments/dev100_setup_bird.sh
+      - run: bash experiments/dev100_setup_qwen.sh
+      - name: Run exactly matched generic vs semantic LangGraph call budget
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          python -m experiments.dev100_equal_budget --mode run \
+            --frozen frozen/dev100-gold-free.json \
+            --plan frozen/equal-budget-plan.json \
+            --db-root "$DB_ROOT" --shard "$SHARD" \
+            --output "budget-shard-$SHARD.json" --timeout-s 900
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: budget-shard-${{ matrix.shard }}
+          path: budget-shard-*.json
+          if-no-files-found: warn
+
+  strict-score:
+    needs: [source-blind-freeze, two-extra-arms]
+    if: always() && needs.source-blind-freeze.result == 'success' && needs.two-extra-arms.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e ".[dev]"
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45107955598
+          github-token: ${{ github.token }}
+          name: gold-free-fixed-dev100
+          path: frozen
+      - uses: actions/download-artifact@v4
+        with:
+          name: equal-budget-plan-no-gold
+          path: frozen
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: budget-shard-*
+          path: results
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45107955598
+          github-token: ${{ github.token }}
+          name: etsa-data-0
+          path: old
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45107955598
+          github-token: ${{ github.token }}
+          name: etsa-data-2
+          path: old
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45107955598
+          github-token: ${{ github.token }}
+          name: etsa-data-3
+          path: old
+      - uses: actions/download-artifact@v4
+        with:
+          run-id: 45119482993
+          github-token: ${{ github.token }}
+          name: etsa-shard-1-recovered
+          path: old
+      - name: Load publisher gold ONLY after 27+27 inferences sealed
+        run: |
+          mkdir -p frozen
+          curl -fL --retry 3 "$SOURCE_URL" -o frozen/publisher.json
+          echo "$SOURCE_SHA  frozen/publisher.json" | sha256sum -c -
+          bash experiments/dev100_setup_bird.sh
+      - name: Score four arms on exact DEV100 and enforce total 127 calls each
+        run: |
+          python -m experiments.dev100_equal_budget --mode score \
+            --frozen frozen/dev100-gold-free.json \
+            --plan frozen/equal-budget-plan.json \
+            --shards old --results results \
+            --source frozen/publisher.json --db-root "$DB_ROOT" \
+            --output equal-budget-strict-ex.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: equal-budget-abc-strict-ex-cost
+          path: equal-budget-strict-ex.json
+          if-no-files-found: warn
