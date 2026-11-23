@@ -10,6 +10,7 @@ from .direct import _strip_fence, generate_direct_sql
 from .execution import SQLExecutionError, execute_readonly
 from .providers import ModelProvider
 from .verifier import verify_sql_preflight
+from research_prototypes.grouped_global_cardinality import find_global_cardinality_contradiction
 
 
 GUARDED_TREATMENT_ID = "langgraph_preflight_plus_internal_cot_repair_v1"
@@ -32,6 +33,7 @@ class GuardedContext:
     max_repairs: int = 2
     max_rows: int = 100
     semantic_revision: bool = False
+    grouped_global: bool = False
 
 
 class GuardedState(TypedDict, total=False):
@@ -41,6 +43,10 @@ class GuardedState(TypedDict, total=False):
     candidate: SQLCandidate | None
     verification: VerificationResult | None
     semantic_revised: bool
+    grouped_original: SQLCandidate | None
+    grouped_proposal: SQLCandidate | None
+    grouped_checked: bool
+    grouped_next: str
     stages: tuple[StageRecord, ...]
     result: AgentResult | None
 
@@ -139,6 +145,62 @@ def _semantic_revise(state: GuardedState, runtime) -> dict[str, Any]:
     }
 
 
+def _grouped_global_decide(state: GuardedState, runtime) -> dict[str, Any]:
+    """Only physically observed grouped-entity count contradictions route."""
+    witness=find_global_cardinality_contradiction(
+        runtime.context.database,state["question"],state["candidate"].sql,
+    )
+    if witness is None:
+        return {
+            "grouped_next":"execute",
+            "stages":_append_stage(state,"grouped_decide","ABSTAIN: no grounded global count contradiction"),
+        }
+    return {
+        "grouped_original":state["candidate"],
+        "grouped_proposal":SQLCandidate(
+            sql=witness.proposed_sql,attempt=state["candidate"].attempt
+        ),
+        "grouped_next":"grouped_select",
+        "stages":_append_stage(state,"grouped_decide",
+            "PHYSICAL_WITNESS: >=2 grouped COUNT(DISTINCT key)=1 results, global count required"),
+    }
+
+
+def _grouped_global_route(state: GuardedState) -> str:
+    return state["grouped_next"]
+
+
+def _grouped_global_select(state: GuardedState, runtime) -> dict[str, Any]:
+    """Keep the original query cached in graph State for safe rollback."""
+    if state.get("grouped_checked",False):
+        raise RuntimeError("grouped global repair loop exceeded one attempt")
+    original=state.get("grouped_original")
+    proposal=state.get("grouped_proposal")
+    if original is None or proposal is None:
+        raise RuntimeError("grouped repair without physical witness")
+    return {
+        "candidate":proposal,
+        "grouped_checked":True,
+        "stages":_append_stage(state,"grouped_select","one deterministic global-scalar proposal"),
+    }
+
+
+def _grouped_global_fallback(state: GuardedState, runtime) -> dict[str, Any]:
+    """Never execute unsafe proposed SQL, retain original preflight-valid SQL."""
+    original=state.get("grouped_original")
+    if original is None:
+        raise RuntimeError("grouped fallback without original SQL")
+    checked=verify_sql_preflight(runtime.context.database,original.sql)
+    if not checked.ok:
+        raise RuntimeError("original SQL unexpectedly not preflight-safe")
+    return {
+        "candidate":original,
+        "verification":checked,
+        "stages":_append_stage(state,"grouped_fallback","original safe SQL restored"),
+    }
+
+
+
 def _execute(state: GuardedState, runtime) -> dict[str, Any]:
     candidate = state["candidate"]
     verification = state["verification"]
@@ -156,7 +218,11 @@ def _refuse(state: GuardedState) -> dict[str, Any]:
 
 
 def _verify_route(state: GuardedState, runtime) -> str:
+    if runtime.context.grouped_global and state.get("grouped_checked",False):
+        return "execute" if state["verification"].ok else "grouped_fallback"
     if state["verification"].ok:
+        if runtime.context.grouped_global:
+            return "grouped_decide"
         if runtime.context.semantic_revision and not state.get("semantic_revised", False):
             return "semantic_revision"
         return "execute"
@@ -165,7 +231,7 @@ def _verify_route(state: GuardedState, runtime) -> str:
     return "refuse"
 
 
-def _build_guarded_graph(*, semantic_revision: bool = False):
+def _build_guarded_graph(*, semantic_revision: bool = False, grouped_global: bool = False):
     from langgraph.graph import END, START, StateGraph
 
     graph = StateGraph(GuardedState, context_schema=GuardedContext)
@@ -174,17 +240,31 @@ def _build_guarded_graph(*, semantic_revision: bool = False):
     graph.add_node("repair", _repair)
     if semantic_revision:
         graph.add_node("semantic_revision", _semantic_revise)
+    if grouped_global:
+        graph.add_node("grouped_decide", _grouped_global_decide)
+        graph.add_node("grouped_select", _grouped_global_select)
+        graph.add_node("grouped_fallback", _grouped_global_fallback)
     graph.add_node("execute", _execute)
     graph.add_node("refuse", _refuse)
     graph.add_edge(START, "generate")
     graph.add_edge("generate", "verify")
     routes = {"execute": "execute", "repair": "repair", "refuse": "refuse"}
+    if grouped_global:
+        routes["grouped_decide"]="grouped_decide"
+        routes["grouped_fallback"]="grouped_fallback"
     if semantic_revision:
         routes["semantic_revision"] = "semantic_revision"
     graph.add_conditional_edges("verify", _verify_route, routes)
     graph.add_edge("repair", "verify")
     if semantic_revision:
         graph.add_edge("semantic_revision", "verify")
+    if grouped_global:
+        graph.add_conditional_edges(
+            "grouped_decide",_grouped_global_route,
+            {"execute":"execute", "grouped_select":"grouped_select"},
+        )
+        graph.add_edge("grouped_select","verify")
+        graph.add_edge("grouped_fallback","execute")
     graph.add_edge("execute", END)
     graph.add_edge("refuse", END)
     return graph.compile()
@@ -195,24 +275,34 @@ def run_guarded(
     schema_context: str, evidence: str | None = None,
     initial_candidate: SQLCandidate | None = None, max_repairs: int = 2,
     max_rows: int = 100, semantic_revision: bool = False,
+    grouped_global: bool = False,
 ) -> AgentResult:
     database = Path(database)
-    output = _build_guarded_graph(semantic_revision=semantic_revision).invoke(
+    if grouped_global and semantic_revision:
+        raise ValueError("grouped_global and legacy semantic_revision are mutually exclusive")
+    output = _build_guarded_graph(
+        semantic_revision=semantic_revision,grouped_global=grouped_global,
+    ).invoke(
         {
             "question": question,
             "schema_context": schema_context,
             "evidence": evidence,
             "candidate": initial_candidate,
             "semantic_revised": False,
+            "grouped_original": None,
+            "grouped_proposal": None,
+            "grouped_checked": False,
+            "grouped_next": "",
             "stages": (),
         },
-        config={"recursion_limit": 2 * max(0, max_repairs) + 10},
+        config={"recursion_limit": 2 * max(0, max_repairs) + (18 if grouped_global else 10)},
         context=GuardedContext(
             database=database,
             provider=provider,
             max_repairs=max_repairs,
             max_rows=max_rows,
             semantic_revision=semantic_revision,
+            grouped_global=grouped_global,
         ),
     )
     result = output["result"] if isinstance(output, dict) else output.result
