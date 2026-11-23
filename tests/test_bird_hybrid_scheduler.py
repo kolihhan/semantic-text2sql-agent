@@ -155,3 +155,54 @@ def test_duplicate_ids_are_forbidden(tmp_path):
     file=tmp_path/"plan.json";file.write_text(json.dumps(p))
     with pytest.raises(s.Blocked):
         s.load_plan(file)
+
+
+class RunningResearchGitHub(FakeGithub):
+    def __init__(self, *, status="in_progress", conclusion=None, branch=None):
+        super().__init__()
+        self.run = {
+            "id": 45100836322,
+            "name": "BIRD TRAIN19 original Qwen9B COUNT-grain LangGraph paired Strict EX",
+            "head_branch": branch or "research/bird-count-grain-witness-prototype-20261123",
+            "status": status,
+            "conclusion": conclusion,
+        }
+
+    def request(self, endpoint, method="GET", payload=None):
+        if endpoint=="actions/runs/45100836322":
+            self.calls.append((endpoint, method, payload))
+            return self.run
+        return super().request(endpoint, method, payload)
+
+
+def test_existing_real_bird_work_is_monitored_not_misreported_as_idle():
+    plan=backlog()
+    plan["experiments"]=[{
+        "id":"count-grain-witness-train19-v1",
+        "status":"running_research",
+        "ref":"research/bird-count-grain-witness-prototype-20261123",
+        "github_run_id":45100836322,
+    }]
+    fake=RunningResearchGitHub()
+    status=s.execute(plan,fake)
+    assert status[0]["state"]=="RUNNING_REAL_EXPERIMENT"
+    assert status[0]["run_id"]==45100836322
+    assert not any(method=="POST" for _,method,_ in fake.calls)
+    completed=RunningResearchGitHub(status="completed",conclusion="success")
+    assert s.execute(plan,completed)[0]["state"]=="COMPLETED_REQUIRES_STRICT_EX_SCORE_REVIEW"
+    failed=RunningResearchGitHub(status="completed",conclusion="failure")
+    assert s.execute(plan,failed)[0]["state"]=="FAILED_REQUIRES_TOOLING_DIAGNOSIS"
+
+
+def test_running_bird_identity_mismatch_fails_closed():
+    plan=backlog()
+    plan["experiments"]=[{
+        "id":"count-grain-witness-train19-v1",
+        "status":"running_research",
+        "ref":"research/bird-count-grain-witness-prototype-20261123",
+        "github_run_id":45100836322,
+    }]
+    bad=RunningResearchGitHub(branch="main")
+    assert s.execute(plan,bad)[0]["state"]=="BLOCKED"
+    plan["experiments"][0]["github_run_id"]=None
+    assert s.execute(plan,bad)[0]["state"]=="BLOCKED_INVALID_RUNNING_RUN_ID"
