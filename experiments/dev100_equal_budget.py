@@ -364,8 +364,13 @@ def main():
                      args.results,args.source,args.db_root)
     args.output.parent.mkdir(parents=True,exist_ok=True)
     args.output.write_text(json.dumps(result,ensure_ascii=False,indent=2))
-    print(json.dumps(result.get("metrics",{"selected":sum(c["selected"] for c in result["cases"]),
-            "syntax":sum(c["selected"] and c["invalid_initial"] for c in result["cases"])}),indent=2))
+    if args.mode == "score":
+        print(json.dumps(result["metrics"], indent=2))
+    else:
+        print(json.dumps({
+            "selected": sum(c["selected"] for c in result["cases"]),
+            "syntax": sum(c["selected"] and c["invalid_initial"] for c in result["cases"]),
+        }, indent=2))
 
 
 if __name__=="__main__":
