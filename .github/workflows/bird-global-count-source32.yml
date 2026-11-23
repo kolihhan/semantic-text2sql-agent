@@ -1,0 +1,70 @@
+name: BIRD global-count 32 prospective question-only freeze (zero Qwen)
+on:
+  push:
+    branches: [research/bird-global-cardinality-after-group-v1-20261123]
+    paths: [.github/workflows/bird-global-count-source32.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  freeze-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.11'}
+      - name: Verify native LangGraph graph and deterministic physical semantic proof
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]'
+          python -m pytest -q tests/test_langgraph_global_cardinality.py tests/test_grouped_global_cardinality.py
+      - name: Retrieve recent 19 question-only identities without reference SQL
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 45100836322
+          github-token: ${{ github.token }}
+          name: BIRD-COUNT-GRAIN-TRAIN19-GOLD-FREE-SOURCE-BEFORE-QWEN
+          path: previous19
+      - name: Retrieve recent 11 question-only identities without reference SQL
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          repository: kolihhan/semantic-text2sql-agent
+          run-id: 45056668936
+          github-token: ${{ github.token }}
+          name: BIRD-ALLOF-TRAIN11-GOLD-FREE-SOURCE-BEFORE-QWEN
+          path: previous11
+      - name: Fetch pinned original BIRD TRAIN but do not inspect or emit publisher SQL
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 5 \
+            'https://huggingface.co/datasets/Emulated-Inc/text-to-sql-with-evidence-training-pool/resolve/cd2c4ea321075aa53ce7dfe52deaaffa505d046a/raw/bird/train.json' \
+            -o original-bird-train.json
+          echo 'cd5884489dffd7c76d73509b396bd919fbe8b486efbc4ba2f48f89460de7d69f  original-bird-train.json' | sha256sum -c -
+      - name: New source-only grouped-cardinality question and DB freeze
+        run: |
+          set -euo pipefail
+          python -m experiments.bird_global_count_freeze32 \
+            --train original-bird-train.json \
+            --prior previous19/questions-only.json previous11/questions-only.json \
+            --out BIRD-GLOBAL32-original-question-only-frozen.json
+          python - <<'PY'
+          import json
+          x=json.load(open('BIRD-GLOBAL32-original-question-only-frozen.json'))
+          assert x['n']==32 and x['n_db']>=12
+          assert x['publisher_SQL_never_read'] and x['no_Qwen_inference']
+          assert x['no_recent_BIRD11_or_BIRD19_question_overlap']
+          assert x['last_two_protected_TRAIN_DBS_unused'] and x['BIRD_HOLDOUT300_unused']
+          assert not any('SQL' in item for item in x['selection'])
+          print('FINAL_BIRD_GLOBAL32_SOURCE_ONLY_FREEZE',json.dumps(
+            {k:v for k,v in x.items() if k!='selection'},sort_keys=True),flush=True)
+          PY
+      - name: Upload ONLY immutable BIRD question identity/hashes, no reference SQL
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: BIRD-GLOBAL32-GOLD-FREE-QUESTION-IDENTITIES
+          path: BIRD-GLOBAL32-original-question-only-frozen.json
+          retention-days: 30
+          if-no-files-found: error
