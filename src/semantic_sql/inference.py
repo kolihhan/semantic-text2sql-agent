@@ -9,6 +9,7 @@ from .contracts import AgentResult, SQLCandidate, StageRecord, VerificationResul
 from .direct import _strip_fence, generate_direct_sql
 from .execution import SQLExecutionError, execute_readonly
 from .providers import ModelProvider
+from .projection_repair import repair as repair_entity_superlative_projection
 from .verifier import verify_sql_preflight
 
 
@@ -32,6 +33,7 @@ class GuardedContext:
     max_repairs: int = 2
     max_rows: int = 100
     semantic_revision: bool = False
+    projection_only: bool = False
 
 
 class GuardedState(TypedDict, total=False):
@@ -142,14 +144,64 @@ def _semantic_revise(state: GuardedState, runtime) -> dict[str, Any]:
 def _execute(state: GuardedState, runtime) -> dict[str, Any]:
     candidate = state["candidate"]
     verification = state["verification"]
-    try:
-        execution = execute_readonly(runtime.context.database, candidate.sql, max_rows=runtime.context.max_rows)
-    except SQLExecutionError as exc:
-        stages = _append_stage(state, "execute", f"failed: {exc}")
-        return {"result": AgentResult(status="execution_failed", question=state["question"], candidate=candidate, verification=verification, message=str(exc), stages=stages), "stages": stages}
-    stages = _append_stage(state, "execute", f"rows={len(execution.rows)}")
-    return {"result": AgentResult(status="ok", question=state["question"], candidate=candidate, verification=verification, rows=execution.rows, columns=execution.columns, truncated=execution.truncated, stages=stages), "stages": stages}
+    stages = state.get("stages", ())
 
+    # Opt-in postprocess: no extra LLM calls and no new graph nodes.
+    if runtime.context.projection_only:
+        projected, reason = repair_entity_superlative_projection(
+            state["question"], candidate.sql
+        )
+        if projected != candidate.sql:
+            projected_check = verify_sql_preflight(runtime.context.database, projected)
+            if projected_check.ok:
+                try:
+                    trial = execute_readonly(
+                        runtime.context.database, projected,
+                        max_rows=runtime.context.max_rows,
+                    )
+                except SQLExecutionError:
+                    trial = None
+                if trial is not None and not trial.truncated:
+                    projected_candidate = SQLCandidate(
+                        sql=projected, attempt=candidate.attempt,
+                    )
+                    stages = (*stages, StageRecord("projection_patch", reason))
+                    stages = (*stages, StageRecord("execute", f"rows={len(trial.rows)}"))
+                    return {
+                        "result": AgentResult(
+                            status="ok", question=state["question"],
+                            candidate=projected_candidate, verification=projected_check,
+                            rows=trial.rows, columns=trial.columns,
+                            truncated=False, stages=stages,
+                        ),
+                        "stages": stages,
+                    }
+            stages = (*stages, StageRecord("projection_patch", "fallback_original"))
+
+    try:
+        execution = execute_readonly(
+            runtime.context.database, candidate.sql,
+            max_rows=runtime.context.max_rows,
+        )
+    except SQLExecutionError as exc:
+        stages = (*stages, StageRecord("execute", f"failed: {exc}"))
+        return {
+            "result": AgentResult(
+                status="execution_failed", question=state["question"],
+                candidate=candidate, verification=verification,
+                message=str(exc), stages=stages,
+            ),
+            "stages": stages,
+        }
+    stages = (*stages, StageRecord("execute", f"rows={len(execution.rows)}"))
+    return {
+        "result": AgentResult(
+            status="ok", question=state["question"], candidate=candidate,
+            verification=verification, rows=execution.rows,
+            columns=execution.columns, truncated=execution.truncated, stages=stages,
+        ),
+        "stages": stages,
+    }
 
 def _refuse(state: GuardedState) -> dict[str, Any]:
     return {"result": AgentResult(status="verification_failed", question=state["question"], candidate=state.get("candidate"), verification=state.get("verification"), message="deterministic SQL verification failed after repair budget; SQL was not executed", stages=state.get("stages", ()))}
@@ -195,6 +247,7 @@ def run_guarded(
     schema_context: str, evidence: str | None = None,
     initial_candidate: SQLCandidate | None = None, max_repairs: int = 2,
     max_rows: int = 100, semantic_revision: bool = False,
+    projection_only: bool = False,
 ) -> AgentResult:
     database = Path(database)
     output = _build_guarded_graph(semantic_revision=semantic_revision).invoke(
@@ -213,6 +266,7 @@ def run_guarded(
             max_repairs=max_repairs,
             max_rows=max_rows,
             semantic_revision=semantic_revision,
+            projection_only=projection_only,
         ),
     )
     result = output["result"] if isinstance(output, dict) else output.result
