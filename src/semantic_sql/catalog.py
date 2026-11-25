@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import sqlite3
+from contextlib import closing
 
 
 @dataclass(frozen=True)
@@ -71,6 +72,15 @@ class DatabaseCatalog:
             return None if row is None else row[0]
         finally:
             con.close()
+
+    def native_ddl(self, selected: set[str] | None = None) -> str:
+        """Return SQLite's stored CREATE TABLE statements without modifying the database."""
+        names = set(self.tables) if selected is None else selected
+        with closing(sqlite3.connect(self.database.resolve().as_uri() + "?mode=ro", uri=True)) as con:
+            ddl = dict(con.execute("SELECT name, sql FROM sqlite_master WHERE type='table' AND sql IS NOT NULL"))
+        if not names <= self.tables.keys() or not names <= ddl.keys():
+            raise ValueError("Native DDL unavailable for selected tables")
+        return "\n".join(ddl[name].rstrip(";") + ";" for name in sorted(names))
 
     def schema_text(self) -> str:
         lines: list[str] = []

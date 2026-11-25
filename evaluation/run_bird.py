@@ -190,6 +190,7 @@ def run_paired_dev(
     max_repairs: int = 2,
     max_rows: int = 50_000,
     resume: bool = False,
+    native_ddl: bool = False,
 ) -> dict:
     if output_path.exists() and not resume:
         raise FileExistsError(f"refusing to overwrite existing output: {output_path}")
@@ -222,7 +223,7 @@ def run_paired_dev(
             "model": model, "model_digest": model_digest, "base_url": base_url, "timeout_s": timeout_s,
             "think": False, "max_repairs": max_repairs, "max_rows": max_rows,
             "guarded_treatment": GUARDED_TREATMENT_ID,
-            "schema_grounding": "deterministic_lexical_v1",
+            "schema_grounding": "deterministic_lexical_v1_native_ddl" if native_ddl else "deterministic_lexical_v1",
         },
         "official_bird_evaluator": {"url": OFFICIAL_BIRD_EVALUATOR_URL, "revision": OFFICIAL_BIRD_EVALUATOR_REVISION},
         "metrics": None,
@@ -246,7 +247,7 @@ def run_paired_dev(
                 catalog = DatabaseCatalog.from_sqlite(database)
                 cache[case.database_id] = (database, catalog)
             database, catalog = cache[case.database_id]
-            schema_context, schema_diagnostics = select_schema_context(catalog, database_root, case.database_id, case.question)
+            schema_context, schema_diagnostics = select_schema_context(catalog, database_root, case.database_id, case.question, native_ddl=native_ddl)
             provider = CountingProvider(provider_factory() if provider_factory else OllamaProvider(model=model, base_url=base_url, timeout_s=timeout_s))
             evidence = case.evidence.strip() or None
 
@@ -358,7 +359,7 @@ def _cmd_paired_dev(args: argparse.Namespace) -> int:
         source_path=Path(args.source), database_root=Path(args.database_root),
         manifest_path=Path(args.manifest), output_path=Path(args.output),
         model=args.model, base_url=args.base_url, timeout_s=args.timeout,
-        max_repairs=2, max_rows=args.max_rows, resume=args.resume,
+        max_repairs=2, max_rows=args.max_rows, resume=args.resume, native_ddl=args.native_ddl,
     )
     print(json.dumps({"status": payload["status"], "metrics": payload["metrics"]}, indent=2))
     return 0 if payload["status"] == "complete" else 2
@@ -377,6 +378,7 @@ def main(argv: list[str] | None = None) -> int:
     paired.add_argument("--max-rows", type=int, default=50_000)
     paired.add_argument("--output", required=True)
     paired.add_argument("--resume", action="store_true")
+    paired.add_argument("--native-ddl", action="store_true", help="use native SQLite DDL for selected tables (legacy schema remains default for reproducibility)")
     paired.set_defaults(func=_cmd_paired_dev)
     args = parser.parse_args(argv)
     return int(args.func(args))
