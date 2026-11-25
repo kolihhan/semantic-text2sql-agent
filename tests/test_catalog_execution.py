@@ -70,3 +70,42 @@ def test_schema_selector_falls_back_when_question_is_uncertain(tmp_path):
     assert diagnostics["fallback_full_schema"] is True
     assert set(diagnostics["selected_tables"]) == set(catalog.tables)
     assert "products" in context and "customers" in context
+
+
+def test_native_ddl_selected_tables_and_descriptions(tmp_path):
+    db = make_db(tmp_path)
+    catalog = DatabaseCatalog.from_sqlite(db)
+    before = db.read_bytes()
+    ddl = catalog.native_ddl({"orders"})
+    assert "CREATE TABLE orders" in ddl
+    assert "total_amount REAL" in ddl
+    assert "REFERENCES customers(id)" in ddl
+    assert "CREATE TABLE customers" not in ddl
+    with pytest.raises(ValueError, match="Native DDL unavailable"):
+        catalog.native_ddl({"missing"})
+    desc = tmp_path / "demo" / "database_description"
+    desc.mkdir(parents=True)
+    (desc / "orders.csv").write_text("original_column_name,column_description\ntotal_amount,Order total\n")
+    original, baseline = select_schema_context(catalog, tmp_path, "demo", "show customer total amount")
+    treatment, diagnostic = select_schema_context(catalog, tmp_path, "demo", "show customer total amount", native_ddl=True)
+    assert diagnostic["selected_tables"] == baseline["selected_tables"]
+    assert diagnostic["schema_format"] == "native_ddl"
+    assert "CREATE TABLE orders" in treatment and "Order total" in treatment
+    assert "FK orders.customer_id -> customers.id" in original
+    assert db.read_bytes() == before
+
+
+def test_service_passes_native_ddl_to_generation_and_existing_repair(tmp_path):
+    from semantic_sql.agent import SemanticSQLService
+
+    prompts = []
+    class Provider:
+        def complete_text(self, *, system, user):
+            prompts.append(user)
+            return "SELECT missing FROM orders" if len(prompts) == 1 else "SELECT COUNT(*) FROM orders"
+
+    result = SemanticSQLService(make_db(tmp_path), provider=Provider()).ask("How many orders?")
+    assert result.status == "ok"
+    assert result.rows == ((2,),)
+    assert len(prompts) == 2
+    assert all("CREATE TABLE orders" in p and "REFERENCES customers(id)" in p for p in prompts)
