@@ -48,6 +48,7 @@ def _tokens(value: str) -> set[str]:
 
 def select_schema_context(
     catalog: DatabaseCatalog, database_root: Path, db_id: str, question: str,
+    *, native_ddl: bool = False,
 ) -> tuple[str, dict[str, object]]:
     """Select a compact lexical schema context; fall back closed to the full schema."""
     query_tokens = _tokens(question)
@@ -80,6 +81,8 @@ def select_schema_context(
     for source_table, source_col, target_table, target_col in catalog.foreign_keys:
         if source_table in selected and target_table in selected:
             schema_lines.append(f"FK {source_table}.{source_col} -> {target_table}.{target_col}")
+    if native_ddl:
+        schema_lines = [catalog.native_ddl(selected)]
     selected_descriptions = [
         (table, column, description) for table, column, description in descriptions
         if table in selected and column in catalog.tables[table].columns
@@ -90,6 +93,7 @@ def select_schema_context(
     context = "\n".join(("Physical SQLite schema:", *schema_lines))
     diagnostics = {
         "selector": "deterministic_lexical_v1",
+        **({"schema_format": "native_ddl"} if native_ddl else {}),
         "fallback_full_schema": uncertain,
         "query_tokens": sorted(query_tokens),
         "selected_tables": sorted(selected),
