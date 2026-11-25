@@ -36,7 +36,7 @@ class SemanticSQLService:
             database=self.database,
             provider=self.provider,
             question=question,
-            schema_context=self.catalog.schema_text(),
+            schema_context=self.catalog.native_ddl(),
             evidence=evidence,
             initial_candidate=initial_candidate,
             max_repairs=self.max_repairs,
