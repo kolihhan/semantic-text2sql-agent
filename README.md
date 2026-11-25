@@ -125,6 +125,8 @@ These two examples come from an earlier frozen 4B run and illustrate the same fa
 ```mermaid
 flowchart LR
     Q[Question] --> G[Generate SQL]
+    S[Native SQLite DDL] --> G
+    S --> R
     G --> V[Deterministic verification]
     V -->|fail| R[Bounded repair]
     R --> V
@@ -134,12 +136,16 @@ flowchart LR
 
 An optional semantic-review path remains available for experimentation, but the frozen ablation above did not justify enabling it by default.
 
+Native DDL is enabled in the service (Streamlit, API and CLI). For paired BIRD evaluation, pass `--native-ddl` to `evaluation/run_bird.py paired-dev`; the legacy schema remains the benchmark default so historical runs remain reproducible.
+
+In the [TRAIN10 engineering dry-run](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/45550802394), native DDL executed 10/10 queries versus 9/10 with the legacy representation, used 10 versus 12 model calls, and used 9,210 versus 6,734 tokens (+36.8%). This failed the original +10% token budget gate. The owner explicitly requested integration despite that trade-off. Semantic EX has not been evaluated for native DDL; historical benchmark numbers above remain legacy-schema results.
+
 ## Engineering choices
 
 - **Deterministic checks before execution** instead of asking another model to judge obvious compiler or safety failures.
 - **Bounded repair** with `max_repairs=2`, avoiding an open-ended agent loop.
 - **Read-only SQLite execution** so generated SQL cannot mutate the database.
-- **Schema grounding** keeps the default generation path tied to the actual database surface.
+- **Native schema grounding** supplies SQLite's stored `CREATE TABLE` definitions (columns, types, primary and foreign keys) to generation and bounded repair. No extra model call or database write.
 - **Experimental value grounding** exists in separate grounding/DGSL experiments; it is not part of the default `SemanticSQLService` path.
 - **One service layer** behind Streamlit, FastAPI, and CLI.
 - **Paired evaluation** keeps reliability and correctness claims tied to the same frozen cases.
