@@ -56,7 +56,7 @@ jobs:
               btn.click()
               expect(page.get_by_text("Pipeline activity")).to_be_visible(timeout=60000)
               expect(page.get_by_text("Generated SQL")).to_be_visible(timeout=60000)
-              expect(page.get_by_text("PASS",exact=False)).to_be_visible(timeout=60000)
+              expect(page.get_by_text("PASS — query is read-only and passed deterministic checks")).to_be_visible(timeout=60000)
               body=page.locator("body").inner_text()
               assert "SUM(orders.total_amount)" in body,body[-3000:]
               assert "execute" in body.lower(),body[-3000:]
