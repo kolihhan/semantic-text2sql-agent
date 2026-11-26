@@ -78,9 +78,9 @@ Source: [successful GPU run](https://github.com/kolihhan/semantic-text2sql-agent
 
 ### 1. Valid SQL can still be wrong
 
-On a previously inspected BIRD case, the query compiled, passed verification, and returned **23 rows**, but failed the execution-match correctness test. SQLite proved that the query could run—not that it captured the user’s intent.
+In an earlier **4B diagnostic** (BIRD case 1366, `student_club`), the query compiled, passed verification, and returned **23 rows**, but failed execution-match correctness. SQLite proved that the query could run—not that it captured the user’s intent.
 
-That is why the project tracks **correctness** and **execution success** as separate metrics. [Failure analysis in the original frozen study](runs/qwen9b-frozen100/summary.json).
+This example is separate from the 9B experiments above. The project tracks **correctness** and **execution success** as distinct metrics. [Original case analysis](https://github.com/kolihhan/semantic-text2sql-agent/blob/ffdf1d32468a84662167e60fab5d4a805a3715da/README.md#2-some-wrong-answers-look-completely-healthy).
 
 ### 2. Recovery can improve accuracy and reduce reliability
 
