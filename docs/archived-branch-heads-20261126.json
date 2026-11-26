@@ -1,0 +1,760 @@
+{
+  "created_utc": "2026-11-26",
+  "repository": "kolihhan/semantic-text2sql-agent",
+  "default_branch": "main",
+  "reason": "Owner requested only main branch and no open PRs; historical branch SHA recovery index.",
+  "branch_heads": [
+    {
+      "name": "eval/compact-plan-recover-first-pass-20261125",
+      "sha": "25db1046edafefce8cc7e3f103bbe9853a6d04a7"
+    },
+    {
+      "name": "eval/dev300-semantic-error-headroom-20261124",
+      "sha": "a6b0d761da6744f06df6c5efbe708a1cd9ca0d62"
+    },
+    {
+      "name": "eval/projection-only-dev300-20261124",
+      "sha": "5790b9b048e3b67e985e4a48c85e1db75824efc2"
+    },
+    {
+      "name": "exp/compact-plan-dev300-20261124",
+      "sha": "3ec0cf3fb889ebe302ca2a684bb7b1043e90ac07"
+    },
+    {
+      "name": "exp/contrastive-icl-dev100-20261125",
+      "sha": "8e2f3bc93d8628b1e36942eafdddcd1e34bf78f7"
+    },
+    {
+      "name": "exp/independent-semantic-verifier-colab-20261124",
+      "sha": "c36b19df951b78869cb36159fee6210b1f9565e2"
+    },
+    {
+      "name": "exp/native-ddl-paired-dev300-20261125",
+      "sha": "0f76742ce4639cf35966341059f7d620a4b53767"
+    },
+    {
+      "name": "exp/semantic-minimal-pairs-20261125",
+      "sha": "158b1fb3ff856036d0068083b2b82fa272f7e5c5"
+    },
+    {
+      "name": "exp/t2s-20261123",
+      "sha": "1598c34e7da5af0e470c0dc482897548b4b87444"
+    },
+    {
+      "name": "exp/t2s-20261123-h1",
+      "sha": "1b67a9b54855c0fb13b689688ace2741d144d297"
+    },
+    {
+      "name": "exp/t2s-baseline-calibration-colab-20261124",
+      "sha": "814b3c5cf674891c29d0b1ab224842d20b95380e"
+    },
+    {
+      "name": "exp/t2s-h2-contract-colab-20261123",
+      "sha": "0f2e54dfd8938c105bbecd89d4f1cf17d75930b4"
+    },
+    {
+      "name": "exp/t2s-qlora32-val64-gpu-20261124",
+      "sha": "877d7368294499ef4f08c09fa97ea8ff680a0e2c"
+    },
+    {
+      "name": "exp/t2s-structural-vs-clauses-colab-20261124",
+      "sha": "68d826eabc4775a3194561439a3109639e7f9395"
+    },
+    {
+      "name": "exp/trellis-e-colab-20261125",
+      "sha": "d6e44cf4ced622c326c6ae65672de8429a03926b"
+    },
+    {
+      "name": "exp/trellis-gpu-ablation-20261126",
+      "sha": "c365ccef837f87b8fa6d69ea780637a59a3190b3"
+    },
+    {
+      "name": "exp/trellis-integrated-cpu-20261125",
+      "sha": "af19e9be70064176992a637f9d8aa2616ba4204c"
+    },
+    {
+      "name": "exp/trellis-integrated-kaggle-20261125",
+      "sha": "55a915893ba7095fde82af0c153bd8395bc91b01"
+    },
+    {
+      "name": "exp/trellis-projection-dev32-20261125",
+      "sha": "bb2439cc9990e5b04634b491c108c449059dfdef"
+    },
+    {
+      "name": "exp/trellis-tpu-ablation-20261125",
+      "sha": "580b8f8f13c244bae0f2722d983b1caccfede70c"
+    },
+    {
+      "name": "exp/vet-trace-cpu-20261125",
+      "sha": "0987db6b0217ae812ce7f9eb7e31917c117445af"
+    },
+    {
+      "name": "experiment/a5-plan-transfer40-20261114",
+      "sha": "91b6110cb73860aa383500a685a0e62b5a09afaf"
+    },
+    {
+      "name": "experiment/arctic7b-native-bird100-20261114",
+      "sha": "5b710133f1440b2f6a27818240f92951155f3988"
+    },
+    {
+      "name": "experiment/bird-diverse-backbone-20261113",
+      "sha": "c6677f36550c60f301a2c634ab79cee626e30810"
+    },
+    {
+      "name": "experiment/bird-implicit-fk-grounding-v1-20261117",
+      "sha": "7e973f68ff0b2cfc1369163a3b71f7cebed2e777"
+    },
+    {
+      "name": "experiment/bird-question-grounded-bridge-20261113",
+      "sha": "799d4f25f2bd550500d154b3d06c0761202c4c99"
+    },
+    {
+      "name": "experiment/bird-structural-contract-veto-20261113",
+      "sha": "c3a63fe60665e8d4085cbd6f4d8f0583758b0caa"
+    },
+    {
+      "name": "experiment/bird100-fixed-projection-replay-20261115",
+      "sha": "97810642a9d88b0df9bfe3fa74b1d19c8af7d431"
+    },
+    {
+      "name": "experiment/chinook-t13-grain-counterfactual-20261115",
+      "sha": "e260f6c3636a5f4ae4b11d544f39f8adf6933de7"
+    },
+    {
+      "name": "experiment/evidence-gated-semantic-v2-20261113",
+      "sha": "9090d13500ea4d0dbeb82e43dfbdba1c48460f7b"
+    },
+    {
+      "name": "experiment/fk-path-bridging-spider-source-shift-20261115",
+      "sha": "93066813a987bb63f3bad906a755745e22400f3e"
+    },
+    {
+      "name": "experiment/live-xiyan-first-bird100-20261114",
+      "sha": "feb551b16ab23495ae9a1e68c333215a62befe65"
+    },
+    {
+      "name": "experiment/physical-predicate-feedback-20261124",
+      "sha": "658621272d53a7fa8f6d26fe84a852294e4314e6"
+    },
+    {
+      "name": "experiment/projection-only-minimal-patch-20261124",
+      "sha": "57f2c1d1cc95eee3bf8de95391813dc6325e2b9c"
+    },
+    {
+      "name": "experiment/qwen-coder7b-cpu-bird12-20261116",
+      "sha": "4cb9b6509185423de6826068fe448470988bd490"
+    },
+    {
+      "name": "experiment/qwen-entity-grain-direct-prompt-spider-20261115",
+      "sha": "bd762a0baefb2d24a036efd27d9fe36eb906e585"
+    },
+    {
+      "name": "experiment/qwen-grain-frozen-bird20-transfer-20261115",
+      "sha": "d97074de00fef7a5710407862d8526091309190c"
+    },
+    {
+      "name": "experiment/qwen-only-schema-grounding-20261114",
+      "sha": "ad78a9708675ffb45dbd9d069147e7034261f3dd"
+    },
+    {
+      "name": "experiment/qwen-physical-evidence-oracle24-20261114",
+      "sha": "da4c33034d1d2b53c8ba0708db175e346475d31c"
+    },
+    {
+      "name": "experiment/qwen-projection-only-newspider-20261115",
+      "sha": "9793dd50983ab9861e4b89b814f2a79cec1902d4"
+    },
+    {
+      "name": "experiment/qwen-rank-intent-new40-20261114",
+      "sha": "c4f796b63da986716e54aff7a2d4e2d876fd6630"
+    },
+    {
+      "name": "experiment/qwen-relational-contract-shift20-20261115",
+      "sha": "8bcd20421c521b710a3ccf9b2f892672b7bcccc4"
+    },
+    {
+      "name": "experiment/qwen-source-first-value-anchor-gate-20261114",
+      "sha": "3a1be5f243231d5324d86dba65dc4190731f8529"
+    },
+    {
+      "name": "experiment/qwen-tool-interaction-bird12-20261115",
+      "sha": "3e7625be6ae622cee24293abd0739c3d505a209a"
+    },
+    {
+      "name": "experiment/qwen-tools-batched-bird12-fresh-20261116",
+      "sha": "468c4deb246e8280ef01e66fd736f8a8ccf4df93"
+    },
+    {
+      "name": "experiment/qwen-typed-ir-source-gate-20261115",
+      "sha": "3d8672d3acf0cd26a850ad18643f51c9e61296a9"
+    },
+    {
+      "name": "experiment/qwen3-14b-samebird12-colab-screen-20261116",
+      "sha": "e8deb887273a3e8116dac729189f7926253d1688"
+    },
+    {
+      "name": "experiment/qwen9b-answer-grain-spider12-20261115",
+      "sha": "ce764a61cf402dc31ad2a5e5e15ac1694e57da89"
+    },
+    {
+      "name": "experiment/qwen9b-bird-train-clean-sft-source-20261116",
+      "sha": "c0a0e7f87f79fb0efe8a5e543fb17a2fe3d9e2c4"
+    },
+    {
+      "name": "experiment/qwen9b-birdtrain-db4-guarded-baseline64-20261116",
+      "sha": "339d21c9409f2297eb93a2edfedb0ebce120194e"
+    },
+    {
+      "name": "experiment/qwen9b-candidate-consensus-spider-shift20-20261115",
+      "sha": "db816dd44fdc4e6594970e71270d8bff31d07bb3"
+    },
+    {
+      "name": "experiment/qwen9b-casefold-transfer40-20261115",
+      "sha": "1c5ae9756fea50b8dfdb80ce87894e8d4ac6721a"
+    },
+    {
+      "name": "experiment/qwen9b-column-type-evidence8-20261117",
+      "sha": "96707ab46d17ef1d99baa095e21d18a04bd28c97"
+    },
+    {
+      "name": "experiment/qwen9b-count-join-grain-16-20261117",
+      "sha": "79b73a0922d707986a3db2defa8a1bf16dad46a7"
+    },
+    {
+      "name": "experiment/qwen9b-crossdb-icl-bird20-20261115",
+      "sha": "1806e2187cb597b09217ce867021b1e616d52cad"
+    },
+    {
+      "name": "experiment/qwen9b-entity-grain-guard-newtrain-20261119",
+      "sha": "dd3b0c4f70813261340fbbed583969a6c65e99f9"
+    },
+    {
+      "name": "experiment/qwen9b-entity-value-grounding-20261117",
+      "sha": "1086c67d3691a66d4b4edcc02baf361cd85a33f3"
+    },
+    {
+      "name": "experiment/qwen9b-full-physical-schema-bird12-20261116",
+      "sha": "58484dbd38ce89ec3f22d882f9c875858dcee4d5"
+    },
+    {
+      "name": "experiment/qwen9b-kaggledbqa-column-docs-20261115",
+      "sha": "632ede811eab27b54a236fbeee58b8f839271b7b"
+    },
+    {
+      "name": "experiment/qwen9b-literal-grounding-audit-20261114",
+      "sha": "1bc5217f290e46d463899654a2e5451143a106cb"
+    },
+    {
+      "name": "experiment/qwen9b-native-think-gate-20261114",
+      "sha": "cd83c11a093283275ea341616af2c3a3b2017549"
+    },
+    {
+      "name": "experiment/qwen9b-one-pass-semantics-v2dev40",
+      "sha": "9104fedd10be11f9581f5cb9fe692a55cb46a540"
+    },
+    {
+      "name": "experiment/qwen9b-original-schema100-transfer-gate-20261116",
+      "sha": "2900639dc1c05a323b8dcbfbcb9bed78d0c7e116"
+    },
+    {
+      "name": "experiment/qwen9b-physical-value-evidence-20261115",
+      "sha": "77a4e46ffa20eb3fddc74b926006b8df63f6d999"
+    },
+    {
+      "name": "experiment/qwen9b-physical-witness-20261115",
+      "sha": "04d84155ec57b1c66205d6924cd0e3635b54c663"
+    },
+    {
+      "name": "experiment/qwen9b-relevance-pruned-descriptions-20261116",
+      "sha": "b11628bb849ccb0e13de4806a5c8b1e7804caa0b"
+    },
+    {
+      "name": "experiment/qwen9b-role-scoped-value-evidence-v1-20261117",
+      "sha": "9e7aacd5c875d1414ff6c57244507191c6435e54"
+    },
+    {
+      "name": "experiment/qwen9b-semantic-aa-controlled-20261113",
+      "sha": "f99cc41a77a2d752bf2780d215e59ab909067ef1"
+    },
+    {
+      "name": "experiment/qwen9b-semantic-plan-train40-20261114",
+      "sha": "25c71210dda37214c0375df2367994eb76e57135"
+    },
+    {
+      "name": "experiment/qwen9b-semantic-row-preview-review8-20261117",
+      "sha": "40541282fb5c19d95f8620ab89af21f92256ff26"
+    },
+    {
+      "name": "experiment/qwen9b-spider-train-fewshot-bird12-20261116",
+      "sha": "280577669d53e022b90fb841c8bfda2e816aa989"
+    },
+    {
+      "name": "experiment/qwen9b-sql-qlora32-t4-physical-rerun-20261117",
+      "sha": "3e1529f7e802512611d90875c088ec807a79c434"
+    },
+    {
+      "name": "experiment/qwen9b-sql-qlora32-train20261116",
+      "sha": "6fa6214c3486f2abe4b19e9ba6b4ea3a8a481f11"
+    },
+    {
+      "name": "experiment/qwen9b-value16-second-unseen-dbs-20261117",
+      "sha": "07984ce904e4b20ed435336d0d3b6cae561a07de"
+    },
+    {
+      "name": "experiment/semantic-layer-a1-a2-a3-20261112",
+      "sha": "b46c053bfbb07034629b4d5b96052eadee4712f0"
+    },
+    {
+      "name": "experiment/semantic-v2-fresh40-paired-20261113",
+      "sha": "30a32faad7c9ffb28150039341eb96778d376a98"
+    },
+    {
+      "name": "experiment/semantic-v3-count-grain-20261113",
+      "sha": "73cc3bfa7f6e6b2637acf46fcae438f2788752bd"
+    },
+    {
+      "name": "experiment/spider-published-fk-source-20261115",
+      "sha": "f694a5e1e6b6cf7b95e265900437f8fcf76ed74f"
+    },
+    {
+      "name": "experiment/sql-a5-independent-role-holdout-20261113",
+      "sha": "3f4a2521a7d86d4984bf2d2541c4fbfae3dd1056"
+    },
+    {
+      "name": "experiment/sql-a5-spider-train-schema-shift-20261113",
+      "sha": "b850cf957d7793dd882faa02a83af4bc05501773"
+    },
+    {
+      "name": "experiment/sql-grounding-spider-shift-20261113",
+      "sha": "58e4cc5bb721609c0d79e963b4a8044e9a1f001e"
+    },
+    {
+      "name": "experiment/sql-semantic-plan-counterfactual-20261113",
+      "sha": "bef25ad43eb709a50354e9afc5ccc0bf40bddb96"
+    },
+    {
+      "name": "experiment/sql-sft-mysql-semantic-patterns-20261113",
+      "sha": "ca2fb535a7af3fe09b9858d3e2b93e72a2160098"
+    },
+    {
+      "name": "experiment/unique-fk-join-source-repair-bird100-20261115",
+      "sha": "1153e1f8f7aa65d115b7b3c911be6c8b0d3bc582"
+    },
+    {
+      "name": "experiment/xiyan-first-runtime-fallback-20261114",
+      "sha": "82b60f4bc174e093fbac5a3edbdc446c140f5f4a"
+    },
+    {
+      "name": "experiment/xiyan-mschema-20261112",
+      "sha": "9333b0a2aa1d519cb5b16c0a308d1ecae0a5fac4"
+    },
+    {
+      "name": "experiment/xiyan-mschema-transfer40-20261114",
+      "sha": "4d8f3b19457b2aa47345a337dcd000d5104d91c4"
+    },
+    {
+      "name": "experiment/xiyan-qwen-factorial-fresh40-20261113",
+      "sha": "8e06badbaecd4e2c61c84edc6bba9ad96cd67254"
+    },
+    {
+      "name": "experiment/xiyan-qwen-guarded-frozen100-20261114",
+      "sha": "5b710133f1440b2f6a27818240f92951155f3988"
+    },
+    {
+      "name": "experiment/xiyan-qwen-transfer-20261114",
+      "sha": "6d20d9836f68b9c55cfed6bef061e0ad95df81cb"
+    },
+    {
+      "name": "experiment/xiyan-semantic-shards-20261112",
+      "sha": "8bef992ebdca2a5ae02fb2de611819c234b3f2c9"
+    },
+    {
+      "name": "experiment/xiyan-triple-consistency-20261112",
+      "sha": "d647dd8f4b21d45c72b8a108fb3ad17a5519949b"
+    },
+    {
+      "name": "experiment/xiyan-vs-guarded-20261114",
+      "sha": "b926108b741ddffbb50b18996ffdda5264c391f8"
+    },
+    {
+      "name": "feat/native-ddl-schema-context",
+      "sha": "eb05aa397ea99a07e95f453bddeec00c46480fe3"
+    },
+    {
+      "name": "feature/lean-xiyan-first-20261114",
+      "sha": "c352861a48f7925fa801cb4377d1a845f895554d"
+    },
+    {
+      "name": "feature/sql-recovery-20261126",
+      "sha": "73a62ccf2cc6d7dbfa03f014bc2f04a9aa9b1295"
+    },
+    {
+      "name": "feature/sql-recovery-production-20261126",
+      "sha": "465d4c05398743b6b68895f7fcb1dd3cd268441a"
+    },
+    {
+      "name": "fix/qwen9b-exact-rerun-20261112",
+      "sha": "af0555b34d65fc70b8cb03763d9414fff39506d2"
+    },
+    {
+      "name": "fix/semantic-sft-reserve-shard-holdout-20261112",
+      "sha": "8bbaee2b0f540e4d407439b519d19df6e5ebd7f9"
+    },
+    {
+      "name": "fix/t2s-sql-execution-timeout-20261123",
+      "sha": "498192ee52aa5163b9cca603a00e71e7342dc8c4"
+    },
+    {
+      "name": "fix/value-grounded-semantic-filter-20261113",
+      "sha": "4501bda85d8e1f9d5f1e1640050e72944fc42ae5"
+    },
+    {
+      "name": "infra/bird-langgraph-hybrid-scheduler-20261123",
+      "sha": "a7ff2223c7ece163f8121a10fb667eb674286be1"
+    },
+    {
+      "name": "research/bird-count-grain-witness-prototype-20261123",
+      "sha": "dd1caa90cbf5919021eafdd2dee91fe78f469438"
+    },
+    {
+      "name": "research/bird-dev500-k8-salvage-shard7-20261118",
+      "sha": "ffe79c7c7fe9dd7d74895bc221f29876984b2e7b"
+    },
+    {
+      "name": "research/bird-dev500-kcache-prefix-frontier-20261118",
+      "sha": "d34731962514f275335306a3400a8522ca787bf3"
+    },
+    {
+      "name": "research/bird-dev500-offline-bag-selector-sensitivity-20261118",
+      "sha": "21931848f5e20a444d07d496a4b80d1ae0193acc"
+    },
+    {
+      "name": "research/bird-global-cardinality-after-group-v1-20261123",
+      "sha": "8b3806c5e4f9ae999f266a7e7bd19db12d3bc1ff"
+    },
+    {
+      "name": "research/bird-kprefix-gold1126-only-recovery-20261118",
+      "sha": "7a9519d31a7caa1b460b6413f2afa975769900e7"
+    },
+    {
+      "name": "research/bird-langgraph-conditional-physical-v1-20261123",
+      "sha": "96b7fc0fdee28448190889962e1ea31be3e83981"
+    },
+    {
+      "name": "research/bird-only-physical-answer-contract16-20261122",
+      "sha": "e5bdadbe9b5812b8209606702f21c235d75c1c78"
+    },
+    {
+      "name": "research/bird-only-physical-answer-replica16-20261123",
+      "sha": "f29c1adcd2264b57f1a5d0027dde09a3a7c1915e"
+    },
+    {
+      "name": "research/bird-relational-allof-graph-v1-20261123",
+      "sha": "d42bb7a46c60b5fc0064cde3db4a4e87c3a393e4"
+    },
+    {
+      "name": "research/bird-semantic-evidence-budget-v1-20261123",
+      "sha": "3db28a818eea6b5be6f337920c4dfdee54ef1caa"
+    },
+    {
+      "name": "research/bird100-parity-evidence-20261117",
+      "sha": "e17bddf4ad237c4d138a31459bbca8cf55bbe29d"
+    },
+    {
+      "name": "research/bird500-oracle-gap-support-census-20261118",
+      "sha": "3a710aa408daadbb65eeaffba89e849a147311d7"
+    },
+    {
+      "name": "research/birdtrain-entity-key-relational-witness-20261118",
+      "sha": "0f5129ac129ac50f8e67de37867351dea703b240"
+    },
+    {
+      "name": "research/birdtrain-evidence-sql-contract-20261118",
+      "sha": "4c6d06c4ed639cd1bbfbdd348d2d93de6c130bec"
+    },
+    {
+      "name": "research/birdtrain-g2-physical-evidence-20261123",
+      "sha": "0cd4f35261b1d4a1e45ef4baa6574b60f081c0cf"
+    },
+    {
+      "name": "research/birdtrain-ood-ledger-clean-20261118",
+      "sha": "bc3588a3918613e465543bbb7b144ac90283705b"
+    },
+    {
+      "name": "research/birdtrain-quantifier-contract-probe-20261118",
+      "sha": "53a18d2f47caffe0415f46ec64b7d8ba32c78a9d"
+    },
+    {
+      "name": "research/birdtrain-residual-ood-holdout-20261118",
+      "sha": "c86adb70df5173d6c0b3d904375c32c8baa3e119"
+    },
+    {
+      "name": "research/birdtrain-schema-coverage-gate-20261118",
+      "sha": "53efe19ccbf2d1fd2ab278834f34e99d8526bcf4"
+    },
+    {
+      "name": "research/birdtrain242-label-contract-audit-20261117",
+      "sha": "ee98a5d8c8660691b257701a1e670203f6a7bcda"
+    },
+    {
+      "name": "research/birdtrain64-semantic-error-taxonomy-20261117",
+      "sha": "44529de2a912dabbbd621d8ef89bb8920691c77c"
+    },
+    {
+      "name": "research/dev100-equal-budget-abc-20261123",
+      "sha": "a5723b968210d6029e9bfd30fe85281e1a3e24d9"
+    },
+    {
+      "name": "research/dev100-matched-etsa-g012-20261123",
+      "sha": "ae504a20f174546f4c7c585d037b4e47cda232b7"
+    },
+    {
+      "name": "research/dev100-onecall-generation-abc-20261123",
+      "sha": "ae504a20f174546f4c7c585d037b4e47cda232b7"
+    },
+    {
+      "name": "research/dev500-81-count-grain-stoploss-20261119",
+      "sha": "0882ef750d7b56aeaf58db4147017681d1d4d849"
+    },
+    {
+      "name": "research/dev500-81-full-k8-source-triage-20261120",
+      "sha": "687d1f0506c36cda9f3362048dca1a9d1a94915f"
+    },
+    {
+      "name": "research/dev500-entity-denominator-physical-falsification-20261120",
+      "sha": "50e85ff8057f7a9e83824112e75dd9af36bc9bb1"
+    },
+    {
+      "name": "research/dev500-k1-firstsql-intent-survey-20261120",
+      "sha": "dbc98b43fadb4ad50fa04a1d8a9f57cc584d025f"
+    },
+    {
+      "name": "research/dev500-k1-k8-oracle-frontier-20261120",
+      "sha": "859de3ccab58b9734cdbfd84b81b4cb5e103a826"
+    },
+    {
+      "name": "research/dev500-zero-oracle-215-forensic-20261119",
+      "sha": "6a4df0c8388c80e90f23d2d49338f978615402c0"
+    },
+    {
+      "name": "research/evidence-2call-relation-probe96-negative-20261118",
+      "sha": "f1618f50f12696731e89f6f5db5c8a65b551ce0e"
+    },
+    {
+      "name": "research/final-mini-camelcase-schema-20261121",
+      "sha": "2707661ab3dae564784b2369caed96322d5f88ec"
+    },
+    {
+      "name": "research/final-qwen9b-semantic-plan-protected64-20261121",
+      "sha": "6f2a3bf95debf2aa0014cf7c9bd37c1540247b36"
+    },
+    {
+      "name": "research/fixed-qwen9b-grounded-plan-sql-train96-20261118",
+      "sha": "fed2742d95e1ec4c61a3a5973c353b0b74b12704"
+    },
+    {
+      "name": "research/fk-target-resolution-existing-pipeline-20261119",
+      "sha": "705b376f0f3c7091e9df9aad51ba8dd69aec0995"
+    },
+    {
+      "name": "research/freellmapi-transport-probe-20261122",
+      "sha": "b8ac4bcff25c61fe8ea653fff6f0cd30d3249fbe"
+    },
+    {
+      "name": "research/frozen-dev500-qwen9b-kcache-offline-selectors-20261117",
+      "sha": "53aa2f6861f19e6e11e91eca64f47dd75daee181"
+    },
+    {
+      "name": "research/grounded-plan96-result-evidence-only-20261118",
+      "sha": "ba30de436dd62d52d0bace61fefdda6179a187d7"
+    },
+    {
+      "name": "research/joint-entity-relation-selector-20261122",
+      "sha": "3e59ac14758a15c5e2ead98f80cfa401d9bf2f31"
+    },
+    {
+      "name": "research/k8-mode-collapse-distinct-program-vote-20261118",
+      "sha": "492c5723fed77426194f6018cf3b2da38b7fb6a9"
+    },
+    {
+      "name": "research/k8-mode-collapse-negative-evidence-only-20261118",
+      "sha": "f2f949a7be875c4c8c47210adbb0f11eb7cee2cc"
+    },
+    {
+      "name": "research/langgraph-execution-feedback-topk-20261122",
+      "sha": "74cadeffee4032b680d296ccf8fb4fc9220f0b2e"
+    },
+    {
+      "name": "research/metrics-protocol-20261116",
+      "sha": "faffa7d5926b7d30d2c8e121678c7c1abe77e441"
+    },
+    {
+      "name": "research/minimal-langgraph-targeted-repair-20261121",
+      "sha": "9bab3fbcd1b538f9dd0e99ca9a4fee4f6e9797e2"
+    },
+    {
+      "name": "research/native-ddl-dryrun-20261125",
+      "sha": "a450aeecf97647ae5941d972579c4bbfe57df4a2"
+    },
+    {
+      "name": "research/nonempty-semantic-error-signal-v1-20261122",
+      "sha": "312d1f89b7894e0a9d84dba1c79398849bc7bf1d"
+    },
+    {
+      "name": "research/oracle-semantic-diagnosis-20261125",
+      "sha": "f6bab8fcb92f0abd7f6be21787b9884f28f4af07"
+    },
+    {
+      "name": "research/physical-literal-binding-probe-20261122",
+      "sha": "cd605ed91cfadf915f54bc49cd047061f055f891"
+    },
+    {
+      "name": "research/physical-signal-blind-audit-20261122",
+      "sha": "5ca30134caf73ac112741a371145f318abab3424"
+    },
+    {
+      "name": "research/pro-sql-executable-wrong-vs-training-failure-20261116",
+      "sha": "0eb09180cc4c5fa189cbab342aff8b6dbc3ee120"
+    },
+    {
+      "name": "research/qwen35-9b-q4-q8-gh-cpu-20261122",
+      "sha": "bb80a3f9863822a83760d0faa6edc4299319bc62"
+    },
+    {
+      "name": "research/qwen9b-exact-physical-value-counterexamples-20261118",
+      "sha": "97a5872f4231e11c93dedbd09dbadedb563de0ea"
+    },
+    {
+      "name": "research/qwen9b-failure-taxonomy-20261116",
+      "sha": "2fc90fce00ca876cd0658e946903591b8305361f"
+    },
+    {
+      "name": "research/qwen9b-frozen100-offline-replay-20261115",
+      "sha": "b84c2c49747958fcbb63b2a26e8cb71f6cb83030"
+    },
+    {
+      "name": "research/qwen9b-physical-fanout-k2-gen-20261118",
+      "sha": "97481af04dfccfd7b360ea874d42e0221c6dd602"
+    },
+    {
+      "name": "research/qwen9b-relational-execution-probe96-20261118",
+      "sha": "e691e0cfe0c54818a57a81bdc00a8dd12955c901"
+    },
+    {
+      "name": "research/qwen9b-structural-counterhypothesis-k4-48-20261119",
+      "sha": "becc40ab27f2970bb86cc439851f330287b77444"
+    },
+    {
+      "name": "research/qwen9b-typed-semantic-plan-verifier-20261121",
+      "sha": "ef4dd80d5753be0403f26d13584e6052f7d776ba"
+    },
+    {
+      "name": "research/qwen9b-zero-row-targeted-repair-20261122",
+      "sha": "d0f3af2493abe18206604c6f6cea1cdd2a490742"
+    },
+    {
+      "name": "research/qwen9b-zero-row-train64-transfer-20261122",
+      "sha": "96446451419170af28bc4425b3415517a6bdc036"
+    },
+    {
+      "name": "research/record-bird-fk32-negative-20261117",
+      "sha": "3fa9a4b41d7076750d404efaf9eecb2b201ed8b6"
+    },
+    {
+      "name": "research/record-physical-value16-paired-positive-not-promoted-20261117",
+      "sha": "5978a4065ca8678a778ecdde18da7944f0c4325f"
+    },
+    {
+      "name": "research/record-pruned-description-closed-20261117",
+      "sha": "6ef93e2090d030d792c4256e7cec2ca3d186daa1"
+    },
+    {
+      "name": "research/record-qwen9b-birdtrain-valid64-20261116",
+      "sha": "99411620e23fa25d0d27d2a95e0b8ce4a564ff00"
+    },
+    {
+      "name": "research/record-qwen9b-dev32-outcome-20261116",
+      "sha": "964efba65fdc1a39caac7521817e262c979460d4"
+    },
+    {
+      "name": "research/record-role8-strict-negative-20261117",
+      "sha": "5a068e3f0eeb4898424ee789889f1ad0d444326d"
+    },
+    {
+      "name": "research/record-value-grounding-aa-variance-20261117",
+      "sha": "2ce7ead4067789feed880104699bcc9db5efceab"
+    },
+    {
+      "name": "research/record-value-grounding-replica-negative-20261117",
+      "sha": "0477ebc6cb4ce42715ee2c85bbf318cf3792b452"
+    },
+    {
+      "name": "research/resolve-stale-sql-qlora-running-note-20261117",
+      "sha": "96bb860d8b70bcb2b95c6e1df98e5d0980d14488"
+    },
+    {
+      "name": "research/roleswap-existing-train64-physical-screen-20261122",
+      "sha": "7bdd77da8acb3d074a93afc8dbf69bde9ab24888"
+    },
+    {
+      "name": "research/schema-token-linking-cpu-audit-20261119",
+      "sha": "26d4e52685b382965444465718e6a53d6eae081e"
+    },
+    {
+      "name": "research/selective-semantic-fallback-budget-20261121",
+      "sha": "18b793278453c6b07800dcbf67033222fccdd9f9"
+    },
+    {
+      "name": "research/semantic-contract-verifier-cpu-20261119",
+      "sha": "5d7986d1fa53ae609b4cb60bf4b91f44d49dd223"
+    },
+    {
+      "name": "research/semantic-feedback-blind-pilot-20261121",
+      "sha": "9686689cfdd58cea87ac1efe07c2446d28f56992"
+    },
+    {
+      "name": "research/semantic-gap-diagnostics-20261112",
+      "sha": "c42de3327f4e4f56dd5b7538d66cf36f1e901b9c"
+    },
+    {
+      "name": "research/semantic-intent-guard-20261122",
+      "sha": "399991f1bd63a6a31b1f5ba99d2c2cf5bb75f134"
+    },
+    {
+      "name": "research/semantic-sft-colab-20261112",
+      "sha": "e065b7feff1a1db8bf33b3e2f4e52dc54171f4a6"
+    },
+    {
+      "name": "research/semantic-view-engineering-20261125",
+      "sha": "5c74d8a238a323f60b6f2fc096521051be105650"
+    },
+    {
+      "name": "research/source-first-ratio-ordinal-probe-20261121",
+      "sha": "1116db9b4134a647feee9c1cb79279e56f6c8e35"
+    },
+    {
+      "name": "research/spider-joint-ex-proof-20261122",
+      "sha": "22577f2e69f99967af0fe34286b2e0a191ce438a"
+    },
+    {
+      "name": "research/sql-qlora32-t4-precision-preflight-20261117",
+      "sha": "f5a36d0067eaad783da0e12a69d6df67879722d8"
+    },
+    {
+      "name": "research/t2s-capability-audit-20261124",
+      "sha": "9ee39611182a75d95f3457de5eec26aa440e2f47"
+    },
+    {
+      "name": "research/template-slot-blind-ab-20261119",
+      "sha": "3f215dc1dfda622b7cbb65642e5f8a4175a14f60"
+    },
+    {
+      "name": "research/typed-erp-source-first-20261120",
+      "sha": "9305dc915281c353069941a8fbbbaa721864413b"
+    },
+    {
+      "name": "research/typed-question-schema-sql-unit-gate-20261120",
+      "sha": "e38c521e8b9ad52fbf102facbf094736930f43e2"
+    }
+  ]
+}
