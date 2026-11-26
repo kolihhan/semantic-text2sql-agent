@@ -1,6 +1,6 @@
 # Semantic Text-to-SQL
 
-A local text-to-SQL system with schema grounding, deterministic verification, bounded repair, and read-only execution.
+A local text-to-SQL system with schema grounding, structured generation, deterministic verification, bounded recovery, and read-only execution.
 
 ## Demo
 
@@ -34,6 +34,28 @@ The built-in offline provider demonstrates the service flow only; benchmark clai
 
 The [PRO research gates](docs/pro-research-gates.md) require a proven semantic failure mechanism, paired EX/rescue-regression and cost accounting, and independent database/source validation before promoting a change. The latest cross-database two-shot experiment [failed its gate (8/20 → 7/20)](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/43680102605) and remains unmerged.
 
+## Structured SQL recovery (local model)
+
+The Ollama path now uses structured JSON generation, read-only SQL validation,
+bounded error repair, one refusal retry, and an optional empty-result recheck.
+All stages are exposed through the same `SemanticSQLService` API used by
+the CLI and Streamlit app. The offline demo and explicitly selected
+`mode="guarded"` retain the original LangGraph execution path.
+
+```python
+service = SemanticSQLService("my.db", provider=OllamaProvider(model="qwen3.5:9b-q4_K_M"))
+result = service.ask("How many orders?")
+```
+
+Historical BIRD DEV100 metrics below represent the original Guarded system,
+not the newly integrated structured runtime. The separate frozen DEV300
+nine-arm GPU evaluation confirmed **161/300 (53.67%)** for the structured
+recovery pipeline against **151/300 (50.33%)** for the Guarded baseline,
+with **392 vs 332 model calls**. This is a separate cohort/protocol and is
+not interchangeable with the older 39% DEV100 result.
+[DEV300 run and artifacts](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/45748311494).
+The integrated service has not yet been separately benchmarked end-to-end.
+
 ## Results
 
 The checked-in frozen paired summary covers **100 BIRD DEV queries** using local `qwen3.5:9b-q4_K_M` through Ollama:
@@ -63,7 +85,7 @@ A later frozen-100 experiment tested a conservative one-pass semantic reviewer o
 | Wrong → correct | — | 0 |
 | Correct → wrong | — | 1 |
 
-The semantic layer produced **no positive EX rescue and one regression**, so it is kept as an experiment rather than part of the headline/default path. This is the main reason the project stays with the simpler guarded pipeline.
+The semantic-review layer produced **no positive EX rescue and one regression**, so it remains experimental. The structured recovery path described above is a separate, later integration.
 
 ### Separate XiYan grounding ablation
 
@@ -196,7 +218,7 @@ uv run uvicorn semantic_sql.api:app --reload
 ## Evaluation note
 
 > [!IMPORTANT]
-> **Execution success is not Text-to-SQL accuracy.** A query can execute successfully and still answer the wrong question. The 90% figure represents conservative execution reliability, while the EX-compatible metric is the correctness-oriented execution-match measure used here. The semantic-revision ablation did not improve it, so the simpler guarded path remains the headline result.
+> **Execution success is not Text-to-SQL accuracy.** A query can execute successfully and still answer the wrong question. The 90% figure represents conservative execution reliability, while the EX-compatible metric is the correctness-oriented execution-match measure used here. The semantic-revision ablation did not improve it. The structured recovery path is evaluated separately on DEV300.
 
 ## Limits
 

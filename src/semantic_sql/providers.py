@@ -45,6 +45,35 @@ class OllamaProvider:
             body = json.loads(resp.read().decode("utf-8"))
         return str(body["message"]["content"])
 
+    def complete_messages(self, *, messages, response_format=None, max_tokens: int = 1024) -> dict:
+        """Structured multi-turn Ollama chat; preserves full repair context."""
+        import time
+        payload = {"model": self.model, "stream": False, "think": False,
+                   "messages": messages,
+                   "options": {"num_predict": max_tokens}}
+        options = payload["options"]
+        for name, value in (("temperature", self.temperature), ("seed", self.seed)):
+            if value is not None:
+                options[name] = value
+        if response_format:
+            payload["format"] = response_format["json_schema"]["schema"]
+        req = urllib.request.Request(
+            self.base_url.rstrip("/") + "/api/chat",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        started = time.monotonic()
+        with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+        if body.get("error"):
+            raise RuntimeError(body["error"])
+        return {"text": str(body["message"]["content"]),
+                "input_tokens": int(body.get("prompt_eval_count") or 0),
+                "output_tokens": int(body.get("eval_count") or 0),
+                "wall_s": time.monotonic() - started,
+                "done_reason": body.get("done_reason")}
+
     def complete_text(self, *, system: str, user: str) -> str:
         return self._chat(system=system, user=user)
 
