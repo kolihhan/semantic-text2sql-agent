@@ -119,3 +119,22 @@ def test_structured_mode_fails_closed_when_provider_cannot_support_it():
         assert "structured" in str(exc).lower()
     else:
         raise AssertionError("No silent fallback to SQL-only")
+
+
+
+def test_structured_mode_honors_zero_validation_repairs():
+    provider = JSONProvider(
+        query("SELECT missing FROM orders"),
+        query("SELECT COUNT(*) FROM orders"),
+    )
+    result = SemanticSQLService(DB, provider=provider, max_repairs=0).ask("How many orders?")
+    assert result.status == "verification_failed"
+    assert len(provider.messages) == 1
+
+
+def test_licensed_internal_components_are_in_package_metadata():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1]
+    pyproject = (root / "pyproject.toml").read_text()
+    assert '"semantic_sql._native" = ["LICENSE"]' in pyproject
+    assert "MIT License" in (root / "src/semantic_sql/_native/LICENSE").read_text()
