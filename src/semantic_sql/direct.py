@@ -42,5 +42,5 @@ def generate_direct_sql(
     user = f"Question: {question}\nSchema context:\n{schema_context}"
     if external_evidence is not None:
         user += f"\nExternal evidence:\n{external_evidence}"
-    sql = _strip_fence(provider.complete_text(system=_SYSTEM, user=user))
+    sql = _model_sql(provider, system=_SYSTEM, user=user)
     return SQLCandidate(sql=sql, attempt=0)
