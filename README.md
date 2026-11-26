@@ -1,6 +1,6 @@
 # Semantic Text-to-SQL
 
-A local text-to-SQL system with schema grounding, deterministic verification, bounded repair, and read-only execution.
+A local text-to-SQL system with schema grounding, structured generation, deterministic verification, bounded recovery, and read-only execution.
 
 ## Demo
 
@@ -34,21 +34,28 @@ The built-in offline provider demonstrates the service flow only; benchmark clai
 
 The [PRO research gates](docs/pro-research-gates.md) require a proven semantic failure mechanism, paired EX/rescue-regression and cost accounting, and independent database/source validation before promoting a change. The latest cross-database two-shot experiment [failed its gate (8/20 → 7/20)](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/43680102605) and remains unmerged.
 
-## Integrated local-model recovery
+## Structured SQL recovery (local model)
 
-The Ollama path uses JSON-constrained SQL generation with a single read-only
-verification and execution pipeline. A rejected or non-query response follows
-the existing bounded repair path. If SQL runs but returns no rows, the service
-can spend one remaining call to recheck literals, joins and dates; it only
-accepts an alternative if it passes the same deterministic verification and
-returns a nonempty, untruncated result. Unsafe or unsuccessful alternatives
-never replace a valid answer.
+The Ollama path now uses structured JSON generation, read-only SQL validation,
+bounded error repair, one refusal retry, and an optional empty-result recheck.
+All stages are exposed through the same `SemanticSQLService` API used by
+the CLI and Streamlit app. The offline demo and explicitly selected
+`mode="guarded"` retain the LangGraph execution path; its Ollama adapter also supports
+JSON-constrained single-turn SQL via `complete_sql`.
 
-The offline demo and existing text-only providers retain the original
-SQL-only interface. All clients (Streamlit, CLI and FastAPI) share
-`SemanticSQLService`; there is no second agent or extra runtime dependency.
-The earlier benchmark numbers above were measured on their original
-configurations and do not claim a new accuracy for this integration.
+```python
+service = SemanticSQLService("my.db", provider=OllamaProvider(model="qwen3.5:9b-q4_K_M"))
+result = service.ask("How many orders?")
+```
+
+Historical BIRD DEV100 metrics below represent the original Guarded system,
+not the newly integrated structured runtime. The separate frozen DEV300
+nine-arm GPU evaluation confirmed **161/300 (53.67%)** for the structured
+recovery pipeline against **151/300 (50.33%)** for the Guarded baseline,
+with **392 vs 332 model calls**. This is a separate cohort/protocol and is
+not interchangeable with the older 39% DEV100 result.
+[DEV300 run and artifacts](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/45748311494).
+The integrated service has not yet been separately benchmarked end-to-end.
 
 ## Results
 
@@ -79,7 +86,7 @@ A later frozen-100 experiment tested a conservative one-pass semantic reviewer o
 | Wrong → correct | — | 0 |
 | Correct → wrong | — | 1 |
 
-The semantic layer produced **no positive EX rescue and one regression**, so it is kept as an experiment rather than part of the headline/default path. This is the main reason the project stays with the simpler guarded pipeline.
+The semantic-review layer produced **no positive EX rescue and one regression**, so it remains experimental. The structured recovery path described above is a separate, later integration.
 
 ### Separate XiYan grounding ablation
 
@@ -150,7 +157,7 @@ flowchart LR
     E --> O[Rows + columns + trace]
 ```
 
-An optional semantic-review path remains available for experimentation, but the frozen ablation above did not justify enabling it by default.
+The optional semantic-review path remains experimental. Structured recovery is used for Ollama, while the offline demo continues on the deterministic Guarded graph.
 
 Native DDL is enabled in the service (Streamlit, API and CLI). For paired BIRD evaluation, pass `--native-ddl` to `evaluation/run_bird.py paired-dev`; the legacy schema remains the benchmark default so historical runs remain reproducible.
 
@@ -158,8 +165,9 @@ In the [TRAIN10 engineering dry-run](https://github.com/kolihhan/semantic-text2s
 
 ## Engineering choices
 
+- **Structured JSON generation and bounded recovery for local models**, with a three-call ceiling and additional refusal/empty-result checks.
 - **Deterministic checks before execution** instead of asking another model to judge obvious compiler or safety failures.
-- **Bounded repair** with `max_repairs=2`, avoiding an open-ended agent loop.
+- **Bounded repair**: original graph up to two corrections; structured path at most one validation repair plus refusal/empty handling within a three-call ceiling.
 - **Read-only SQLite execution** so generated SQL cannot mutate the database.
 - **Native schema grounding** supplies SQLite's stored `CREATE TABLE` definitions (columns, types, primary and foreign keys) to generation and bounded repair. No extra model call or database write.
 - **Experimental value grounding** exists in separate grounding/DGSL experiments; it is not part of the default `SemanticSQLService` path.
@@ -212,7 +220,7 @@ uv run uvicorn semantic_sql.api:app --reload
 ## Evaluation note
 
 > [!IMPORTANT]
-> **Execution success is not Text-to-SQL accuracy.** A query can execute successfully and still answer the wrong question. The 90% figure represents conservative execution reliability, while the EX-compatible metric is the correctness-oriented execution-match measure used here. The semantic-revision ablation did not improve it, so the simpler guarded path remains the headline result.
+> **Execution success is not Text-to-SQL accuracy.** A query can execute successfully and still answer the wrong question. The 90% figure represents conservative execution reliability, while the EX-compatible metric is the correctness-oriented execution-match measure used here. The semantic-revision ablation did not improve it. The structured recovery path is evaluated separately on DEV300.
 
 ## Limits
 

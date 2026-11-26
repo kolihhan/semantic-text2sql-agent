@@ -1,6 +1,6 @@
 # Architecture
 
-`SemanticSQLService` is the product boundary and delegates to one authoritative LangGraph workflow. The CLI and Streamlit app are thin adapters over that service. The paired benchmark invokes the same Guarded workflow from a frozen initial candidate and gives Direct the same candidate without the Guarded treatment.
+`SemanticSQLService` is the product boundary shared by CLI, Streamlit and FastAPI. For local Ollama models it uses the structured SQL pipeline with a bounded three-call budget, explicit query/refusal/clarification outputs, read-only AST validation, error correction, and an empty-result recheck. The existing LangGraph Guarded workflow remains available for the offline demo and explicit `mode="guarded"` consumers. Historical paired BIRD runners preserve their original Guarded baseline and frozen initial-candidate contract.
 
 ```text
 Normal product                         Paired DEV evaluation
@@ -20,6 +20,23 @@ execute      repair
             /      \
        execute    refuse
 ```
+
+
+## Product routing
+
+`SemanticSQLService` chooses the structured engine automatically when the
+provider supports `complete_messages` and the request does not inject a frozen
+SQL candidate. `mode="structured"` explicitly requires that transport;
+`mode="guarded"` forces the original LangGraph path. The experimental
+semantic-revision path remains on the original graph. Structured mode caps
+ordinary validation repairs at one and caps all LLM calls at three. In both
+modes, the final output passes the project's read-only SQLite verification
+before reaching CLI/API/UI callers. The included offline demo uses the original
+deterministic provider with no model download.
+
+The integrated runtime preserves the original structured-engine policies,
+but the previously reported DEV300 result is an experimental evaluation,
+not a new product-level end-to-end benchmark.
 
 ## Graph state and context
 
