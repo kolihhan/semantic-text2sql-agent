@@ -1,8 +1,6 @@
 # Semantic Text-to-SQL
 
-A local SQL agent built around one principle: **a query that runs is not necessarily a query that answers the question.**
-
-It uses Qwen3.5, the actual SQLite schema, deterministic validation, and bounded recovery to turn natural-language questions into safe, executable SQL.
+A schema-grounded Text-to-SQL agent powered by Qwen3.5, LangGraph, and SQLite. It generates SQL from natural-language questions, verifies it against the real database, repairs failures within a fixed budget, and executes queries read-only.
 
 [![CI](https://github.com/kolihhan/semantic-text2sql-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/kolihhan/semantic-text2sql-agent/actions/workflows/ci.yml)
 
