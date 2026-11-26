@@ -6,6 +6,18 @@ from typing import Protocol
 import urllib.request
 
 
+_SQL_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "response_type": {"type": "string", "enum": ["query", "unsupported", "clarify"]},
+        "sql": {"type": ["string", "null"]},
+        "message": {"type": ["string", "null"]},
+    },
+    "required": ["response_type", "sql", "message"],
+    "additionalProperties": False,
+}
+
+
 class ModelProvider(Protocol):
     def complete_text(self, *, system: str, user: str) -> str: ...
 
@@ -19,7 +31,7 @@ class OllamaProvider:
     seed: int | None = None
     num_predict: int | None = None
 
-    def _chat(self, *, system: str, user: str) -> str:
+    def _chat(self, *, system: str, user: str, structured: bool = False) -> str:
         payload = {
             "model": self.model,
             "stream": False,
@@ -29,6 +41,8 @@ class OllamaProvider:
                 {"role": "user", "content": user},
             ],
         }
+        if structured:
+            payload["format"] = _SQL_RESPONSE_SCHEMA
         options = {k: v for k, v in (
             ("temperature", self.temperature), ("seed", self.seed),
             ("num_predict", self.num_predict),
@@ -47,6 +61,11 @@ class OllamaProvider:
 
     def complete_text(self, *, system: str, user: str) -> str:
         return self._chat(system=system, user=user)
+
+
+    def complete_sql(self, *, system: str, user: str) -> str:
+        """Return JSON constrained to query/unsupported/clarify for the SQL agent."""
+        return self._chat(system=system, user=user, structured=True)
 
 
 class DemoProvider:

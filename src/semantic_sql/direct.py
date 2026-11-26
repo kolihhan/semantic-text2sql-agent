@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import json
 
 from .contracts import SQLCandidate
 from .providers import ModelProvider
@@ -15,6 +16,21 @@ def _strip_fence(text: str) -> str:
     match = re.fullmatch(r"```(?:sql)?\s*(.*?)\s*```", text, flags=re.I | re.S)
     return match.group(1).strip() if match else text
 
+
+
+def _model_sql(provider: ModelProvider, *, system: str, user: str) -> str:
+    """Prefer Ollama's constrained response, preserving text-only test providers."""
+    structured = getattr(provider, "complete_sql", None)
+    if structured is None:
+        return _strip_fence(provider.complete_text(system=system, user=user))
+    try:
+        response = json.loads(structured(system=system, user=user))
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return ""
+    if not isinstance(response, dict) or response.get("response_type") != "query":
+        return ""
+    sql = response.get("sql")
+    return _strip_fence(sql) if isinstance(sql, str) else ""
 
 def generate_direct_sql(
     question: str,

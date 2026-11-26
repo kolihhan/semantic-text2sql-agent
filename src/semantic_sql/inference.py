@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, TypedDict
 
 from .contracts import AgentResult, SQLCandidate, StageRecord, VerificationResult
-from .direct import _strip_fence, generate_direct_sql
+from .direct import _strip_fence, _model_sql, generate_direct_sql
 from .execution import SQLExecutionError, execute_readonly
 from .providers import ModelProvider
 from .verifier import verify_sql_preflight
@@ -80,14 +80,15 @@ def _repair(state: GuardedState, runtime) -> dict[str, Any]:
         "the rejected SQL, and every deterministic verifier/compiler issue. Prefer the smallest correction that fixes the failure "
         "without changing the requested semantics. Do not reveal that reasoning. Return corrected SQL only."
     )
-    response = runtime.context.provider.complete_text(
+    response = _model_sql(
+        runtime.context.provider,
         system=(
             "Repair one SQLite query. Reason internally, but return exactly one read-only SELECT or CTE and no markdown, "
             "commentary, chain-of-thought, or additional statements."
         ),
         user=prompt,
     )
-    repaired = SQLCandidate(sql=_strip_fence(response), attempt=candidate.attempt + 1)
+    repaired = SQLCandidate(sql=response, attempt=candidate.attempt + 1)
     return {"candidate": repaired, "stages": _append_stage(state, "repair", f"attempt={repaired.attempt}: {repaired.sql}")}
 
 
@@ -142,12 +143,49 @@ def _semantic_revise(state: GuardedState, runtime) -> dict[str, Any]:
 def _execute(state: GuardedState, runtime) -> dict[str, Any]:
     candidate = state["candidate"]
     verification = state["verification"]
+    execution = None
+    error = ""
     try:
         execution = execute_readonly(runtime.context.database, candidate.sql, max_rows=runtime.context.max_rows)
     except SQLExecutionError as exc:
-        stages = _append_stage(state, "execute", f"failed: {exc}")
-        return {"result": AgentResult(status="execution_failed", question=state["question"], candidate=candidate, verification=verification, message=str(exc), stages=stages), "stages": stages}
-    stages = _append_stage(state, "execute", f"rows={len(execution.rows)}")
+        error = str(exc)
+    stages = _append_stage(state, "execute", f"failed: {error}" if execution is None else f"rows={len(execution.rows)}")
+
+    # Spend at most one remaining repair call after an execution error or empty result.
+    # Keep the original successful query unless the alternative is safe and returns rows.
+    if (callable(getattr(runtime.context.provider, "complete_sql", None))
+            and candidate.attempt < runtime.context.max_repairs
+            and (execution is None or (not execution.rows and not execution.truncated))):
+        reason = f"SQLite execution error: {error}" if execution is None else (
+            "The query returned no rows. Check literals, joins, and dates. "
+            "If the empty result is correct, keep the original SQL."
+        )
+        prompt = (
+            f"Question: {state['question']}\nSchema context:\n{state['schema_context']}\n"
+            f"External evidence: {state.get('evidence') or ''}\n"
+            f"Previous SQL: {candidate.sql}\n{reason}"
+        )
+        alternative_sql = _model_sql(
+            runtime.context.provider,
+            system="Return a corrected read-only SQLite query when needed, using the supplied schema.",
+            user=prompt,
+        )
+        accepted = False
+        if alternative_sql and alternative_sql.strip() != candidate.sql.strip():
+            checked = verify_sql_preflight(runtime.context.database, alternative_sql)
+            if checked.ok:
+                try:
+                    alternative = execute_readonly(runtime.context.database, alternative_sql, max_rows=runtime.context.max_rows)
+                except SQLExecutionError:
+                    alternative = None
+                if alternative is not None and not alternative.truncated and (execution is None or alternative.rows):
+                    candidate = SQLCandidate(alternative_sql, attempt=candidate.attempt + 1)
+                    verification, execution = checked, alternative
+                    accepted = True
+        stages = (*stages, StageRecord("recheck", f"accepted={accepted}"),)
+
+    if execution is None:
+        return {"result": AgentResult(status="execution_failed", question=state["question"], candidate=candidate, verification=verification, message=error, stages=stages), "stages": stages}
     return {"result": AgentResult(status="ok", question=state["question"], candidate=candidate, verification=verification, rows=execution.rows, columns=execution.columns, truncated=execution.truncated, stages=stages), "stages": stages}
 
 
