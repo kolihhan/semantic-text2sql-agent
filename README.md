@@ -40,7 +40,8 @@ The Ollama path now uses structured JSON generation, read-only SQL validation,
 bounded error repair, one refusal retry, and an optional empty-result recheck.
 All stages are exposed through the same `SemanticSQLService` API used by
 the CLI and Streamlit app. The offline demo and explicitly selected
-`mode="guarded"` retain the original LangGraph execution path.
+`mode="guarded"` retain the LangGraph execution path; its Ollama adapter also supports
+JSON-constrained single-turn SQL via `complete_sql`.
 
 ```python
 service = SemanticSQLService("my.db", provider=OllamaProvider(model="qwen3.5:9b-q4_K_M"))
