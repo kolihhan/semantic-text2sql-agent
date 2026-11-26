@@ -1,232 +1,131 @@
 # Semantic Text-to-SQL
 
-A local text-to-SQL system with schema grounding, structured generation, deterministic verification, bounded recovery, and read-only execution.
+A local SQL agent built around one principle: **a query that runs is not necessarily a query that answers the question.**
+
+It uses Qwen3.5, the actual SQLite schema, deterministic validation, and bounded recovery to turn natural-language questions into safe, executable SQL.
+
+[![CI](https://github.com/kolihhan/semantic-text2sql-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/kolihhan/semantic-text2sql-agent/actions/workflows/ci.yml)
 
 ## Demo
 
-```cmd
-run-demo.cmd
-```
+Run the offline Streamlit demo without a model or API key:
 
-The Streamlit demo puts the question, generated SQL, verification trace, execution result, and table output on one screen. The default **Demo (offline)** provider needs no Ollama or API key.
+\`\`\`bash
+git clone https://github.com/kolihhan/semantic-text2sql-agent.git
+cd semantic-text2sql-agent
+python -m pip install -e ".[dev]"
+streamlit run app.py
+\`\`\`
 
-```text
+To use a local model instead:
+
+\`\`\`bash
+ollama pull qwen3.5:9b
+semantic-sql --provider ollama --model qwen3.5:9b ask "Which customer spent the most?"
+\`\`\`
+
+The demo displays the generated SQL, validation steps, and returned rows. The same service powers the CLI, Streamlit UI, and FastAPI endpoint.
+
+\`\`\`text
 Question
-  ↓
-Generate SQL
-  ↓
-Verify ── failure ──→ Repair (bounded)
-  ↓ pass                  │
-Execute read-only ←───────┘
-  ↓
-Rows + trace
-```
+   ↓
+Schema-grounded SQL generation
+   ↓
+Deterministic preflight ── invalid ─→ Bounded repair ─┐
+   ↓ valid                                           │
+Read-only execution ←─────────────────────────────────┘
+   ├── Rows → Answer
+   ├── Empty → Optional, verified recheck
+   └── Error → Bounded recovery or recorded failure
+\`\`\`
 
-Try:
-
-```text
-How many orders were placed in 2024?
-```
-
-The built-in offline provider demonstrates the service flow only; benchmark claims below come from frozen local-model artifacts.
-
-## Research protocol — PRO (fail fast, prove transfer)
-
-The [PRO research gates](docs/pro-research-gates.md) require a proven semantic failure mechanism, paired EX/rescue-regression and cost accounting, and independent database/source validation before promoting a change. The latest cross-database two-shot experiment [failed its gate (8/20 → 7/20)](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/43680102605) and remains unmerged.
-
-## Structured SQL recovery (local model)
-
-The Ollama path now uses structured JSON generation, read-only SQL validation,
-bounded error repair, one refusal retry, and an optional empty-result recheck.
-All stages are exposed through the same `SemanticSQLService` API used by
-the CLI and Streamlit app. The offline demo and explicitly selected
-`mode="guarded"` retain the LangGraph execution path; its Ollama adapter also supports
-JSON-constrained single-turn SQL via `complete_sql`.
-
-```python
-service = SemanticSQLService("my.db", provider=OllamaProvider(model="qwen3.5:9b-q4_K_M"))
-result = service.ask("How many orders?")
-```
-
-Historical BIRD DEV100 metrics below represent the original Guarded system,
-not the newly integrated structured runtime. The separate frozen DEV300
-nine-arm GPU evaluation confirmed **161/300 (53.67%)** for the structured
-recovery pipeline against **151/300 (50.33%)** for the Guarded baseline,
-with **392 vs 332 model calls**. This is a separate cohort/protocol and is
-not interchangeable with the older 39% DEV100 result.
-[DEV300 run and artifacts](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/45748311494).
-The integrated service has not yet been separately benchmarked end-to-end.
+The offline provider is a deterministic demonstration, **not** a benchmark model.
 
 ## Results
 
-The checked-in frozen paired summary covers **100 BIRD DEV queries** using local `qwen3.5:9b-q4_K_M` through Ollama:
+### Frozen BIRD DEV100
 
-| Metric | Direct | Guarded + repair |
+The original paired experiment used **100 fixed BIRD DEV questions**, local Qwen3.5-9B Q4_K_M through Ollama, and the same evaluation protocol for both approaches.
+
+| Metric | Direct SQL | Verified + bounded repair |
 |---|---:|---:|
-| BIRD EX-compatible match | 33% | **39%** |
-| Execution success | 75% | **90% (conservative)** |
-| EX wrong → correct | — | **6** |
-| EX correct → wrong | — | **0** |
+| Execution-match correctness | 33/100 | **39/100** |
+| Conservative execution success | 75/100 | **90/100** |
+| Wrong → correct | — | **6** |
+| Correct → wrong | — | **0** |
 
-The guarded path recovered **6 correctness failures** with no correct-to-wrong EX regressions, and conservatively recovered **15 direct execution failures**. The raw guarded execution-success count was 91/100, but one capped result invalidated that row for strict comparison, so the resume-facing figure is 90/100.
+The initial reliability pipeline recovered six wrong answers without changing a previously correct answer in this sample. The execution-success count is deliberately conservative: the raw figure was 91/100, but one capped result is excluded for strict comparison.
 
-Source of truth: [`runs/qwen9b-frozen100/summary.json`](runs/qwen9b-frozen100/summary.json). The local scorer follows the pinned BIRD evaluator's set-of-tuples execution-match contract at revision `483554eae102996f5ec1f4feab4e78ef29c2a394`.
+Source: [frozen DEV100 artifact](runs/qwen9b-frozen100/summary.json). Its original workflow was not a fully clean end-to-end run; the checked-in artifact is the source for these historical numbers.
 
-> [!IMPORTANT]
-> The summary's provenance points to workflow run `37307108955`, but that workflow did **not** finish as a clean end-to-end success: one treatment shard failed and the aggregate job was skipped. The checked-in summary is therefore the current project evidence artifact, not proof of a successful canonical workflow execution. A clean end-to-end rerun remains outstanding.
+### Matched BIRD DEV300
 
-## Semantic revision ablation
+A later experiment evaluated **300 fixed BIRD DEV questions** with the same Qwen3.5-9B Q4_K_M model and a shared scoring protocol. All three runs used a three-call maximum.
 
-A later frozen-100 experiment tested a conservative one-pass semantic reviewer on top of the same Qwen 9B guarded outputs. The reviewer checked projection, aggregation/grain, joins, filters/literals, and ordering/top-k semantics, then re-verified any patch before execution.
+| Approach | Correct / 300 | Execution success | Model calls |
+|---|---:|---:|---:|
+| Direct SQL | 148 (**49.33%**) | 278 | 300 |
+| Verified + bounded repair | 151 (**50.33%**) | **294** | **332** |
+| Structured generation + recovery variant | **161 (53.67%)** | 274 | 392 |
 
-| Frozen-100 | Guarded baseline | + Semantic revision |
-|---|---:|---:|
-| BIRD EX-compatible match | **39%** | 38% |
-| Conservative execution success | **90%** | **90%** |
-| Wrong → correct | — | 0 |
-| Correct → wrong | — | 1 |
+The structured recovery variant recovered **33** cases that the guarded baseline missed, but lost **23** that the guarded baseline answered correctly: a net gain of 10, with **60 additional model calls**. The improvement is not statistically established on this 300-question sample, and it comes with fewer executable queries.
 
-The semantic-review layer produced **no positive EX rescue and one regression**, so it remains experimental. The structured recovery path described above is a separate, later integration.
+This was an **experimental variant**, not a benchmark of the current merged service. The main branch integrates bounded structured recovery, but has **not** been rerun on DEV300. Do not treat 53.67% as a production score, or compare DEV100 and DEV300 percentages as if they used identical cohort and runtime configurations.
 
-### Separate XiYan grounding ablation
-
-A separate frozen-100 experiment tested **Decomposed Grounded Schema Linking (DGSL v1)** with XiYanSQL 7B and a project-local set-equality execution scorer. This is a **different model and scorer** from the Qwen3.5 table above, so the numbers are not directly interchangeable.
-
-| XiYan frozen-100 | Lexical baseline | DGSL v1 |
-|---|---:|---:|
-| Frozen execution match | **58/100** | **58/100** |
-| Wrong → correct | — | 7 |
-| Correct → wrong | — | 7 |
-| Success gate | — | 61/100 |
-| Gate met | — | **No** |
-
-DGSL improved schema-context precision and observable value grounding, but the gains were offset by regressions and produced **no net correctness gain**. See [the DGSL experiment note](docs/dgsl-experiment.md) and [the compact frozen result](runs/xiyan-dgsl-frozen100/summary.json).
+Source: [successful GPU run](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/45748311494) · [DEV300 scorecard and protocol](docs/dev300-results.md).
 
 ## Two failures worth inspecting
 
-The aggregate numbers hide the most important engineering lesson: **a query becoming executable is not the same thing as becoming correct**.
+### 1. Valid SQL can still be wrong
 
-### 1. Repair can recover execution without recovering meaning
+On a previously inspected BIRD case, the query compiled, passed verification, and returned **23 rows**, but failed the execution-match correctness test. SQLite proved that the query could run—not that it captured the user’s intent.
 
-**BIRD case 430 · `card_games`**
+That is why the project tracks **correctness** and **execution success** as separate metrics. [Failure analysis in the original frozen study](runs/qwen9b-frozen100/summary.json).
 
-The direct query referenced a nonexistent `cardKingdoms` table and failed to execute. The guarded path caught the compile failure, repaired the SQL once, passed verification, and executed successfully — but the final query still failed the BIRD EX-compatible execution match.
+### 2. Recovery can improve accuracy and reduce reliability
 
-```text
-Direct
-  → execution failed: no such table: cardKingdoms
+The matched DEV300 run exposed a trade-off: structured recovery reached **161 correct answers** versus **151**, but produced only **274 executable outputs** versus **294**. Its 33 rescues came with 23 regressions.
 
-Guarded
-  → verify: sqlite_compile_error
-  → repair attempt 1
-  → verify: PASS
-  → execute: rows=0
-  → EX-compatible match: false
-```
-
-**Takeaway:** bounded repair is useful for operational reliability, but a successful execution is not evidence that the model understood the question.
-
-### 2. Some wrong answers look completely healthy
-
-**BIRD case 1366 · `student_club`**
-
-For “List all the members who attended the event `October Meeting`,” the generated SQL passed deterministic verification and returned 23 rows. Both direct and guarded paths executed successfully, yet the BIRD EX-compatible execution match was false.
-
-```text
-verify: PASS
-execute: rows=23
-status: OK
-EX-compatible match: false
-```
-
-**Takeaway:** deterministic checks can reject unsafe or invalid SQL; they cannot prove semantic correctness.
-
-These two examples come from an earlier frozen 4B run and illustrate the same failure distinction; they are not part of the 9B headline table.
+A recovery mechanism needs a bounded call budget, deterministic safety checks, and a record of both rescued and broken cases. More model calls alone are not a correctness guarantee.
 
 ## Architecture
 
-```mermaid
+\`\`\`mermaid
 flowchart LR
-    Q[Question] --> G[Generate SQL]
-    S[Native SQLite DDL] --> G
-    S --> R
-    G --> V[Deterministic verification]
-    V -->|fail| R[Bounded repair]
+    Q[Question] --> S[Native SQLite schema]
+    S --> G[Qwen3.5 SQL generation]
+    G --> V{Read-only preflight}
+    V -->|Invalid| R[Bounded repair]
     R --> V
-    V -->|pass| E[Read-only SQLite execution]
-    E --> O[Rows + columns + trace]
-```
+    V -->|Valid| E[SQLite execution]
+    E -->|Nonempty| O[Rows + trace]
+    E -->|Empty or error| C[Optional recovery]
+    C --> V
+    V -->|Budget exhausted| F[Recorded failure]
+\`\`\`
 
-The optional semantic-review path remains experimental. Structured recovery is used for Ollama, while the offline demo continues on the deterministic Guarded graph.
-
-Native DDL is enabled in the service (Streamlit, API and CLI). For paired BIRD evaluation, pass `--native-ddl` to `evaluation/run_bird.py paired-dev`; the legacy schema remains the benchmark default so historical runs remain reproducible.
-
-In the [TRAIN10 engineering dry-run](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/45550802394), native DDL executed 10/10 queries versus 9/10 with the legacy representation, used 10 versus 12 model calls, and used 9,210 versus 6,734 tokens (+36.8%). This failed the original +10% token budget gate. The owner explicitly requested integration despite that trade-off. Semantic EX has not been evaluated for native DDL; historical benchmark numbers above remain legacy-schema results.
+The pipeline keeps one LangGraph service and one read-only execution boundary. The local Ollama provider can request schema-constrained JSON responses; the offline demo and text-only providers retain their original interface. A recovery candidate must pass the same checks before replacing a query.
 
 ## Engineering choices
 
-- **Structured JSON generation and bounded recovery for local models**, with a three-call ceiling and additional refusal/empty-result checks.
-- **Deterministic checks before execution** instead of asking another model to judge obvious compiler or safety failures.
-- **Bounded repair**: original graph up to two corrections; structured path at most one validation repair plus refusal/empty handling within a three-call ceiling.
-- **Read-only SQLite execution** so generated SQL cannot mutate the database.
-- **Native schema grounding** supplies SQLite's stored `CREATE TABLE` definitions (columns, types, primary and foreign keys) to generation and bounded repair. No extra model call or database write.
-- **Experimental value grounding** exists in separate grounding/DGSL experiments; it is not part of the default `SemanticSQLService` path.
-- **One service layer** behind Streamlit, FastAPI, and CLI.
-- **Paired evaluation** keeps reliability and correctness claims tied to the same frozen cases.
-- **Ablation before adoption**: semantic planning/revision ideas are kept only when they show positive net evidence.
+- **Native SQLite DDL grounding:** use real stored table definitions instead of imagined tables or columns.
+- **Deterministic preflight:** check the statement and compile it before execution, without spending another model call.
+- **Read-only execution:** SQLite read-only connections and an authorizer reject writes.
+- **Bounded repair:** at most two repair opportunities after the first generation; no unrestricted loops.
+- **Conservative empty-result recovery:** preserve the existing answer unless a safe alternative executes successfully and returns rows.
+- **Paired evaluation:** separate answer correctness, execution success, model calls, rescues, and regressions.
 
-## Quickstart
+## Reproduce
 
-### Offline visual demo
+Run the CPU tests without downloading a language model:
 
-```bash
-uv sync
-uv run streamlit run app.py
-```
+\`\`\`bash
+python -m pip install -e ".[dev]"
+python -m pytest -q
+\`\`\`
 
-The default offline mode uses the bundled SQLite demo database and requires no model download or API key.
-
-### Local-model path
-
-```bash
-ollama pull qwen3.5:4b
-uv run streamlit run app.py
-```
-
-Choose **Ollama** in the sidebar.
-
-### Optional semantic revision in Python
-
-```python
-service = SemanticSQLService(
-    "my.db",
-    provider=provider,
-    semantic_revision=True,
-)
-```
-
-### CLI
-
-```bash
-uv run semantic-sql ask "Which customer spent the most?"
-```
-
-### FastAPI
-
-```bash
-uv run uvicorn semantic_sql.api:app --reload
-```
+The frozen benchmark files and evaluation scripts are kept in the repository. The 300-question GPU experiment also has an [immutable Actions run and downloadable raw outputs](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/45748311494). Reproducing those numbers requires the recorded model and runtime settings, not just the Streamlit demo.
 
 ## Evaluation note
 
-> [!IMPORTANT]
-> **Execution success is not Text-to-SQL accuracy.** A query can execute successfully and still answer the wrong question. The 90% figure represents conservative execution reliability, while the EX-compatible metric is the correctness-oriented execution-match measure used here. The semantic-revision ablation did not improve it. The structured recovery path is evaluated separately on DEV300.
-
-## Limits
-
-- Frozen headline evaluation is a 100-query BIRD DEV sample, not the full benchmark.
-- The current checked-in 9B summary does not yet have a clean successful end-to-end workflow rerun behind it.
-- SQLite only in the current implementation.
-- Results depend on the frozen local-model configuration.
-- The optional semantic revision adds one extra model call when enabled and did not improve the frozen-100 EX-compatible result.
-- The offline provider is demo infrastructure, not evaluation evidence.
+The system currently targets SQLite. The historical DEV100 and DEV300 experiments used different frozen cohorts and configurations. The integrated main-branch recovery code is tested for correctness and safety, but its semantic EX has not been independently measured yet. **Executing successfully is not the same as answering correctly.**
