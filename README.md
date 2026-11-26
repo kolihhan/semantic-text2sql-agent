@@ -24,6 +24,8 @@ semantic-sql --provider ollama --model qwen3.5:9b ask "Which customer spent the 
 
 The demo displays the generated SQL, validation steps, and returned rows. The same service powers the CLI, Streamlit UI, and FastAPI endpoint.
 
+![Live Streamlit demo showing generated SQL, safety verification, and results](docs/assets/streamlit-demo.png)
+
 ```text
 Question
    ↓
