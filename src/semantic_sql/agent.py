@@ -52,7 +52,8 @@ class SemanticSQLService:
             from .structured import run_structured
             return run_structured(database=self.database, provider=self.provider,
                                   question=question, schema_context=self.catalog.native_ddl(),
-                                  evidence=evidence, max_rows=self.max_rows)
+                                  evidence=evidence, max_rows=self.max_rows,
+                                  max_repairs=self.max_repairs)
         return run_guarded(
             database=self.database,
             provider=self.provider,

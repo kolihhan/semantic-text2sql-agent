@@ -25,6 +25,9 @@ semantic-sql = "semantic_sql.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"semantic_sql._native" = ["LICENSE"]
+
 [tool.pytest.ini_options]
 pythonpath = [".", "src"]
 testpaths = ["tests"]

@@ -156,7 +156,7 @@ flowchart LR
     E --> O[Rows + columns + trace]
 ```
 
-An optional semantic-review path remains available for experimentation, but the frozen ablation above did not justify enabling it by default.
+The optional semantic-review path remains experimental. Structured recovery is used for Ollama, while the offline demo continues on the deterministic Guarded graph.
 
 Native DDL is enabled in the service (Streamlit, API and CLI). For paired BIRD evaluation, pass `--native-ddl` to `evaluation/run_bird.py paired-dev`; the legacy schema remains the benchmark default so historical runs remain reproducible.
 
@@ -164,8 +164,9 @@ In the [TRAIN10 engineering dry-run](https://github.com/kolihhan/semantic-text2s
 
 ## Engineering choices
 
+- **Structured JSON generation and bounded recovery for local models**, with a three-call ceiling and additional refusal/empty-result checks.
 - **Deterministic checks before execution** instead of asking another model to judge obvious compiler or safety failures.
-- **Bounded repair** with `max_repairs=2`, avoiding an open-ended agent loop.
+- **Bounded repair**: original graph up to two corrections; structured path at most one validation repair plus refusal/empty handling within a three-call ceiling.
 - **Read-only SQLite execution** so generated SQL cannot mutate the database.
 - **Native schema grounding** supplies SQLite's stored `CREATE TABLE` definitions (columns, types, primary and foreign keys) to generation and bounded repair. No extra model call or database write.
 - **Experimental value grounding** exists in separate grounding/DGSL experiments; it is not part of the default `SemanticSQLService` path.

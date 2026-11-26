@@ -21,7 +21,7 @@ from ._native.llm import LLMResult
 
 def run_structured(
     *, database: str | Path, provider, question: str, schema_context: str,
-    evidence: str | None = None, max_rows: int = 100,
+    evidence: str | None = None, max_rows: int = 100, max_repairs: int = 1,
 ) -> AgentResult:
     """Use a bounded structured exchange, then independently verify delivered SQL."""
     db = Path(database)
@@ -57,7 +57,7 @@ def run_structured(
         pipeline = Agent(
             model=getattr(provider, "model", "local-model"),
             conn=conn, budget=None, db_path=db,
-            max_repairs=1, complete_fn=complete,
+            max_repairs=min(max_repairs, 1), complete_fn=complete,
             max_tokens=1024, temperature=0.0,
             pipeline_repairs=True,
         )
