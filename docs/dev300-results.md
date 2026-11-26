@@ -3,10 +3,10 @@
 This record preserves the completed 300-question experiment separately from the currently shipped service.
 
 - **Evidence:** [GitHub Actions run #45748311494](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/45748311494) (successful).
-- **Raw outputs:** [artifact #15092182143](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/45748311494/artifacts/15092182143), including \`ablation-dev300.json\`, \`runtime.json\`, SQLite request cache and logs.
-- **Runtime:** Kaggle two Tesla T4 GPUs, Ollama 0.40.16, \`qwen3.5:9b-q4_K_M\` (digest \`56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90\`), temperature 0, seed 42, thinking disabled, context 8192, maximum output 1024 tokens.
+- **Raw outputs:** [artifact #15092182143](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/45748311494/artifacts/15092182143), including `ablation-dev300.json`, `runtime.json`, SQLite request cache and logs.
+- **Runtime:** Kaggle two Tesla T4 GPUs, Ollama 0.40.16, `qwen3.5:9b-q4_K_M` (digest `56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90`), temperature 0, seed 42, thinking disabled, context 8192, maximum output 1024 tokens.
 - **Cohort:** frozen BIRD DEV300 manifest, identical case IDs and reference SQL across all nine arms.
-- **Scoring:** paired set-of-tuples execution match (called \`set_ex\` below). It is distinct from SQL execution success (\`exec\`). Gold was used only for scoring, not prompting.
+- **Scoring:** paired set-of-tuples execution match (called `set_ex` below). It is distinct from SQL execution success (`exec`). Gold was used only for scoring, not prompting.
 - **Controls:** at most three logical model calls per question/arm. Exact-request cache avoided repeated physical generation; it does not reduce the logical per-arm budget.
 
 | Arm | Set EX / 300 | Bag EX / 300 | Executable / 300 | Logical model calls |

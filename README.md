@@ -10,23 +10,23 @@ It uses Qwen3.5, the actual SQLite schema, deterministic validation, and bounded
 
 Run the offline Streamlit demo without a model or API key:
 
-\`\`\`bash
+```bash
 git clone https://github.com/kolihhan/semantic-text2sql-agent.git
 cd semantic-text2sql-agent
 python -m pip install -e ".[dev]"
 streamlit run app.py
-\`\`\`
+```
 
 To use a local model instead:
 
-\`\`\`bash
+```bash
 ollama pull qwen3.5:9b
 semantic-sql --provider ollama --model qwen3.5:9b ask "Which customer spent the most?"
-\`\`\`
+```
 
 The demo displays the generated SQL, validation steps, and returned rows. The same service powers the CLI, Streamlit UI, and FastAPI endpoint.
 
-\`\`\`text
+```text
 Question
    ↓
 Schema-grounded SQL generation
@@ -37,7 +37,7 @@ Read-only execution ←───────────────────
    ├── Rows → Answer
    ├── Empty → Optional, verified recheck
    └── Error → Bounded recovery or recorded failure
-\`\`\`
+```
 
 The offline provider is a deterministic demonstration, **not** a benchmark model.
 
@@ -90,7 +90,7 @@ A recovery mechanism needs a bounded call budget, deterministic safety checks, a
 
 ## Architecture
 
-\`\`\`mermaid
+```mermaid
 flowchart LR
     Q[Question] --> S[Native SQLite schema]
     S --> G[Qwen3.5 SQL generation]
@@ -102,7 +102,7 @@ flowchart LR
     E -->|Empty or error| C[Optional recovery]
     C --> V
     V -->|Budget exhausted| F[Recorded failure]
-\`\`\`
+```
 
 The pipeline keeps one LangGraph service and one read-only execution boundary. The local Ollama provider can request schema-constrained JSON responses; the offline demo and text-only providers retain their original interface. A recovery candidate must pass the same checks before replacing a query.
 
@@ -119,10 +119,10 @@ The pipeline keeps one LangGraph service and one read-only execution boundary. T
 
 Run the CPU tests without downloading a language model:
 
-\`\`\`bash
+```bash
 python -m pip install -e ".[dev]"
 python -m pytest -q
-\`\`\`
+```
 
 The frozen benchmark files and evaluation scripts are kept in the repository. The 300-question GPU experiment also has an [immutable Actions run and downloadable raw outputs](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/45748311494). Reproducing those numbers requires the recorded model and runtime settings, not just the Streamlit demo.
 
