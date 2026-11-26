@@ -34,6 +34,22 @@ The built-in offline provider demonstrates the service flow only; benchmark clai
 
 The [PRO research gates](docs/pro-research-gates.md) require a proven semantic failure mechanism, paired EX/rescue-regression and cost accounting, and independent database/source validation before promoting a change. The latest cross-database two-shot experiment [failed its gate (8/20 → 7/20)](https://github.com/kolihhan/semantic-text2sql-agent/actions/runs/43680102605) and remains unmerged.
 
+## Integrated local-model recovery
+
+The Ollama path uses JSON-constrained SQL generation with a single read-only
+verification and execution pipeline. A rejected or non-query response follows
+the existing bounded repair path. If SQL runs but returns no rows, the service
+can spend one remaining call to recheck literals, joins and dates; it only
+accepts an alternative if it passes the same deterministic verification and
+returns a nonempty, untruncated result. Unsafe or unsuccessful alternatives
+never replace a valid answer.
+
+The offline demo and existing text-only providers retain the original
+SQL-only interface. All clients (Streamlit, CLI and FastAPI) share
+`SemanticSQLService`; there is no second agent or extra runtime dependency.
+The earlier benchmark numbers above were measured on their original
+configurations and do not claim a new accuracy for this integration.
+
 ## Results
 
 The checked-in frozen paired summary covers **100 BIRD DEV queries** using local `qwen3.5:9b-q4_K_M` through Ollama:
